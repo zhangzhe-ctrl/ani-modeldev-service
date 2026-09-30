@@ -6,8 +6,9 @@
 取得有效 RED：真实 PostgreSQL、受限角色和隔离迁移 preflight PASS 后，Accept
 返回 NOT_IMPLEMENTED / exit 1。首个正向持久受理在固定 `bc46d60` 取得 GREEN。
 重复投递测试在固定 `e716e4e` 取得有效 RED：preflight PASS 后重复 Accept 返回
-PERSISTENCE_UNAVAILABLE / exit 1。当前为严格重复回放实现候选，尚待固定提交
-GREEN；未接业务装配，不标整个 CPU04 CODE_READY。
+PERSISTENCE_UNAVAILABLE / exit 1。固定 `7e2a045` 的两项 repository 测试随后
+GREEN / exit 0（含受限 PG preflight），gofmt 无差异。当前新增冲突/隔离测试
+候选等待 RED；未接业务装配，不标整个 CPU04 CODE_READY。
 
 ## 持久事实与最小边界
 
@@ -84,7 +85,13 @@ Fedora 执行者从受保护文件载入 `CPU_P01_TEST_DATABASE_URL` 和
 
 `TestAcceptDuplicateAfterReconnectReturnsOriginalAdmission` 在首次 Accept 后
 关闭 pool，经新 pool 重投同一命令，核对回放响应与 Get 均保持完整原受理。
-此测试已有上述 RED，当前实现 GREEN 尚未取得。
+此测试已取得上述 RED/GREEN。
+
+下一候选通过真实 repository 接口覆盖完整事实冲突、跨租户复用全局身份、
+六独立 pool 同命令竞争、异参唯一赢家、跨租户隐藏读取及非法受理不占 inbox。
+冲突 API 先声明稳定 ADMISSION_CONFLICT，当前实现尚未采用，迁移仍未增加
+全局唯一约束。应在 Fedora 记录实际 RED；现有校验直接通过的用例记作回归
+PASS，不制造失败。测试只通过 Accept/Get 断言业务事实，不直接查业务表。
 
 并发、同键异参、跨租户负向、停止墓碑和恢复门闩是后续独立 RED/GREEN 切片；
 正向持久化或串行重复回放不能代替这些证据。真实 PG 模块结果亦不能

@@ -17,6 +17,7 @@ import (
 
 var (
 	ErrInvalidAdmission  = errors.New("INVALID_ARGUMENT")
+	ErrAdmissionConflict = errors.New("ADMISSION_CONFLICT")
 	ErrExecutionNotFound = errors.New("NOT_FOUND")
 	ErrPersistence       = errors.New("PERSISTENCE_UNAVAILABLE")
 )
