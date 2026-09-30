@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -43,7 +44,7 @@ type Intent struct {
 
 // ParseIntent rejects ambiguous JSON before computing an admission hash.
 func ParseIntent(raw []byte) (Intent, error) {
-	if len(raw) > 16384 || !utf8.Valid(raw) {
+	if len(raw) > 16384 || !utf8.Valid(raw) || !validUnicodeEscapes(raw) {
 		return Intent{}, fmt.Errorf("%w: intent encoding or size", ErrInvalidArgument)
 	}
 	scanner := json.NewDecoder(bytes.NewReader(raw))
@@ -119,27 +120,51 @@ func validateIntent(intent Intent) error {
 		return invalid("name")
 	}
 	for _, r := range intent.Name {
-		if unicode.IsControl(r) { return invalid("name") }
+		if unicode.IsControl(r) {
+			return invalid("name")
+		}
 	}
-	if intent.Kind != "GENERAL_TRAINING" { return invalid("kind") }
-	if !validUUID(intent.PresetID) || !validUUID(intent.DatasetVersionID) { return invalid("required version ID") }
-	if intent.ImageVersionID != nil && !validUUID(*intent.ImageVersionID) { return invalid("image_version_id") }
-	if intent.SourceExecutionID != nil && !validUUID(*intent.SourceExecutionID) { return invalid("source_execution_id") }
-	if intent.GeneralParameters == nil { return nil }
-	if len(*intent.GeneralParameters) > 3 { return invalid("general_parameters") }
+	if intent.Kind != "GENERAL_TRAINING" {
+		return invalid("kind")
+	}
+	if !validUUID(intent.PresetID) || !validUUID(intent.DatasetVersionID) {
+		return invalid("required version ID")
+	}
+	if intent.ImageVersionID != nil && !validUUID(*intent.ImageVersionID) {
+		return invalid("image_version_id")
+	}
+	if intent.SourceExecutionID != nil && !validUUID(*intent.SourceExecutionID) {
+		return invalid("source_execution_id")
+	}
+	if intent.GeneralParameters == nil {
+		return nil
+	}
+	if len(*intent.GeneralParameters) > 3 {
+		return invalid("general_parameters")
+	}
 	seen := make(map[string]bool)
 	for _, parameter := range *intent.GeneralParameters {
-		if seen[parameter.Name] { return invalid("duplicate parameter") }
+		if seen[parameter.Name] {
+			return invalid("duplicate parameter")
+		}
 		seen[parameter.Name] = true
 		switch parameter.Name {
 		case "epochs":
-			if parameter.Type != "INTEGER" || parameter.Value != "3" { return invalid("epochs") }
+			if parameter.Type != "INTEGER" || parameter.Value != "3" {
+				return invalid("epochs")
+			}
 		case "batch_size":
-			if parameter.Type != "INTEGER" || parameter.Value != "64" { return invalid("batch_size") }
+			if parameter.Type != "INTEGER" || parameter.Value != "64" {
+				return invalid("batch_size")
+			}
 		case "learning_rate":
-			if parameter.Type != "DECIMAL" || len(parameter.Value) > 32 || !decimalPattern.MatchString(parameter.Value) { return invalid("learning_rate") }
+			if parameter.Type != "DECIMAL" || len(parameter.Value) > 32 || !decimalPattern.MatchString(parameter.Value) {
+				return invalid("learning_rate")
+			}
 			value, ok := new(big.Rat).SetString(parameter.Value)
-			if !ok || value.Sign() <= 0 || value.Cmp(big.NewRat(1, 10)) > 0 { return invalid("learning_rate") }
+			if !ok || value.Sign() <= 0 || value.Cmp(big.NewRat(1, 10)) > 0 {
+				return invalid("learning_rate")
+			}
 		default:
 			return invalid("unregistered parameter")
 		}
@@ -151,31 +176,80 @@ func validateIntent(intent Intent) error {
 // rejects those ambiguities before the ordinary typed decoder handles shape.
 func checkJSONValue(decoder *json.Decoder, depth int) error {
 	invalid := func() error { return fmt.Errorf("%w: ambiguous JSON", ErrInvalidArgument) }
-	if depth > 8 { return invalid() }
+	if depth > 8 {
+		return invalid()
+	}
 	token, err := decoder.Token()
-	if err != nil || token == nil { return invalid() }
+	if err != nil || token == nil {
+		return invalid()
+	}
 	delimiter, composite := token.(json.Delim)
-	if !composite { return nil }
+	if !composite {
+		return nil
+	}
 	switch delimiter {
 	case '{':
 		seen := make(map[string]bool)
 		for decoder.More() {
 			keyToken, err := decoder.Token()
 			key, ok := keyToken.(string)
-			if err != nil || !ok || seen[key] { return invalid() }
+			if err != nil || !ok || seen[key] {
+				return invalid()
+			}
+			if !validIntentKey(depth, key) { return invalid() }
 			seen[key] = true
-			if err := checkJSONValue(decoder, depth+1); err != nil { return err }
+			if err := checkJSONValue(decoder, depth+1); err != nil {
+				return err
+			}
 		}
 		closing, err := decoder.Token()
-		if err != nil || closing != json.Delim('}') { return invalid() }
+		if err != nil || closing != json.Delim('}') {
+			return invalid()
+		}
 	case '[':
 		for decoder.More() {
-			if err := checkJSONValue(decoder, depth+1); err != nil { return err }
+			if err := checkJSONValue(decoder, depth+1); err != nil {
+				return err
+			}
 		}
 		closing, err := decoder.Token()
-		if err != nil || closing != json.Delim(']') { return invalid() }
+		if err != nil || closing != json.Delim(']') {
+			return invalid()
+		}
 	default:
 		return invalid()
 	}
 	return nil
+}
+
+func validIntentKey(depth int, key string) bool {
+	if depth == 0 {
+		switch key {
+		case "name", "kind", "preset_id", "dataset_version_id", "image_version_id", "general_parameters", "source_execution_id":
+			return true
+		}
+	}
+	return depth == 2 && (key == "name" || key == "type" || key == "value")
+}
+
+// Go's JSON decoder replaces unpaired UTF-16 escapes with U+FFFD. Reject them
+// so malformed input cannot acquire the identity of a different valid string.
+func validUnicodeEscapes(raw []byte) bool {
+	for i := 0; i < len(raw); i++ {
+		if raw[i] != '\\' { continue }
+		i++
+		if i >= len(raw) { return false }
+		if raw[i] != 'u' { continue }
+		if i+4 >= len(raw) { return false }
+		value, err := strconv.ParseUint(string(raw[i+1:i+5]), 16, 16)
+		if err != nil { return false }
+		i += 4
+		if value >= 0xdc00 && value <= 0xdfff { return false }
+		if value < 0xd800 || value > 0xdbff { continue }
+		if i+6 >= len(raw) || raw[i+1] != '\\' || raw[i+2] != 'u' { return false }
+		low, err := strconv.ParseUint(string(raw[i+3:i+7]), 16, 16)
+		if err != nil || low < 0xdc00 || low > 0xdfff { return false }
+		i += 6
+	}
+	return true
 }
