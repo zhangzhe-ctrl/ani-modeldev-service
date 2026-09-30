@@ -62,3 +62,12 @@ WHERE tenant_id = sqlc.arg(tenant_id)::uuid
   AND execution_id = sqlc.arg(execution_id)::uuid
 ORDER BY owner_generation DESC
 LIMIT 1;
+
+-- name: GetCloseIntentBySource :one
+SELECT tenant_id, execution_id, operation_id, spec_hash, source_kind,
+    source_generation, owner_generation, reason, requested_at, requested_actor, close_state
+FROM modeldev_close_intents
+WHERE tenant_id = sqlc.arg(tenant_id)::uuid
+  AND execution_id = sqlc.arg(execution_id)::uuid
+  AND source_kind = 'GOVERNANCE'
+  AND source_generation = sqlc.arg(source_generation);
