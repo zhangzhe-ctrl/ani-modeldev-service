@@ -138,6 +138,11 @@ schema 和当前启用记录均不在本切片。
 的首次 Import、目录全模块及完整合同/protobuf GREEN / test.exit 0。该版本的
 verify-source 生成内容稳定，最后全仓格式 gate 因并行输入模块未格式化而失败，
 不冒称全 gate PASS。同件 replay 暂未实现，下一独立测试要求 Created=false、
-原 ID/digest 回执及完整旧文件保持，待固定候选取得 RED。随后依次
+原 ID/digest 回执及完整旧文件保持。固定 `1d1d66acc646f64ffac0eee39e4600832ff702a1`
+已在 Fedora 得到有效 replay RED：首次真实 Import 成功后，原件重投错误返回
+RELEASE_CONFLICT，exit 1（0.008s）。候选修复在原目录文件描述符上复用 reader
+的完整字节/身份/安全读取校验，再同步目录并返回 Created=false；不凭文件名、
+stat 或旧进程内结果回放，也不因目录路径切换而验证另一目录。待新 SHA GREEN。
+随后依次
 覆盖原件重投、同 ID 异件、竞争、取消与失败保留。真实文件测试不证明断电恢复，
 更不证明 T02 的真实环境校验或授权入口已经交付。
