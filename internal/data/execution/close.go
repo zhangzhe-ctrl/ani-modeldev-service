@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -35,6 +36,26 @@ func (r *Repository) ApplyCloseIntent(ctx context.Context, intent biz.CloseInten
 		return biz.CloseRecord{}, err
 	}
 	defer rollbackExecutionTransaction(transaction)
+	sourceGeneration := pgtype.Numeric{Int: new(big.Int).SetUint64(intent.SourceGeneration), Valid: true}
+	existing, err := queries.GetCloseIntentBySource(ctx, executionsql.GetCloseIntentBySourceParams{
+		TenantID: tenantID, ExecutionID: executionID, SourceGeneration: sourceGeneration,
+	})
+	if err == nil {
+		record, err := closeRecordFromRow(existing)
+		if err != nil {
+			return biz.CloseRecord{}, err
+		}
+		if !sameCloseIntent(record.CloseIntent, intent) {
+			return biz.CloseRecord{}, biz.ErrAdmissionConflict
+		}
+		if err := transaction.Commit(ctx); err != nil {
+			return biz.CloseRecord{}, biz.ErrPersistence
+		}
+		return record, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return biz.CloseRecord{}, biz.ErrPersistence
+	}
 	generation, err := queries.AdvanceCloseGeneration(ctx, executionsql.AdvanceCloseGenerationParams{
 		TenantID: tenantID, ExecutionID: executionID,
 	})
@@ -43,7 +64,7 @@ func (r *Repository) ApplyCloseIntent(ctx context.Context, intent biz.CloseInten
 	}
 	row, err := queries.InsertCloseIntent(ctx, executionsql.InsertCloseIntentParams{
 		TenantID: tenantID, ExecutionID: executionID, OperationID: operationID, SpecHash: intent.SpecHash,
-		SourceGeneration: pgtype.Numeric{Int: new(big.Int).SetUint64(intent.SourceGeneration), Valid: true},
+		SourceGeneration: sourceGeneration,
 		OwnerGeneration:  generation,
 		RequestedAt:      pgtype.Timestamptz{Time: intent.RequestedAt.UTC(), Valid: true},
 		RequestedActor:   intent.RequestedActor,
@@ -59,6 +80,17 @@ func (r *Repository) ApplyCloseIntent(ctx context.Context, intent biz.CloseInten
 		return biz.CloseRecord{}, biz.ErrPersistence
 	}
 	return record, nil
+}
+
+func sameCloseIntent(stored, requested biz.CloseIntent) bool {
+	return strings.EqualFold(stored.TenantID, requested.TenantID) &&
+		strings.EqualFold(stored.OperationID, requested.OperationID) &&
+		strings.EqualFold(stored.ExecutionID, requested.ExecutionID) &&
+		stored.SpecHash == requested.SpecHash &&
+		stored.SourceGeneration == requested.SourceGeneration &&
+		stored.Reason == requested.Reason &&
+		stored.RequestedAt.Equal(requested.RequestedAt) &&
+		stored.RequestedActor == requested.RequestedActor
 }
 
 func (r *Repository) GetCloseIntent(ctx context.Context, tenant, execution string) (biz.CloseRecord, error) {

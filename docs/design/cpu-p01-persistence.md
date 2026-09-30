@@ -140,8 +140,8 @@ Admission 仍为 NOT_FOUND，不创造伪快照，不将停止受理冒充 CLOSE
 
 首墓碑 RED 已保存。当前实现候选在 0003 的共享身份锁下增加 owner 代际，并与
 USER_STOP receipt 同事务提交；两个序号用 numeric(20,0) 精确覆盖 uint64，失败
-事务连同计数一起回滚。来源固定为 GOVERNANCE，只实现本测试要求的首条关闭
-意图与新连接读取，不预先接入 Step/deadline 或幂等重放成功分支。
+事务连同计数一起回滚。来源固定为 GOVERNANCE，已验证首条关闭意图与新连接
+读取；当前重放候选另见下文，不预先接入 Step/deadline。
 
 共享 anchor 已随本切片建立，因此原 Accept 全部行为必须回归；matching late
 Admission 的关闭状态传播及真实创建许可消费仍需要后续真实并发 RED/GREEN。
@@ -152,4 +152,7 @@ KFP/TrainJob 已终止或无活跃写者。重复关闭的成功回执/来源代
 下一条 `TestUserStopDuplicateAfterReconnectReturnsOriginalFenceAndFacts` 只增加
 完整同件 USER_STOP 重放行为：新连接重投 source generation 41，回执与读取必须
 保持完整原事实及 owner generation 1，不能再次分配代际或产生 Admission。
-此测试候选等待固定 RED；异参同来源序号、后续来源序号和并发重放分开验证。
+该测试在固定 `f8c88ca` 取得真实 PG RED / exit 1：preflight PASS 后重放返回
+PERSISTENCE_UNAVAILABLE。候选实现先持有共享身份锁，按 tenant/execution 和
+GOVERNANCE 来源序号查原 receipt；完整身份、spec、原因和审计事实一致才回放，
+跳过 owner 代际递增。异参同来源序号、后续来源序号和并发重放分开验证。

@@ -65,6 +65,41 @@ func (q *Queries) GetCloseIntent(ctx context.Context, arg GetCloseIntentParams) 
 	return i, err
 }
 
+const getCloseIntentBySource = `-- name: GetCloseIntentBySource :one
+SELECT tenant_id, execution_id, operation_id, spec_hash, source_kind,
+    source_generation, owner_generation, reason, requested_at, requested_actor, close_state
+FROM modeldev_close_intents
+WHERE tenant_id = $1::uuid
+  AND execution_id = $2::uuid
+  AND source_kind = 'GOVERNANCE'
+  AND source_generation = $3
+`
+
+type GetCloseIntentBySourceParams struct {
+	TenantID         pgtype.UUID
+	ExecutionID      pgtype.UUID
+	SourceGeneration pgtype.Numeric
+}
+
+func (q *Queries) GetCloseIntentBySource(ctx context.Context, arg GetCloseIntentBySourceParams) (ModeldevCloseIntent, error) {
+	row := q.db.QueryRow(ctx, getCloseIntentBySource, arg.TenantID, arg.ExecutionID, arg.SourceGeneration)
+	var i ModeldevCloseIntent
+	err := row.Scan(
+		&i.TenantID,
+		&i.ExecutionID,
+		&i.OperationID,
+		&i.SpecHash,
+		&i.SourceKind,
+		&i.SourceGeneration,
+		&i.OwnerGeneration,
+		&i.Reason,
+		&i.RequestedAt,
+		&i.RequestedActor,
+		&i.CloseState,
+	)
+	return i, err
+}
+
 const getExecution = `-- name: GetExecution :one
 SELECT tenant_id, execution_id, operation_id, actor,
     intent_canonical, intent_hash, snapshot_canonical, spec_hash, accepted_at
