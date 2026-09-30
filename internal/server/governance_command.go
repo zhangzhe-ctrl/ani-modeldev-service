@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,7 +13,6 @@ import (
 	kratosgrpc "github.com/go-kratos/kratos/v3/transport/grpc"
 	"github.com/google/uuid"
 	modeldevv1 "github.com/zhangzhe-ctrl/ani-modeldev-service/api/ani/modeldev/v1"
-	"github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01"
 	conf "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/conf/v1"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/service"
 	"google.golang.org/grpc"
@@ -90,7 +90,7 @@ func NewGovernanceCommandServer(c *conf.Server_GRPC, security CommandTLS, comman
 			id, err := uuid.Parse(value)
 			return err == nil && id != uuid.Nil && id.String() == value
 		}
-		if !canonicalID(delivery.TenantID) || !canonicalID(delivery.RequestID) || !cpup01.ValidAuditActor(delivery.Actor) {
+		if !canonicalID(delivery.TenantID) || !canonicalID(delivery.RequestID) || !validGovernanceCommandActor(delivery.Actor) {
 			return nil, denied
 		}
 		return next(service.WithVerifiedGovernanceDelivery(ctx, delivery), request)
@@ -110,4 +110,14 @@ func NewGovernanceCommandServer(c *conf.Server_GRPC, security CommandTLS, comman
 	)
 	modeldevv1.RegisterModelDevCommandServiceServer(s, command)
 	return s, nil
+}
+
+func validGovernanceCommandActor(actor string) bool {
+	for _, prefix := range []string{"governance:user:", "governance:access-key:"} {
+		if strings.HasPrefix(actor, prefix) {
+			id, err := strconv.ParseUint(strings.TrimPrefix(actor, prefix), 10, 32)
+			return err == nil && id != 0 && actor == prefix+strconv.FormatUint(id, 10)
+		}
+	}
+	return false
 }
