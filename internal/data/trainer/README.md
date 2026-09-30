@@ -68,10 +68,13 @@ through an HTTP API substitute; it does not cover live resource identity.
 The next test-only slice covers invalid binding before network access, namespace
 recreation before reading a TrainJob, mismatched resource/owner/spec correlation,
 unavailable or stale condition generations, ambiguous controller conditions and
-preserved NotFound/Forbidden API errors. These tests await a fixed commit and
-Fedora execution. Cases already satisfied by the initial fail-closed
-implementation will be recorded as regression PASS, not fabricated RED. Product
-code remains unchanged for this test slice.
+preserved NotFound/Forbidden API errors. After Fedora formatting was returned
+and committed, all six named tests (including 38 boundary table cases) passed
+at `07777765f23013868185afca9dc1e606ad75263f`, exit 0 in 0.036 seconds. The
+checkout remained clean. The initial fail-closed implementation already
+satisfied these cases, so this is regression PASS with no new behavior RED or
+production fix. This evidence remains scoped to the trainer package and the
+external HTTP API substitute.
 
 The latest consumed ENV record still lacks a usable Trainer CRD/Runtime and
 application-identity handoff. Server-side dry-run and real resource observation
