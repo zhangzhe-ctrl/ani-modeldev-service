@@ -1,122 +1,64 @@
 # CPU03 training workload
 
 Source task: `ANI-doc/02-issues/modeldev/cpu-p01/tasks/CPU03.md`.
-Fixture generation and the fixed MLP recipe originate in that package's
-`reference/v04/cpu-baseline/`; its historical validation is not current evidence.
+The fixed CSV and MLP recipe originate in that package's
+`reference/v04/cpu-baseline/`; historical package reports are not current evidence.
 
-The first agreed test seam is the workload command plus its actual files. The
-test uses a selected CSV, executes training in a subprocess, checks 48 metrics
-and candidate file digests, and reloads the checkpoint with `weights_only=True`
-in another process that imports no trainer implementation.
-
-Run only on Fedora, against a fixed source commit with a CPU PyTorch environment:
-
-```sh
-python -m unittest discover -s training/tests -p 'test_training.py' -v
-```
-
-The first RED was observed on Fedora at source commit
-`452fff617856bb4d1a3ccdb029e24cbf71aae093`: one failing behavior test, exit 1,
-`CPU03_NOT_IMPLEMENTED`, after the real CPU PyTorch preflight succeeded. The
-first implementation passed the same test on Fedora at
-`b69667f242898ecef10cfe9481a954c91d6218e9`: one test, exit 0, including the
-independent checkpoint reload. A missing PyTorch dependency is
-`ENVIRONMENT_NOT_READY`, not a behavior RED.
+## Workload contract
 
 The command requires `--data`, `--output`, `--expected-input-sha256`, and
-`--expected-input-bytes`. Before importing PyTorch or creating output, the
-admission check verifies a regular file's actual size and SHA256, all 1024 rows
-and 16 finite float32 features, binary labels, single-process WORLD_SIZE, and
-paths without symlinks. Nonempty and non-directory output paths are refused and
-preserved; a real existing empty directory is accepted.
-It must not be deployed until the remaining recipe tests and live integration
-are implemented and checked. The first slice fixes three epochs, batch
-size 64, and CPU MLP 16→32→2. `result.json` is a workload output candidate, not
-proof of S3 publication or business success.
+`--expected-input-bytes`. Before importing PyTorch or creating output, it checks
+the selected regular file's size and SHA256, all 1024 rows with 16 finite float32
+features and binary labels, single-process WORLD_SIZE, and paths without symlinks.
+Nonempty or non-directory output paths are refused and preserved; an existing
+empty directory is accepted.
 
-`runtime-lock.json` fixes the linux/amd64 Chainguard Python image at
-`sha256:125969103add9ace8bdbad31acbb07d2e5740e065312688534f0c666a181b987`,
-resolved on 2026-09-30. Both stages use this digest; builds never resolve the
-discovery tag `latest`. It contains Python 3.14.7 with the ordinary cp314 ABI.
-PyTorch remains 2.10.0+cpu, and all ten dependency versions remain unchanged.
-Only the Torch and MarkupSafe wheel files change from cp313 to cp314.
-`requirements.lock` pins versions and SHA256; `wheelhouse.sha256` records filenames.
-`runtime-packages.lock.json` records all 31 actual APK package names/versions,
-including the legacy OpenSSL provider. The package database is retained.
+The CPU MLP is 16→32→2, with three epochs, batch size 64 and 48 optimizer steps.
+`--learning-rate` accepts a decimal in (0, 0.1], at most 32 characters without
+exponent notation, and defaults to 0.01. Its canonical value is recorded in the
+summary and used by Adam. Tests compare actual checkpoint tensors to establish
+that changing the learning rate affects computation.
 
-On Fedora, this exact base ran as UID/GID 10001 and PID 1, created its own venv,
-installed all ten verified wheels offline, passed `pip check`, and performed a
-CPU Torch forward operation in a read-only, network-disabled container. Its real
-APK database matched the published package set, and Syft catalogued all 31 APK
-packages. Torch loads its wheel's bundled libgomp and the image's libstdc++;
-no host library or compiler image is needed. These are material qualification
-results. The new workload build, all six MLP tests, complete image smoke, and
-unfiltered Grype `--fail-on high` are still pending for this source candidate.
-Signature trust-chain verification also remains unverified. Fixture CSVs,
-wheels, and model output stay out of Git. PyTorch's optional NumPy integration
-reports a warning because this workload uses tensors directly without NumPy.
+Three registered internal recipes use this same workload:
 
-The next test is one parameterized admission behavior: reject mismatched input
-identity, malformed fixed CSV (shape, labels, NaN/Inf), non-singleton WORLD_SIZE,
-symlink input/output, and nonempty output before emitting optimization metrics or
-creating output artifacts. At `fd9015bdea0af35c6c0b9d0898ae3a958c63e741`, Fedora
-recorded the normal case passing and 14 rejection subcases failing in 83.035
-seconds, exit 1. At `23aa203b24d3b60a4ab74d8686d36819eb2a76da`, the corresponding
-checks passed both tests (including all 19 refusal scenarios) in 17.187 seconds,
-exit 0.
+- `success`: complete 48 steps and emit candidate files and their digests.
+- `fail`: complete five optimizer updates, exit with `CPU03_RECIPE_FAILURE`,
+  and retain only metrics.
+- `slow-stop`: perform real optimization with a fixed 0.2-second delay after each
+  update and a 30-second POSIX alarm. SIGTERM exits 143 while closing open files.
 
-The next behavior tests cover canonical `--learning-rate` in (0, 0.1] and an
-existing empty output directory. The valid test runs both default 0.01 and explicit
-0.02, requires the effective decimal in the summary, reloads both checkpoints,
-and compares actual tensors to prove the selected rate affected training. Another
-test rejects malformed/out-of-range/non-finite rates before output creation.
-At `b17b0074314c5defba4031556ecf13b58769c79b`, Fedora observed the expected RED:
-four tests in 29.814 seconds, one failure because the command rejected the valid
-`--learning-rate 0.02` argument. The implementation now parses a maximum
-32-character, non-exponent decimal in (0, 0.1], records its canonical decimal in
-the summary, passes the value to Adam, and accepts an existing empty directory.
-At `080320ea314e8d1ce885b18a1d488daabdc574b9`, all four module tests passed on
-Fedora in 42.886 seconds, exit 0; the selected learning rate produced different
-actual checkpoint tensors. Epochs and batch size remain fixed at 3 and 64.
+These recipes are internal acceptance commands, not ordinary user parameters or
+a second training API. Callers cannot supply custom failure steps or time budgets.
+`result.json` is a candidate result, not proof of S3 publication or business success.
+The separate CPU08/CPU09 verifier must obtain bytes through BFF-authorized S3
+access without mounting the original training PVC.
 
-The recipe tests cover the internal managed recipes required by the original
-CPU03 task card, execution details 5–6. `--recipe fail` completes five real
-optimizer steps, then exits with `CPU03_RECIPE_FAILURE`, retaining only metrics.
-`--recipe slow-stop` keeps the normal 48-step computation, with a fixed 0.2-second
-delay after each real step and a 30-second total budget. It reports these limits
-as an `ani.cpu03.recipe.v1` stdout event. The test observes three actual optimizer
-events before SIGTERM, requires exit within ten seconds, and rejects successful
-checkpoint/candidate files. Test polling is bounded and targets only its own
-subprocess. At `a3e321fbed242e6d64919a5a8db48a8d44edbf04`, both targeted tests
-failed on Fedora in 6.466 seconds, exit 1: valid inputs passed dependency setup,
-then the command rejected the absent `--recipe` argument before computation.
-The implementation now accepts the three registered recipes, with `success` as
-the default. Failure is raised after the fifth actual optimizer update and
-flushed metric. Slow-stop uses a fixed POSIX alarm beginning after input admission
-and before PyTorch import; its delay follows each real optimizer update. All six module tests passed at
-`d212f25e2180413a3e538370f1b4a011a6fadba7` on Fedora in 55.861 seconds, exit 0.
-This signal result applies to the workload subprocess; the packaged image's
-actual entrypoint and PID 1 still require the separate image smoke below.
+## Locked image materials
 
-These recipe names select registered internal test commands. They are not
-ordinary user parameters, free-form command options, or a second training API.
-No caller may supply a custom failure step, sleep duration, or total-step budget.
-The initial subprocess reload is CPU03 module evidence; the
-independent BFF/S3 verifier belongs to CPU08/CPU09 and must not mount the original
-training PVC.
+`runtime-lock.json` pins the linux/amd64 Chainguard Python manifest
+`sha256:125969103add9ace8bdbad31acbb07d2e5740e065312688534f0c666a181b987`
+in both Dockerfile stages. Builds never resolve a discovery tag. The base contains
+Python 3.14.7 with the ordinary cp314 ABI; PyTorch remains 2.10.0+cpu. Of the ten
+locked wheels, only Torch and MarkupSafe changed from cp313 to cp314; dependency
+versions remained unchanged by that ABI migration.
 
-## Offline image build and smoke
+`requirements.lock` pins versions and SHA256, `wheelhouse.sha256` fixes filenames,
+and `runtime-packages.lock.json` records all 31 APK package names and versions,
+including the legacy OpenSSL provider. The package database is retained. Torch
+uses its wheel's bundled libgomp and the image's libstdc++; no host library is
+copied. Optional NumPy integration emits a warning because this workload uses
+tensors directly without NumPy.
 
-`Dockerfile` fixes the same Python runtime digest in both stages. The base has no
-shell; exec-form Python commands create the venv and install the ten hash-pinned
-CPU wheels during the build without network access. The final stage copies that
-environment and retains the original APK package database. Its default user is `10001:10001`;
-the entrypoint is the workload itself, with JSON metrics on stdout. It contains
-no selected dataset, checkpoint, or registry credentials. Its entrypoint performs
-no package installation or dependency download.
+The base has no shell. Exec-form Python commands create `/opt/venv` and install
+the verified wheels offline during the build. The final image uses UID/GID
+10001:10001, read-only program files, and the workload itself as PID 1. It contains
+no selected dataset, checkpoint, or credentials and installs nothing at startup.
 
-On Fedora only, after these files are committed and the exact commit is checked
-out, use:
+## Fedora execution
+
+All generation, builds, training, reloads and scanning run on Fedora against a
+fixed committed source. After selecting the task-owned Podman storage containing
+the qualified base digest, use a fresh output directory:
 
 ```sh
 bash training/build-image.sh FULL_SOURCE_SHA \
@@ -126,122 +68,51 @@ python3 training/tests/image_smoke.py "$(cat /home/chabking/workspace/cpu-p01-20
   /home/chabking/workspace/cpu-p01-20260930-01/cpu03/smoke-NEW_ATTEMPT
 ```
 
-The build script rejects an existing run directory, checks the current source
-revision, archives that immutable Git tree, and copies only wheels named in the
-lock before verifying their hashes. The build has no network or proxy forwarding,
-uses at most two CPUs / 2 GiB, and records the command, source, exits and local image
-identity. It neither downloads dependencies nor pushes an image.
-The caller must select the task-owned Podman storage containing the exact base
-digest, using its existing storage configuration. No system-package installer or
-additional Debian archive is used by this candidate; package identity is checked
-against the complete APK lock by the image smoke.
+The build script rejects existing output directories, checks the source revision,
+archives that Git tree, and copies only hash-verified locked wheels. It uses no
+network, proxy forwarding or image pulls, is limited to two CPUs / 2 GiB, and
+records the source, command, exits and local image identity. It does not push images.
 
-The image smoke runs the real packaged entrypoint under its declared nonroot
-user. It generates the selected fixture in a separate bounded Fedora container,
-then binds that input read-only and gives each recipe its own output directory.
-It checks success files and hashes, independently reloads the checkpoint in a new
-container, observes five real steps before explicit failure, and sends SIGTERM to
-the slow container only after observing real optimization. Every container is
-offline, read-only except its output/tmpfs, limited to two CPUs / 2 GiB, and has a
-90-second outer lifetime bound. The slow container is removed only by its exact
-returned ID after retaining evidence and output. The smoke deliberately tests the
-image's actual PID 1 behavior without adding an init wrapper.
+The smoke tests actual nonroot PID 1 behavior without an init wrapper. Containers
+are offline and read-only except isolated output/tmpfs, limited to two CPUs /
+2 GiB and bounded to 90 seconds. A separate container generates the selected
+fixture. Success checks actual file bytes and digests and independently reloads
+the checkpoint with `weights_only=True`; fail and stop checks observe real
+optimization first. Stop cleanup targets only the returned container ID after
+retaining evidence. The unchanged six module tests are also run inside the built
+image using `python -m unittest discover -s training/tests -p 'test_training.py' -v`.
 
-The first build at `a9b3a67d1fa9b4651add4f7c36237e36b6d1cdc8` verified all ten
-wheel hashes, then exited 125 before Dockerfile execution because Podman's build
-command requires `--pull=never` for this optional-value flag. The local script is
-corrected. The subsequent offline build passed at
-`c3916acfea616e44c5a01f14b8d27adc493c44ea`, producing local image
-`sha256:e89b63fcf5851dcc027a32b087409badbc813257c6ad72d69761275d9a0afadd`.
-Its first image smoke passed the nonroot Python/PyTorch preflight and fixture
-generation, then failed: the default entrypoint could not read the root-owned
-mode-0600 trainer file. This is an image packaging RED before training; the
-failure and PID 1 stop recipes were not reached. The Dockerfile now gives the
-packaged trainer and material records explicit read-only mode 0444, independent
-of the build-context umask.
+## Fixed verification result
 
-The corrected image build passed at `7e2a045e9d619919917374b9d4ec7b621de3a3f7`,
-producing local image
-`sha256:2e68ce5905adc1213c2966bc0c635f3f826e51e2c6bfd3d138019eb42dbcd62d`.
-The real image success run, file/hash checks, independent weights-only reload and
-five-step failure all passed. The slow-stop check then observed actual optimizer
-steps and sent SIGTERM, but PID 1 did not terminate within ten seconds; this is a
-product behavior RED. Only that test's exact container ID was force-removed after
-retaining its metrics and logs. It had continued to 48 steps and written candidate
-files despite SIGTERM. The workload now explicitly handles SIGTERM and
-exits 143 while unwinding open files.
+On Fedora, source `4d56b93b045233c1325a362fe89d506210223d47` produced local image
+`sha256:0972fac83ba343e4d24e22bc35198bddf5c3e9d5c8ab3337694395beead3bd04`.
+The run on 2026-09-30 at 15:17:51–15:21:59 UTC passed offline build, all six module
+tests (38.123 seconds), and complete image smoke. Smoke covered the complete APK
+lock, normal ABI and venv, dependency imports, success48, independent reload,
+failure after five steps, and SIGTERM exit 143 after three observed steps.
 
-At `a2b799b4fe8577c53ff1a796f90412f574c3071c`, all six module tests passed in
-73.885 seconds. The offline image build produced
-`sha256:eacf4804d14d3778718e21acf4e55f5ae198ebffe4653b661328154a290b58c0`,
-and its real image smoke passed success48steps, independent checkpoint reload,
-fail5steps and bounded stop. The stop run exited 143 after four actual optimizer
-steps and retained only metrics.jsonl. All tests used the image's actual nonroot
-PID 1 entrypoint, without a wrapper or runtime downloads. The failed earlier
-images and their evidence remain separate; they are not accepted candidates.
+Syft 1.52.0 recorded 69 artifacts: 31 APK, 14 binary and 24 Python records.
+Grype 0.119.0 with the validated v6.1.9 database built at
+`2026-09-30T06:32:47Z` passed the original `--fail-on high` gate: zero Critical,
+zero High, eight Medium and two Low findings. All findings remain in the raw
+report. There were no path excludes, VEX documents, only-fixed filtering or
+user-added ignore rules. The four built-in RPM/DEB kernel-header rules matched
+the previous scan configuration; this image has no RPM/DEB artifacts and no
+ignored matches. This result does not mean the image has no vulnerabilities.
 
-Root subsequently installed checksum-verified Syft 1.52.0 and Grype 0.119.0
-under the Fedora task directory. SBOM generation for the exact a2b799b image
-passed. Grype with the verified 2026-09-30 database and `--fail-on high` returned
-exit 2: 387 matches, including 16 Critical and 120 High. This is a real image
-scan FAIL; module/image behavior PASS does not override it. Earlier database
-download failures are retained separately from that completed scan.
+The OCI archive SHA256 is
+`be102bd1fe66aadee64e782decf08c97dc07c5d1337ee3563bc8f8eba40bca6b`.
+It identifies archive bytes, not a registry manifest digest. The run evidence is
+indexed in `.scratch/cpu-p01/runs/20260930-01/cpu03/remediation-4d56b93-01/result.md`;
+large OCI/checkpoint files remain in the corresponding Fedora task directory.
+Later documentation or Go commits do not change the source identity of this image.
 
-The earlier remediation candidate used the official Python 3.13.15 slim-trixie image at
-`sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b`,
-retaining CPython 3.13 and the existing CPU Torch wheel. The Fedora base probe
-reports Python 3.13.15, OpenSSL 3.5.7 and SQLite 3.46.1. Setuptools 80.10.2's
-official wheel replaces 78.1.0 and includes jaraco.context 6.1.0 and wheel 0.46.3;
-the other nine locked wheels are unchanged. Builds remain offline and run as
-UID 10001. No package database, scanner finding or standard library is removed
-to obtain a passing scan.
+Earlier failed packaging, PID 1 and scan attempts remain separate in Git and the
+CPU03 run records. In particular, `472c080` produced a different image whose scan
+failed with 59 High findings; the new result does not relabel that old scan.
 
-At source `9fd93e91fa7812c3f21f001c683a84fccb107acc`, the rebuilt image
-`sha256:ac905b7e6c52c81d3c7b7e327d69139b2e8f653ab6ea626f0276b968e86e72a8`
-passed all six module tests in 64.507 seconds and real image smoke, including
-SIGTERM exit 143. SBOM generation passed. With the same validated database,
-Grype still failed with exit 2: 200 matches, zero Critical and 59 High. These
-findings remain visible; the successful runtime tests do not clear that gate.
-
-The residual High matches comprise 48 `wont-fix`, ten `not-fixed`, and one
-Python finding with a fix listed only in a newer Python series. Debian's current
-security tracker reports an available OpenSSL 3.5.7-1~deb13u3 update, newer than
-the base image's u2 package and not yet reflected as fixed by this scanner
-database. Three exact Debian security packages (libssl3t64, openssl and
-openssl-provider-legacy) have now been downloaded on Fedora using the base
-image's Debian archive keyring and APT's signed repository checks. Their actual
-bytes match the signed index's SHA256 values; `system-packages.sha256` locks
-those bytes in that historical source. That image build consumed the local packages offline using dpkg,
-retains the package database and records installed versions. At fixed source
-`472c0805e58be773e30593c7c33529be5c62becc`, the new offline build produced
-`sha256:1431bc9bd89a71b1a90651d2899e6ecae57e5b92c5545d154c2747069ee4e1b3`.
-All six module tests passed in 61.697 seconds and image smoke passed, including
-the three installed u3 package versions, independent reload and SIGTERM exit
-143. SBOM generation passed. The same currently latest validated Grype database
-still returned exit 2 with 200 matches, zero Critical and 59 High, including nine
-OpenSSL matches for these upgraded packages. Debian's
-[DSA-6531-1](https://security-tracker.debian.org/tracker/DSA-6531-1) lists the
-three corresponding CVEs as fixed in u3. This scanner/vendor discrepancy is
-retained alongside the raw report; no ignore rule or passing security verdict
-was applied. The remaining High findings and required review still prevent
-declaring the image's security gate passed.
-
-The first package-preparation
-attempt failed because capability-restricted root could not write APT's existing
-directories; a fresh attempt used task-owned list/cache paths without adding
-capabilities or disabling repository checks.
-
-Python's official advisory confirms that
-CVE-2026-82049 affects the 3.13 line; a published 3.13.15 base does not resolve
-that remaining High issue. It remains an explicit unresolved finding, without
-an ignore rule or a claim of a clean scan. See
-[Python 3.13.15](https://www.python.org/downloads/release/python-31315/),
-[official image source](https://github.com/docker-library/python/blob/688a0b86bb44289df16a363e9f41d90514c1a5f9/3.13/slim-trixie/Dockerfile),
-[setuptools maintenance changes](https://github.com/pypa/setuptools/blob/v80.10.2/NEWS.rst),
-[Debian SQLite assessment](https://security-tracker.debian.org/tracker/CVE-2025-7458)
-and [Python security advisory](https://mail.python.org/archives/list/security-announce%40python.org/thread/EFJWGAZJA56AKSBR2WHMHQZO7RRLZPRH/).
-The existing CI workflow has no
-image-publish job; the consumed ENV handoff is still a NOT_RUN template without a
-registry reference. Registry push therefore remains NOT_RUN until an explicit
-authorized destination is available. A local image ID is not a registry digest,
-and neither is target-cluster Trainer evidence.
+Signature trust-chain verification and registry publication remain unverified.
+The consumed ENV handoff supplies no authorized registry destination. Target
+cluster Trainer/KFP/BFF/S3 execution, L1–L4 and business acceptance are not proven
+by this Fedora image run. Repository-wide gates and independent code review are
+tracked separately from these workload results.
