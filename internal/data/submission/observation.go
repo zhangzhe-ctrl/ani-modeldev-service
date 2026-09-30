@@ -82,9 +82,9 @@ func (repository *Repository) lockObservation(ctx context.Context, permit biz.Pi
 }
 
 type observationIDs struct {
-	tenant pgtype.UUID
+	tenant    pgtype.UUID
 	execution pgtype.UUID
-	attempt pgtype.UUID
+	attempt   pgtype.UUID
 }
 
 // Clock sampling and observation writes accept the same exact permit shape.
