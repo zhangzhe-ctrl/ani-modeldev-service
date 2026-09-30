@@ -119,8 +119,13 @@ func (r *Repository) Get(ctx context.Context, tenant, execution string) (biz.Exe
 }
 
 func databaseID(value string) (pgtype.UUID, error) {
+	// pgtype.UUID.Scan accepts arbitrary characters at the separator positions.
+	// Enforce the public standard UUID shape before the driver decodes its hex.
+	if len(value) != 36 || value[8] != '-' || value[13] != '-' || value[18] != '-' || value[23] != '-' {
+		return pgtype.UUID{}, biz.ErrInvalidAdmission
+	}
 	var id pgtype.UUID
-	if len(value) != 36 || id.Scan(value) != nil || !id.Valid || id.Bytes == [16]byte{} {
+	if id.Scan(value) != nil || !id.Valid || id.Bytes == [16]byte{} {
 		return pgtype.UUID{}, biz.ErrInvalidAdmission
 	}
 	return id, nil
