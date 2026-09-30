@@ -138,6 +138,78 @@ func TestManagedInputImportReplayAndConflictDoNotReadAnotherObject(t *testing.T)
 	requireStoredInputVersion(t, ctx, reader, first)
 }
 
+func TestManagedInputImportRetriesSourceFailureAgainstTheSameFrozenObject(t *testing.T) {
+	openPool := postgres.Prepare(t)
+	request, payload := managedImportFixture()
+	var reads atomic.Int64
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt := reads.Add(1)
+		if r.URL.Path != "/"+request.Object.Bucket+"/"+request.Object.Key || r.URL.Query().Get("versionId") != *request.Object.VersionID {
+			t.Error("retry changed the frozen source object")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if attempt == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(w, `<Error><Code>ServiceUnavailable</Code><Message>private-endpoint secret-token</Message></Error>`)
+			return
+		}
+		w.Header().Set("x-amz-version-id", *request.Object.VersionID)
+		_, _ = io.WriteString(w, payload)
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	writer := openPool()
+	verifier := managedImportVerifier(server, request.Scope.StorageConnectionID)
+	failed, err := biz.NewInputImporter(input.New(writer), verifier).ImportCSV(ctx, request)
+	if !errors.Is(err, biz.ErrInputSourceUnavailable) || err.Error() != "INPUT_SOURCE_UNAVAILABLE" || failed.State != biz.InputStateValidating || failed.Failure == nil || failed.Failure.Code != biz.InputFailureSourceUnavailable || failed.Verification != nil || reads.Load() != 1 {
+		t.Fatalf("temporary source error rejected content or was not saved: %+v, %v", failed, err)
+	}
+	if failed.Failure.ValidateFor(request) != nil || !reflect.DeepEqual(failed.Import, request) { t.Fatal("source failure lost original request or finite observation") }
+	writer.Close()
+	reader := input.New(openPool())
+	requireStoredInputVersion(t, ctx, reader, failed)
+	ready, err := biz.NewInputImporter(reader, verifier).ImportCSV(ctx, request)
+	if err != nil || ready.State != biz.InputStateReady || ready.Failure != nil || ready.Verification == nil || !reflect.DeepEqual(ready.Import, request) || reads.Load() != 2 {
+		t.Fatalf("retry did not verify the original fixed object: %+v, %v", ready, err)
+	}
+	requireStoredInputVersion(t, ctx, input.New(openPool()), ready)
+}
+
+func TestManagedInputImportCancellationRetainsFrozenRequestWithoutContentRejection(t *testing.T) {
+	openPool := postgres.Prepare(t)
+	request, _ := managedImportFixture()
+	started := make(chan struct{})
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-amz-version-id", *request.Object.VersionID)
+		_, _ = io.WriteString(w, "x0,")
+		w.(http.Flusher).Flush()
+		close(started)
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	type result struct { version biz.InputVersion; err error }
+	finished := make(chan result, 1)
+	importer := biz.NewInputImporter(input.New(openPool()), managedImportVerifier(server, request.Scope.StorageConnectionID))
+	go func() { got, err := importer.ImportCSV(ctx, request); finished <- result{got, err} }()
+	select {
+	case <-started:
+	case <-ctx.Done(): t.Fatal("source read did not begin")
+	}
+	cancel()
+	select {
+	case got := <-finished:
+		if !errors.Is(got.err, context.Canceled) || got.version.State != biz.InputStateValidating || got.version.Failure != nil || got.version.Verification != nil { t.Fatalf("canceled read fabricated a validation failure: %+v, %v", got.version, got.err) }
+	case <-time.After(5*time.Second): t.Fatal("canceled import did not finish")
+	}
+	readContext, stop := context.WithTimeout(context.Background(), 5*time.Second)
+	defer stop()
+	requireStoredInputVersion(t, readContext, input.New(openPool()), biz.InputVersion{Import: request, State: biz.InputStateValidating})
+}
+
 // The HTTPS server supplies module fixture bytes. It is not a real managed S3
 // deployment, administrator identity, product endpoint or target-cluster proof.
 func managedImportFixture() (biz.InputImport, string) {
