@@ -20,7 +20,7 @@ func TestAcceptReceiptConcurrentDeliveriesHaveOneFirstAcceptanceAndDurableReplay
 	defer cancel()
 	type outcome struct {
 		receipt biz.AcceptReceipt
-		err error
+		err     error
 	}
 	start := make(chan struct{})
 	results := make(chan outcome, len(repositories))
