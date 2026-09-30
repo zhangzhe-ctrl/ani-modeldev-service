@@ -20,9 +20,9 @@ import (
 
 func TestSubmitConfirmedResponseRetainsRunAcrossCloseAndRecordingFailure(t *testing.T) {
 	for _, test := range []struct {
-		name string
+		name                string
 		closeBeforeResponse bool
-		loseWriter bool
+		loseWriter          bool
 	}{
 		{name: "confirmation commits before receipt"},
 		{name: "close during POST retains late Run", closeBeforeResponse: true},

@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -36,7 +37,71 @@ func NewPipelineSubmitter(repository PipelineDispatchRepository, creator Pipelin
 }
 
 func (submitter *PipelineSubmitter) Submit(ctx context.Context, request PipelineDispatchRequest) (PipelineSubmitResult, error) {
-	// Explicit first-behavior stub: no reservation, credentials or network work
-	// has happened. Real PG/TLS integration must expose this missing behavior.
-	return PipelineSubmitResult{}, ErrPersistence
+	if ctx == nil {
+		return PipelineSubmitResult{}, ErrInvalidAdmission
+	}
+	if err := ctx.Err(); err != nil {
+		return PipelineSubmitResult{}, err
+	}
+	if submitter == nil || submitter.repository == nil || submitter.creator == nil {
+		return PipelineSubmitResult{}, ErrPersistence
+	}
+	reservation, err := submitter.repository.Reserve(ctx, request)
+	if err != nil {
+		return PipelineSubmitResult{}, err
+	}
+	result := PipelineSubmitResult{Dispatch: reservation.Dispatch}
+	if reservation.SendPermit == nil {
+		// Even SUBMITTING after a caller restart is only a durable fact. Do not
+		// reconstruct permission, regenerate credentials or repeat the POST.
+		return result, nil
+	}
+	permit := *reservation.SendPermit
+	input := PipelineCreateRequest{Admission: request.Admission, Plan: reservation.Dispatch.Plan, Permit: permit}
+	if reservation.Dispatch.State != PipelineDispatchSubmitting || reservation.Dispatch.UncertainAt != nil || len(reservation.Dispatch.ConfirmedRuns) != 0 ||
+		!strings.EqualFold(permit.AttemptID, reservation.Dispatch.AttemptID) || permit.PlanHash != reservation.Dispatch.PlanHash || input.Plan.Owner != request.Owner || input.Validate() != nil {
+		return result, ErrPersistence
+	}
+	// Reserve has committed and released its transaction. Only this original
+	// permit reaches the actual network call, using the returned frozen plan.
+	observation, callErr := submitter.creator.CreateRun(ctx, input)
+	result.Observation = &observation
+	switch observation.State {
+	case PipelineSubmissionConfirmed:
+		if callErr != nil || !validAdmissionID(observation.RunID) {
+			return result, ErrPersistence
+		}
+	case PipelineSubmissionUncertain:
+		if callErr == nil || observation.RunID != "" {
+			return result, ErrPersistence
+		}
+	default:
+		// NOT_SENT persistence is the next vertical behavior. Retain the
+		// transient outcome without inventing uncertainty or acknowledging a
+		// durable result. Unknown/error observations are likewise never ACKed.
+		return result, ErrPersistence
+	}
+	// A canceled caller must not erase a response from the original attempt.
+	// One finite budget covers clock sampling and one persistence transaction;
+	// no background worker, retry loop or second POST is created.
+	writeContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), submitter.observationWriteTimeout)
+	defer cancel()
+	observedAt, err := submitter.repository.SubmissionObservationTime(writeContext, permit)
+	if err != nil {
+		return result, ErrPersistence
+	}
+	if observation.State == PipelineSubmissionConfirmed {
+		receipt, err := submitter.repository.RecordSubmissionConfirmed(writeContext, permit, observation, observedAt)
+		if err != nil {
+			return result, ErrPersistence
+		}
+		result.Dispatch = receipt.Dispatch
+		return result, nil
+	}
+	dispatch, err := submitter.repository.MarkSubmissionUncertain(writeContext, permit, observedAt)
+	if err != nil {
+		return result, ErrPersistence
+	}
+	result.Dispatch = dispatch
+	return result, ErrPipelineSubmissionUncertain
 }

@@ -88,7 +88,7 @@ func (request PipelineDispatchRequest) Freeze() (PipelineDispatchPlan, error) {
 }
 
 // ValidPipelineRoot is the shared shape rule for the frozen owner plan and its
-// KFP client configuration. It establishes neither storage access nor ownership.
+// KFP create request. It establishes neither storage access nor ownership.
 func ValidPipelineRoot(value string) bool {
 	root, err := url.Parse(value)
 	return err == nil && root.Scheme == "s3" && root.Host != "" && root.User == nil && root.Port() == "" && root.RawQuery == "" && !root.ForceQuery && root.Fragment == "" && root.RawPath == "" && root.Path != "" && path.Clean(root.Path) == strings.TrimSuffix(root.Path, "/")
@@ -171,6 +171,10 @@ type PipelineConfirmationReceipt struct {
 type PipelineDispatchRepository interface {
 	Reserve(context.Context, PipelineDispatchRequest) (PipelineDispatchReservation, error)
 	Get(context.Context, string, string) (PipelineDispatch, error)
+	// SubmissionObservationTime samples the reservation database after an
+	// outbound observation. This is a database recording time, not the KFP
+	// creation time, and never grants a send. It must not precede reserved_at.
+	SubmissionObservationTime(context.Context, PipelineSendPermit) (time.Time, error)
 	// MarkSubmissionUncertain records only the original attempt's outcome;
 	// it is permitted after close and never grants permission to send again.
 	// A late uncertain observation cannot downgrade a confirmed dispatch.

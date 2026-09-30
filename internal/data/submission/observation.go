@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 	submissionsql "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/submission/sqlc"
@@ -24,23 +25,9 @@ type lockedObservation struct {
 }
 
 func (repository *Repository) lockObservation(ctx context.Context, permit biz.PipelineSendPermit, observedAt time.Time) (_ *lockedObservation, err error) {
-	tenantID, err := databaseID(permit.TenantID)
+	ids, err := observationPermitIDs(permit)
 	if err != nil {
 		return nil, err
-	}
-	executionID, err := databaseID(permit.ExecutionID)
-	if err != nil {
-		return nil, err
-	}
-	attemptID, err := databaseID(permit.AttemptID)
-	if err != nil {
-		return nil, err
-	}
-	if len(permit.PlanHash) != 64 || strings.ToLower(permit.PlanHash) != permit.PlanHash {
-		return nil, biz.ErrInvalidAdmission
-	}
-	if _, err := hex.DecodeString(permit.PlanHash); err != nil {
-		return nil, biz.ErrInvalidAdmission
 	}
 	if !validObservationTime(observedAt) {
 		return nil, biz.ErrInvalidAdmission
@@ -58,14 +45,14 @@ func (repository *Repository) lockObservation(ctx context.Context, permit biz.Pi
 		}
 	}()
 	queries := submissionsql.New(transaction)
-	identity, err := queries.LockExecutionIdentity(ctx, submissionsql.LockExecutionIdentityParams{TenantID: tenantID, ExecutionID: executionID})
+	identity, err := queries.LockExecutionIdentity(ctx, submissionsql.LockExecutionIdentityParams{TenantID: ids.tenant, ExecutionID: ids.execution})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, biz.ErrExecutionNotFound
 	}
 	if err != nil {
 		return nil, biz.ErrPersistence
 	}
-	row, err := queries.GetPipelineDispatch(ctx, submissionsql.GetPipelineDispatchParams{TenantID: tenantID, ExecutionID: executionID})
+	row, err := queries.GetPipelineDispatch(ctx, submissionsql.GetPipelineDispatchParams{TenantID: ids.tenant, ExecutionID: ids.execution})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, biz.ErrExecutionNotFound
 	}
@@ -75,10 +62,10 @@ func (repository *Repository) lockObservation(ctx context.Context, permit biz.Pi
 	if row.TenantID != identity.TenantID || row.ExecutionID != identity.ExecutionID || row.OperationID != identity.OperationID || row.SpecHash != identity.SpecHash {
 		return nil, biz.ErrPersistence
 	}
-	if row.AttemptID != attemptID || row.PlanHash != permit.PlanHash {
+	if row.AttemptID != ids.attempt || row.PlanHash != permit.PlanHash {
 		return nil, biz.ErrAdmissionConflict
 	}
-	admission, err := queries.GetAdmission(ctx, submissionsql.GetAdmissionParams{TenantID: tenantID, ExecutionID: executionID})
+	admission, err := queries.GetAdmission(ctx, submissionsql.GetAdmissionParams{TenantID: ids.tenant, ExecutionID: ids.execution})
 	if err != nil {
 		return nil, biz.ErrPersistence
 	}
@@ -92,6 +79,27 @@ func (repository *Repository) lockObservation(ctx context.Context, permit biz.Pi
 	// CreationOpen and deadline fence new sends, not facts from the already
 	// reserved attempt. Late results must remain available to close/reconcile.
 	return &lockedObservation{transaction: transaction, queries: queries, row: row, admission: admission, dispatch: dispatch}, nil
+}
+
+type observationIDs struct {
+	tenant pgtype.UUID
+	execution pgtype.UUID
+	attempt pgtype.UUID
+}
+
+// Clock sampling and observation writes accept the same exact permit shape.
+// Parsing never proves the corresponding reservation exists or authorizes a send.
+func observationPermitIDs(permit biz.PipelineSendPermit) (observationIDs, error) {
+	tenant, tenantErr := databaseID(permit.TenantID)
+	execution, executionErr := databaseID(permit.ExecutionID)
+	attempt, attemptErr := databaseID(permit.AttemptID)
+	if tenantErr != nil || executionErr != nil || attemptErr != nil || len(permit.PlanHash) != 64 || strings.ToLower(permit.PlanHash) != permit.PlanHash {
+		return observationIDs{}, biz.ErrInvalidAdmission
+	}
+	if _, err := hex.DecodeString(permit.PlanHash); err != nil {
+		return observationIDs{}, biz.ErrInvalidAdmission
+	}
+	return observationIDs{tenant: tenant, execution: execution, attempt: attempt}, nil
 }
 
 func validObservationTime(value time.Time) bool {

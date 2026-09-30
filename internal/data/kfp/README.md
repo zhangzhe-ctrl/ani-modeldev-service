@@ -35,9 +35,12 @@ authorization. Only `execution_id` and `spec_hash`
 are planned long-lived parameters. Display name is not an idempotency key.
 
 The submitting caller must commit SUBMITTING under the shared identity/close
-fence before this call. The first PG-plus-TLS submitter candidate still contains
-an explicit orchestration stub and is awaiting a fixed-source behavior RED;
-this interface migration does not establish durable sending or leased recovery.
+fence before this call. The first PG-plus-TLS submitter test reached its explicit
+orchestration stub at fixed `066b331`: real Admission/dependency preflight passed,
+then Submit returned PERSISTENCE_UNAVAILABLE as the expected behavior RED.
+KFP regression passed at the same source. The next implementation candidate
+connects the real reservation, one POST and bounded observation persistence;
+its fixed-source GREEN is still pending. This is not leased recovery.
 NotSent/Uncertain/Confirmed describe the observed
 call only; persistence and authoritative Run CAS remain separate. The candidate
 must not follow redirects or automatically repeat a POST. A sent request with
@@ -70,7 +73,11 @@ six main tests / 61 table cases include protected constructor configuration,
 preflight/credential failures, cancellation after observed receipt, CA rejection,
 null/UTF-8/depth limits and uppercase UUID normalization. These were regression
 passes against the existing implementation, not a new RED/fix cycle. Real
-provider and product wiring remain unfinished. Existing root-rejection cases
+provider and product entry-point wiring remain unfinished. The submitter's
+NOT_SENT persistence is a required next behavior: the current candidate returns
+a persistence error and retains that transient observation, without inventing
+UNCERTAIN, granting another permit or claiming the whole use case complete.
+Existing root-rejection cases
 now target the frozen request rather than removed constructor configuration;
 their zero-credential/zero-HTTP assertions remain. The new candidate's test
 results must be recorded separately from those historical fixed-source passes.
