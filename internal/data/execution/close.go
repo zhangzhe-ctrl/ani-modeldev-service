@@ -44,9 +44,9 @@ func (r *Repository) ApplyCloseIntent(ctx context.Context, intent biz.CloseInten
 	row, err := queries.InsertCloseIntent(ctx, executionsql.InsertCloseIntentParams{
 		TenantID: tenantID, ExecutionID: executionID, OperationID: operationID, SpecHash: intent.SpecHash,
 		SourceGeneration: pgtype.Numeric{Int: new(big.Int).SetUint64(intent.SourceGeneration), Valid: true},
-		OwnerGeneration: generation,
-		RequestedAt:     pgtype.Timestamptz{Time: intent.RequestedAt.UTC(), Valid: true},
-		RequestedActor:  intent.RequestedActor,
+		OwnerGeneration:  generation,
+		RequestedAt:      pgtype.Timestamptz{Time: intent.RequestedAt.UTC(), Valid: true},
+		RequestedActor:   intent.RequestedActor,
 	})
 	if err != nil {
 		return biz.CloseRecord{}, biz.ErrPersistence
