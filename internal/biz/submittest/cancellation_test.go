@@ -41,7 +41,7 @@ func TestSubmitCancellationAfterRealHTTPObservationStillPersistsOriginalOutcome(
 				t.Fatalf("CPU07_CANCEL_PREFLIGHT: real Admission unavailable; behavior NOT_RUN: %v", err)
 			}
 
-			trace := &canceledObservationWriteTrace{budget: 3*time.Second}
+			trace := &canceledObservationWriteTrace{budget: 3 * time.Second}
 			config := readerPool.Config()
 			config.ConnConfig.Tracer = trace
 			writerPool, err := pgxpool.NewWithConfig(ctx, config)
@@ -82,7 +82,7 @@ func TestSubmitCancellationAfterRealHTTPObservationStillPersistsOriginalOutcome(
 			})
 			certificates := x509.NewCertPool()
 			certificates.AddCert(server.Certificate())
-			client, err := kfp.New(kfp.Config{ConnectionRef: "kfp-managed-v1", Endpoint: server.URL, RootCAs: certificates, Timeout: 3*time.Second}, provider)
+			client, err := kfp.New(kfp.Config{ConnectionRef: "kfp-managed-v1", Endpoint: server.URL, RootCAs: certificates, Timeout: 3 * time.Second}, provider)
 			if err != nil {
 				t.Fatal("CPU07_CANCEL_PREFLIGHT: actual TLS client unavailable; behavior NOT_RUN")
 			}
@@ -140,12 +140,12 @@ func TestSubmitCancellationAfterRealHTTPObservationStillPersistsOriginalOutcome(
 // The only injected action is caller cancellation, after the actual client has
 // finished observing HTTP. It never manufactures or changes a client result.
 type cancelAfterHTTPObservation struct {
-	delegate biz.PipelineRunCreator
-	cancel context.CancelFunc
-	trace *canceledObservationWriteTrace
+	delegate    biz.PipelineRunCreator
+	cancel      context.CancelFunc
+	trace       *canceledObservationWriteTrace
 	observation biz.PipelineSubmissionObservation
-	callErr error
-	returned bool
+	callErr     error
+	returned    bool
 }
 
 func (creator *cancelAfterHTTPObservation) CreateRun(ctx context.Context, request biz.PipelineCreateRequest) (biz.PipelineSubmissionObservation, error) {
@@ -159,10 +159,10 @@ func (creator *cancelAfterHTTPObservation) CreateRun(ctx context.Context, reques
 // This instrument records only context-liveness/deadline booleans at actual PG
 // calls after cancellation. It records no query text, parameters or driver errors.
 type canceledObservationWriteTrace struct {
-	budget time.Duration
+	budget   time.Duration
 	canceled atomic.Bool
 	observed atomic.Bool
-	invalid atomic.Bool
+	invalid  atomic.Bool
 }
 
 func (trace *canceledObservationWriteTrace) TraceQueryStart(ctx context.Context, _ *pgx.Conn, _ pgx.TraceQueryStartData) context.Context {
@@ -177,7 +177,8 @@ func (trace *canceledObservationWriteTrace) TraceQueryStart(ctx context.Context,
 	return ctx
 }
 
-func (*canceledObservationWriteTrace) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
+func (*canceledObservationWriteTrace) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {
+}
 
 // Lifecycle regressions share one fixed response, independent of the production
 // request encoder. The separate existing wire test checks the full POST contract.
@@ -185,12 +186,12 @@ func writeConfirmedSubmitResponse(t testing.TB, w http.ResponseWriter, request b
 	t.Helper()
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]any{
-		"run_id": "55555555-6666-4777-8888-999999999999",
-		"experiment_id": "44444444-4444-4444-8444-444444444444",
-		"display_name": "md-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+		"run_id":                     "55555555-6666-4777-8888-999999999999",
+		"experiment_id":              "44444444-4444-4444-8444-444444444444",
+		"display_name":               "md-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
 		"pipeline_version_reference": map[string]string{"pipeline_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "pipeline_version_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd"},
-		"runtime_config": map[string]any{"parameters": map[string]string{"execution_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "spec_hash": request.Admission.SpecHash}, "pipeline_root": "s3://fixture-kfp-artifacts/frozen-submit-root"},
-		"service_account": "cpu-managed-step", "state": "PENDING", "created_at": "2026-09-30T09:00:00Z",
+		"runtime_config":             map[string]any{"parameters": map[string]string{"execution_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "spec_hash": request.Admission.SpecHash}, "pipeline_root": "s3://fixture-kfp-artifacts/frozen-submit-root"},
+		"service_account":            "cpu-managed-step", "state": "PENDING", "created_at": "2026-09-30T09:00:00Z",
 	}
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		t.Error("CPU07_SUBMIT_FIXTURE: could not send fixed complete HTTP response")

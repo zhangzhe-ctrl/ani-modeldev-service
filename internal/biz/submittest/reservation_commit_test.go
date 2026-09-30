@@ -103,7 +103,7 @@ func TestSubmitReservationCommitFailureCannotSendOrReturnReceipt(t *testing.T) {
 
 // The trace proves the fault was raised by the real deferred constraint at
 // COMMIT. It retains only a boolean, never query arguments or raw driver errors.
-type dispatchCommitTrace struct { failed atomic.Bool }
+type dispatchCommitTrace struct{ failed atomic.Bool }
 type dispatchCommitTraceKey struct{}
 
 func (*dispatchCommitTrace) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {

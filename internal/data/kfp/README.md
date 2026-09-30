@@ -86,8 +86,13 @@ submittest/submission/execution/KFP suites (0.719s/22.678s/5.648s/0.250s).
 The original attempt and first observation remain durable across reconnects;
 replay grants no new permit or HTTP call. A later confirmed Run is retained even
 after close and does not erase the earlier no-send fact. This is a submission
-observation, not cancellation or a training result. Additional cancellation,
-COMMIT-failure and mixed-observation concurrency checks remain in progress.
+observation, not cancellation or a training result. Fixed `d12aebf` passed the
+mixed-observation/first-time regressions and ten race runs of concurrent no-send
+and confirmed observations. At `ac88c26`, the full submittest suite and three race
+runs of the new lifecycle tests passed: an actual HTTP observation survives caller
+cancellation in a bounded database write, and an isolated deferred PostgreSQL
+COMMIT/23514 failure permits no credentials, POST or receipt. Removing that exact
+test fault permits one first valid send; reconnect still does not resend.
 Existing root-rejection cases
 now target the frozen request rather than removed constructor configuration;
 their zero-credential/zero-HTTP assertions remain. The new candidate's test

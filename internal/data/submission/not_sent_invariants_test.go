@@ -20,9 +20,9 @@ func TestNotSentThenUncertainThenConfirmedRetainsFirstObservations(t *testing.T)
 	first := reserveUncertaintyAttempt(t, ctx, writerPool, request)
 	repository := submission.New(writerPool)
 	permit := *first.SendPermit
-	notSentAt := first.Dispatch.ReservedAt.Add(2*time.Microsecond)
-	uncertainAt := first.Dispatch.ReservedAt.Add(4*time.Microsecond)
-	confirmedAt := first.Dispatch.ReservedAt.Add(6*time.Microsecond)
+	notSentAt := first.Dispatch.ReservedAt.Add(2 * time.Microsecond)
+	uncertainAt := first.Dispatch.ReservedAt.Add(4 * time.Microsecond)
+	confirmedAt := first.Dispatch.ReservedAt.Add(6 * time.Microsecond)
 	want := first.Dispatch
 	want.State, want.NotSentAt = biz.PipelineDispatchNotSent, &notSentAt
 	got, err := repository.MarkSubmissionNotSent(ctx, permit, notSentAt)
@@ -41,7 +41,7 @@ func TestNotSentThenUncertainThenConfirmedRetainsFirstObservations(t *testing.T)
 	}
 	// Earlier and later valid observations are replays, not timestamp updates.
 	// Each first committed fact survives the later stronger summary state.
-	for _, replayAt := range []time.Time{first.Dispatch.ReservedAt, first.Dispatch.ReservedAt.Add(20*time.Microsecond)} {
+	for _, replayAt := range []time.Time{first.Dispatch.ReservedAt, first.Dispatch.ReservedAt.Add(20 * time.Microsecond)} {
 		got, err = repository.MarkSubmissionNotSent(ctx, permit, replayAt)
 		if err != nil || !reflect.DeepEqual(got, want) {
 			t.Fatalf("no-send replay refreshed its first time or downgraded confirmation: %v", err)
@@ -74,9 +74,9 @@ func TestNotSentAfterStrongerObservationKeepsStateAndFirstTimes(t *testing.T) {
 			first := reserveUncertaintyAttempt(t, ctx, writerPool, request)
 			repository := submission.New(writerPool)
 			permit := *first.SendPermit
-			strongerAt := first.Dispatch.ReservedAt.Add(4*time.Microsecond)
+			strongerAt := first.Dispatch.ReservedAt.Add(4 * time.Microsecond)
 			// A later delivery may carry an earlier valid observation time.
-			notSentAt := first.Dispatch.ReservedAt.Add(2*time.Microsecond)
+			notSentAt := first.Dispatch.ReservedAt.Add(2 * time.Microsecond)
 			want := first.Dispatch
 			if confirmedFirst {
 				want = expectedConfirmation(want, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: strongerAt})
@@ -96,7 +96,7 @@ func TestNotSentAfterStrongerObservationKeepsStateAndFirstTimes(t *testing.T) {
 			if err != nil || !reflect.DeepEqual(got, want) {
 				t.Fatalf("late no-send observation downgraded or erased stronger facts: %v", err)
 			}
-			for _, replayAt := range []time.Time{first.Dispatch.ReservedAt, first.Dispatch.ReservedAt.Add(20*time.Microsecond)} {
+			for _, replayAt := range []time.Time{first.Dispatch.ReservedAt, first.Dispatch.ReservedAt.Add(20 * time.Microsecond)} {
 				got, err = repository.MarkSubmissionNotSent(ctx, permit, replayAt)
 				if err != nil || !reflect.DeepEqual(got, want) {
 					t.Fatalf("early/late no-send replay refreshed its first time: %v", err)
@@ -131,17 +131,17 @@ func TestConcurrentNotSentAndConfirmedRetainBothOriginalFacts(t *testing.T) {
 	notSentRepository, confirmedRepository := submission.New(notSentPool), submission.New(confirmedPool)
 	permit := *first.SendPermit
 	notSentAt := first.Dispatch.ReservedAt.Add(time.Microsecond)
-	confirmedAt := first.Dispatch.ReservedAt.Add(2*time.Microsecond)
+	confirmedAt := first.Dispatch.ReservedAt.Add(2 * time.Microsecond)
 	wantNotSent := first.Dispatch
 	wantNotSent.State, wantNotSent.NotSentAt = biz.PipelineDispatchNotSent, &notSentAt
 	wantConfirmed := expectedConfirmation(first.Dispatch, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: confirmedAt})
 	wantBoth := wantConfirmed
 	wantBoth.NotSentAt = &notSentAt
 	type result struct {
-		notSent bool
-		dispatch biz.PipelineDispatch
+		notSent         bool
+		dispatch        biz.PipelineDispatch
 		conflictingRuns bool
-		err error
+		err             error
 	}
 	start := make(chan struct{})
 	results := make(chan result, 2)
