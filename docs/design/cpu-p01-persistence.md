@@ -14,8 +14,9 @@ GREEN / exit 0（含受限 PG preflight），gofmt 无差异。冲突/隔离候�
 race 和完整 make verify 均 GREEN / exit 0；该证据只覆盖该固定源码。
 UUID 查询严格性修复在 `af2407b` 定向与 repository 全量 GREEN；首墓碑测试在
 `90692b0` 实际 PG preflight PASS 后取得 NOT_IMPLEMENTED / exit 1 的预期 RED。
-首墓碑 SQL 在固定 `cf4307a` 经 Fedora pinned sqlc 1.31.1 生成成功；当前适配器
-候选待新固定验证，未接业务装配，不标整个 CPU04 CODE_READY。
+首墓碑 SQL 在固定 `cf4307a` 经 Fedora pinned sqlc 1.31.1 生成成功；固定
+`c16b3a7` 的首墓碑、全部 repository 和真实 PG 并发 race 均 GREEN / exit 0。
+未接业务装配，不标整个 CPU04 CODE_READY。
 
 ## 持久事实与最小边界
 
@@ -147,3 +148,8 @@ Admission 的关闭状态传播及真实创建许可消费仍需要后续真实�
 此首墓碑切片绝不宣称迟到 Accept 或真实资源创建已经闭锁，也不证明
 KFP/TrainJob 已终止或无活跃写者。重复关闭的成功回执/来源代际冲突同样留待
 下一独立行为，不能用首次持久化证据代替。
+
+下一条 `TestUserStopDuplicateAfterReconnectReturnsOriginalFenceAndFacts` 只增加
+完整同件 USER_STOP 重放行为：新连接重投 source generation 41，回执与读取必须
+保持完整原事实及 owner generation 1，不能再次分配代际或产生 Admission。
+此测试候选等待固定 RED；异参同来源序号、后续来源序号和并发重放分开验证。
