@@ -22,7 +22,7 @@ func (repository *Repository) MarkSubmissionUncertain(ctx context.Context, permi
 	}
 	defer rollback(locked.transaction)
 	dispatch := locked.dispatch
-	if dispatch.State == biz.PipelineDispatchSubmitting {
+	if dispatch.State == biz.PipelineDispatchSubmitting || dispatch.State == biz.PipelineDispatchNotSent {
 		row, err := locked.queries.MarkSubmissionUncertain(ctx, submissionsql.MarkSubmissionUncertainParams{
 			TenantID: locked.row.TenantID, ExecutionID: locked.row.ExecutionID, AttemptID: locked.row.AttemptID, PlanHash: locked.row.PlanHash,
 			ObservedAt: pgtype.Timestamptz{Time: observedAt.UTC(), Valid: true},

@@ -253,9 +253,20 @@ func dispatchFromRow(row submissionsql.ModeldevPipelineDispatch, original submis
 		observedAt := row.UncertainAt.Time.UTC()
 		dispatch.UncertainAt = &observedAt
 	}
+	if row.NotSentAt.Valid {
+		if row.NotSentAt.InfinityModifier != pgtype.Finite || !validObservationTime(row.NotSentAt.Time) || row.NotSentAt.Time.Before(dispatch.ReservedAt) {
+			return biz.PipelineDispatch{}, biz.ErrPersistence
+		}
+		observedAt := row.NotSentAt.Time.UTC()
+		dispatch.NotSentAt = &observedAt
+	}
 	switch dispatch.State {
 	case biz.PipelineDispatchSubmitting:
-		if row.UncertainAt.Valid || len(runs) != 0 {
+		if row.UncertainAt.Valid || row.NotSentAt.Valid || len(runs) != 0 {
+			return biz.PipelineDispatch{}, biz.ErrPersistence
+		}
+	case biz.PipelineDispatchNotSent:
+		if !row.NotSentAt.Valid || row.UncertainAt.Valid || len(runs) != 0 {
 			return biz.PipelineDispatch{}, biz.ErrPersistence
 		}
 	case biz.PipelineDispatchUncertain:
