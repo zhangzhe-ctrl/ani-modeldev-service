@@ -77,7 +77,7 @@ func Prepare(t *testing.T) func() *pgxpool.Pool {
 			t.Errorf("CPU04_DB_CLEANUP: isolated schema cleanup failed")
 		}
 	})
-	migrations, err := filepath.Glob(filepath.Join("..", "..", "..", "migrations", "*.up.sql"))
+	migrations, err := filepath.Glob(filepath.Join(repositoryRoot(t), "migrations", "*.up.sql"))
 	if err != nil || len(migrations) == 0 {
 		t.Fatal("CPU04_DB_PREFLIGHT: versioned execution migrations missing; behavior NOT_RUN")
 	}
@@ -135,5 +135,21 @@ func Prepare(t *testing.T) func() *pgxpool.Pool {
 			t.Fatal("CPU04_DB_PREFLIGHT: isolated runtime connection failed; behavior NOT_RUN")
 		}
 		return pool
+	}
+}
+
+// Tests in cmd and deeper adapter packages share the same versioned schema.
+// Locate the checked-out module instead of depending on the package depth.
+func repositoryRoot(t *testing.T) string {
+	t.Helper()
+	directory, err := os.Getwd()
+	if err != nil { t.Fatal("CPU04_DB_PREFLIGHT: cannot locate checkout; behavior NOT_RUN") }
+	for {
+		if info, err := os.Stat(filepath.Join(directory, "go.mod")); err == nil && info.Mode().IsRegular() {
+			return directory
+		}
+		parent := filepath.Dir(directory)
+		if parent == directory { t.Fatal("CPU04_DB_PREFLIGHT: module root missing; behavior NOT_RUN") }
+		directory = parent
 	}
 }

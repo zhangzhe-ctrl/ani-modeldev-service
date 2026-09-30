@@ -4,7 +4,7 @@ import "testing"
 
 func TestConfiguredCommandRequiresExplicitConnectionReferences(t *testing.T) {
 	tests := []struct {
-		name string
+		name   string
 		change func(*GovernanceCommand)
 	}{
 		{"missing database", func(c *GovernanceCommand) { c.DatabaseUrlFile = "" }},
