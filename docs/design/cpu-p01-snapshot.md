@@ -69,6 +69,19 @@ Release/Pipeline/input/image/Runtime/环境引用，固定单节点单进程 CPU
 受限且不重叠的工作子目录、允许的输出合同和稳定存储引用。UNKNOWN、NOT_READY、
 UNSET、空值、零 UUID、浮动镜像、缺少内容摘要的 Runtime 和可变输入均不合法。
 
+绑定 generation 必须大于零；deadline 必须非零、年份为 1–9999 且能表示为 RFC3339，不能按本地
+当前时钟拒绝历史快照。deadline 晚于 accepted_at 的跨字段关系由受理 envelope
+校验，accepted_at 不重复塞入 Snapshot。CPU request 必须正数，limit 不小于
+request，nodes/processes 均为 1。三个工作负载 SA 必须各不相同，训练与 verifier
+不能获得受管步骤身份；具体 RBAC/网络权限仍须真实鉴权验证。
+
+本片 CSV schema 固定 ani.cpu.csv.v1、1024 行、16 特征；输出 schema 固定
+ani.cpu.output.v1。required_files 必须包含且仅包含 model.pt/CHECKPOINT、
+model_config.json/MODEL_CONFIG、metrics.jsonl/METRICS、summary.json/SUMMARY。
+路径/role 不得重复替换，每文件限额为正且不大于总限额，max_file_count 至少 4。
+工作子目录为规范相对 POSIX 路径且互不相同、互不包含；批准存储前缀不得为空、
+根路径、越界路径或通配表达式。S3 的字符串 null 版本不构成固定版本依据。
+
 环境启用、对象存在、镜像可拉取、Runtime 实际 CRD、Namespace UID、证书/SA 权限、
 存储读写和 PipelineVersion 真实性由 CPU02/04/07 的受管事实验证提供。纯本地
 Validate 成功不可以将候选 Release/环境置 READY。不能用格式正确的随机 UUID
@@ -81,7 +94,11 @@ snapshot_test.go，SHA 必须由 Fedora Python hashlib 独立计算并归档。
 ## 实施状态
 
 固定 f55fb60 已在 Fedora 对首次 canonical tracer 取得预期 RED（未实现）。
-当前实现 Canonical/Digest 正向行为；model.pt 替换后规范向量仍按路径排序，
-等待 Fedora 对更正后的规范字节独立计算 SHA 和执行 GREEN。
-Validate 仍明确返回未实现；下一轮先取得负向 RED 再实现并接入 Canonical。
+固定 0fd3ae0 在 Fedora 取得合同测试 GREEN，证据为
+evidence/cpu01-snapshot-green-0fd3ae0.txt。model.pt 替换后规范向量已修正为
+路径升序（metrics.jsonl 在 model.pt 前）；Fedora Python hashlib 独立计算得到
+`972dee14e65202d5d4da7da199cf5f37139b535701a0cb1b3de4d8ef8a5170b9`。
+新测试保存该精确摘要，并对 Validate/Canonical/Digest 三个公共边界加入无效
+固定配置反例。Validate 仍明确返回未实现；等待此负向 slice 的 Fedora RED，
+再实现本地校验并接入 Canonical。
 本阶段不得用于产品受理或标记 CPU01 CODE_READY。
