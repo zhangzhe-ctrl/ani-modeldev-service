@@ -7,8 +7,8 @@ RUN python -m venv /opt/venv \
 
 FROM docker.io/library/python@sha256:ac76900038d8606cc99b413d4ede77bc7152f1e42b94cf5d50d4b80a999652fe
 COPY --from=dependencies /opt/venv /opt/venv
-COPY training/train_mlp.py /opt/cpu03/train_mlp.py
-COPY training/runtime-lock.json training/requirements.lock training/wheelhouse.sha256 /opt/cpu03/materials/
+COPY --chmod=0444 training/train_mlp.py /opt/cpu03/train_mlp.py
+COPY --chmod=0444 training/runtime-lock.json training/requirements.lock training/wheelhouse.sha256 /opt/cpu03/materials/
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     OMP_NUM_THREADS=1 \

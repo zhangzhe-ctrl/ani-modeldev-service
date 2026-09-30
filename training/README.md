@@ -133,8 +133,15 @@ image's actual PID 1 behavior without adding an init wrapper.
 The first build at `a9b3a67d1fa9b4651add4f7c36237e36b6d1cdc8` verified all ten
 wheel hashes, then exited 125 before Dockerfile execution because Podman's build
 command requires `--pull=never` for this optional-value flag. The local script is
-corrected; a new fixed commit and build are pending. This is build-tooling failure,
-not a training behavior RED, and the image smoke is still NOT_RUN.
+corrected. The subsequent offline build passed at
+`c3916acfea616e44c5a01f14b8d27adc493c44ea`, producing local image
+`sha256:e89b63fcf5851dcc027a32b087409badbc813257c6ad72d69761275d9a0afadd`.
+Its first image smoke passed the nonroot Python/PyTorch preflight and fixture
+generation, then failed: the default entrypoint could not read the root-owned
+mode-0600 trainer file. This is an image packaging RED before training; the
+failure and PID 1 stop recipes were not reached. The Dockerfile now gives the
+packaged trainer and material records explicit read-only mode 0444, independent
+of the build-context umask. The new fixed image build and smoke remain pending.
 The existing CI workflow has no
 image-publish job; the consumed ENV handoff is still a NOT_RUN template without a
 registry reference. Registry push therefore remains NOT_RUN until an explicit
