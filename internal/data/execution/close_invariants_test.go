@@ -99,12 +99,19 @@ func TestUserStopConcurrentDuplicatesAcrossSixPoolsAllocateOneFence(t *testing.T
 	for i := range commands {
 		commands[i] = intent
 	}
+	firstReceipts := 0
 	for _, outcome := range raceCloseIntents(t, openRuntimePool, commands) {
 		if outcome.err != nil {
 			t.Errorf("concurrent close replay %d rejected: %v", outcome.index, outcome.err)
 			continue
 		}
 		assertInitialCloseTombstone(t, outcome.record.CloseRecord, intent)
+		if !outcome.record.Replayed {
+			firstReceipts++
+		}
+	}
+	if firstReceipts != 1 {
+		t.Fatalf("concurrent duplicates returned %d first-commit receipts, want exactly one", firstReceipts)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -122,6 +129,9 @@ func TestUserStopConcurrentDuplicatesAcrossSixPoolsAllocateOneFence(t *testing.T
 		t.Fatalf("next distinct source after replay race: %v", err)
 	}
 	assertCloseTombstone(t, got.CloseRecord, next, 2)
+	if got.Replayed {
+		t.Fatal("a distinct committed source command must return its first receipt")
+	}
 }
 
 func TestUserStopConcurrentDifferentFactsHaveOneWinner(t *testing.T) {
@@ -134,6 +144,9 @@ func TestUserStopConcurrentDifferentFactsHaveOneWinner(t *testing.T) {
 		if outcome.err == nil {
 			winner, successes = outcome.index, successes+1
 			assertInitialCloseTombstone(t, outcome.record.CloseRecord, commands[outcome.index])
+			if outcome.record.Replayed {
+				t.Error("the only committed competing command must not report a replay")
+			}
 		} else {
 			assertEmptyCloseReceiptFailure(t, outcome.record, outcome.err, biz.ErrAdmissionConflict)
 		}
@@ -173,6 +186,9 @@ func TestUserStopEarlierSourceReplayDoesNotReplaceLatestFence(t *testing.T) {
 		t.Fatalf("earlier source replay: %v", err)
 	}
 	assertInitialCloseTombstone(t, replayed.CloseRecord, first)
+	if !replayed.Replayed {
+		t.Fatal("an earlier source command must report a replay without replacing the latest fence")
+	}
 	latest, err := repository.GetCloseIntent(ctx, first.TenantID, first.ExecutionID)
 	if err != nil {
 		t.Fatalf("latest close after earlier replay: %v", err)
