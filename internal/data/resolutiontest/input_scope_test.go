@@ -46,7 +46,7 @@ func TestResolveAdmissionScopesIdenticalInputIDsByTrustedTenant(t *testing.T) {
 	}
 	proof := biz.VerifiedCSV{
 		VerifiedObject: biz.VerifiedObject{Object: otherImport.Object, VerifiedAt: otherImport.RequestedAt.Add(time.Minute)},
-		SchemaVersion: "ani.cpu.csv.v1", RowCount: 1024, FeatureCount: 16,
+		SchemaVersion:  "ani.cpu.csv.v1", RowCount: 1024, FeatureCount: 16,
 	}
 	otherReady, err := repository.RecordVerifiedCSV(fixture.ctx, otherImport, proof)
 	if err != nil {
@@ -71,9 +71,9 @@ func TestResolveAdmissionScopesIdenticalInputIDsByTrustedTenant(t *testing.T) {
 
 func TestResolveAdmissionRejectsDurableInputsWithoutReadyProof(t *testing.T) {
 	for _, test := range []struct {
-		name string
+		name    string
 		failure biz.InputFailureCode
-		state biz.InputState
+		state   biz.InputState
 	}{
 		{"validating", "", biz.InputStateValidating},
 		{"source unavailable", biz.InputFailureSourceUnavailable, biz.InputStateValidating},

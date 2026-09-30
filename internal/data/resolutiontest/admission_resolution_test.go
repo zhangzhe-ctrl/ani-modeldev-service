@@ -19,16 +19,16 @@ import (
 )
 
 type resolutionFixture struct {
-	ctx context.Context
-	openPool func() *pgxpool.Pool
-	release cpup01.ReleaseDocument
-	imported biz.InputImport
-	ready biz.InputVersion
-	selection biz.AdmissionResolutionRequest
-	facts biz.TenantAdmissionFacts
-	resolver *biz.AdmissionResolver
+	ctx           context.Context
+	openPool      func() *pgxpool.Pool
+	release       cpup01.ReleaseDocument
+	imported      biz.InputImport
+	ready         biz.InputVersion
+	selection     biz.AdmissionResolutionRequest
+	facts         biz.TenantAdmissionFacts
+	resolver      *biz.AdmissionResolver
 	releaseReader *retainedReleaseReader
-	inputReader *retainedInputReader
+	inputReader   *retainedInputReader
 }
 
 func prepareResolution(t *testing.T) resolutionFixture {
