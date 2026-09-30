@@ -51,7 +51,7 @@ func TestVerificationSourceUnavailableRemainsRetryableAndSanitized(t *testing.T)
 						_, _ = io.WriteString(w, fixture.body)
 					}))
 					defer server.Close()
-					verified, err := mode.verify(context.Background(), objectstore.NewVerifier(noRetryS3Client(server), scope.StorageConnectionID, 32*1024*1024), scope, object)
+					verified, err := mode.verify(boundedVerificationContext(t), objectstore.NewVerifier(noRetryS3Client(server), scope.StorageConnectionID, 32*1024*1024), scope, object)
 					if !errors.Is(err, mode.unavailable) || !errors.Is(err, mode.verification) || err.Error() != mode.unavailable.Error() || verified || requests.Load() != 1 {
 						t.Fatalf("incomplete source observation classified incorrectly: error=%v verified=%t requests=%d", err, verified, requests.Load())
 					}
@@ -79,7 +79,7 @@ func TestCompleteInvalidSourceRemainsContentRejected(t *testing.T) {
 						_, _ = io.WriteString(w, fixture.body)
 					}))
 					defer server.Close()
-					verified, err := mode.verify(context.Background(), objectstore.NewVerifier(noRetryS3Client(server), scope.StorageConnectionID, 32*1024*1024), scope, object)
+					verified, err := mode.verify(boundedVerificationContext(t), objectstore.NewVerifier(noRetryS3Client(server), scope.StorageConnectionID, 32*1024*1024), scope, object)
 					if !errors.Is(err, mode.verification) || errors.Is(err, mode.unavailable) || verified {
 						t.Fatalf("complete bad object did not remain a content failure: error=%v verified=%t", err, verified)
 					}
@@ -96,7 +96,7 @@ func TestCompleteInvalidSourceRemainsContentRejected(t *testing.T) {
 		_, _ = io.WriteString(w, malformed)
 	}))
 	defer server.Close()
-	got, err := objectstore.NewVerifier(noRetryS3Client(server), scope.StorageConnectionID, 32*1024*1024).VerifyCSV(context.Background(), scope, object)
+	got, err := objectstore.NewVerifier(noRetryS3Client(server), scope.StorageConnectionID, 32*1024*1024).VerifyCSV(boundedVerificationContext(t), scope, object)
 	if !errors.Is(err, biz.ErrInputVerification) || errors.Is(err, biz.ErrInputSourceUnavailable) || !got.VerifiedAt.IsZero() {
 		t.Fatalf("complete malformed CSV did not remain a content failure: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestVerificationOwnerOrScopeMisconfigurationNeverRejectsContentOrFetches(t 
 						w.WriteHeader(http.StatusForbidden)
 					}))
 					defer server.Close()
-					verified, err := mode.verify(context.Background(), objectstore.NewVerifier(noRetryS3Client(server), connection, limit), scope, object)
+					verified, err := mode.verify(boundedVerificationContext(t), objectstore.NewVerifier(noRetryS3Client(server), connection, limit), scope, object)
 					if !errors.Is(err, mode.unavailable) || !errors.Is(err, mode.verification) || verified || requests.Load() != 0 {
 						t.Fatalf("configuration failure fetched or rejected source content: error=%v verified=%t requests=%d", err, verified, requests.Load())
 					}
@@ -153,7 +153,7 @@ func TestVerificationCancellationPreservesContextCause(t *testing.T) {
 				<-r.Context().Done()
 			}))
 			defer server.Close()
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(boundedVerificationContext(t))
 			defer cancel()
 			type result struct {
 				verified bool
@@ -204,4 +204,11 @@ func verificationModes() []verificationMode {
 
 func noRetryS3Client(server *httptest.Server) *s3.Client {
 	return s3.New(s3.Options{Region: "test-region", BaseEndpoint: aws.String(server.URL), UsePathStyle: true, HTTPClient: server.Client(), Credentials: aws.AnonymousCredentials{}, RetryMaxAttempts: 1})
+}
+
+func boundedVerificationContext(t *testing.T) context.Context {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+	return ctx
 }

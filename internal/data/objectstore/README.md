@@ -21,6 +21,23 @@ missing, corrupt, or differently versioned bytes fail; ETag is not used as a
 content digest. The configured byte ceiling is checked before network access.
 Cancellation reaches the remote body reader and never produces a receipt.
 
+Source availability is distinct from invalid content. GetObject errors,
+incomplete response streams, and owner/client/scope configuration mismatches
+produce finite `OBJECT_SOURCE_UNAVAILABLE` or `INPUT_SOURCE_UNAVAILABLE`
+errors. These still match the existing verification errors through `errors.Is`,
+but callers must classify source unavailability first and must not permanently
+reject an input from that observation. Access-denied responses are unavailable
+observations too: they establish no bad-content fact. No SDK error, endpoint,
+response text or credential detail is retained in the returned error.
+
+Even if CSV parsing rejects early, verification drains at most the remaining
+declared bytes and probes one extra byte. This preserves transport failures
+that the CSV parser can mask. A completed stream with a wrong version, length,
+digest or CSV shape remains a content-verification failure. Caller cancellation
+and deadlines retain their context cause. Invalid scopes cause no network
+request; classifying them conservatively as unavailable does not grant access
+or establish that the stored input should be rejected.
+
 VerifiedObject is an observation, not PUBLISHED. The owner must separately verify
 uploader completion, match this reference to the collected file/manifest and
 execution, persist the primary publication transaction, and enforce current

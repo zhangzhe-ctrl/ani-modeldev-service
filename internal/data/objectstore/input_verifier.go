@@ -3,6 +3,7 @@ package objectstore
 import (
 	"context"
 	"encoding/csv"
+	"errors"
 	"io"
 	"math"
 	"regexp"
@@ -26,6 +27,9 @@ func (v *Verifier) VerifyCSV(ctx context.Context, scope cpup01.StorageScope, obj
 	if err != nil {
 		if ctx.Err() != nil {
 			return biz.VerifiedCSV{}, ctx.Err()
+		}
+		if errors.Is(err, biz.ErrObjectSourceUnavailable) {
+			return biz.VerifiedCSV{}, biz.ErrInputSourceUnavailable
 		}
 		return biz.VerifiedCSV{}, biz.ErrInputVerification
 	}

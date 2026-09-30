@@ -41,9 +41,14 @@ func (v *Verifier) verify(ctx context.Context, scope cpup01.StorageScope, object
 		return biz.VerifiedObject{}, err
 	}
 	if v == nil || v.client == nil || v.connectionID == "" || scope.StorageConnectionID != v.connectionID || object.StorageConnectionID != v.connectionID || object.Bucket != scope.Bucket || !bucketPattern.MatchString(scope.Bucket) || !biz.ValidStorageKey(scope.ApprovedPrefix) || !biz.ValidStorageKey(object.Key) || !strings.HasPrefix(object.Key, scope.ApprovedPrefix+"/") {
-		return biz.VerifiedObject{}, biz.ErrObjectVerification
+		// Scope and client settings belong to the trusted owner. Their failure
+		// prevents an observation; it does not establish invalid source bytes.
+		return biz.VerifiedObject{}, biz.ErrObjectSourceUnavailable
 	}
-	if v.maxObjectBytes <= 0 || object.VersionID == nil || object.ImmutableCopy != nil || !biz.ValidStorageReference(*object.VersionID) || strings.EqualFold(*object.VersionID, "null") || object.SizeBytes <= 0 || object.SizeBytes > v.maxObjectBytes || len(object.SHA256) != 64 || strings.ToLower(object.SHA256) != object.SHA256 {
+	if v.maxObjectBytes <= 0 || object.SizeBytes > v.maxObjectBytes {
+		return biz.VerifiedObject{}, biz.ErrObjectSourceUnavailable
+	}
+	if object.VersionID == nil || object.ImmutableCopy != nil || !biz.ValidStorageReference(*object.VersionID) || strings.EqualFold(*object.VersionID, "null") || object.SizeBytes <= 0 || len(object.SHA256) != 64 || strings.ToLower(object.SHA256) != object.SHA256 {
 		return biz.VerifiedObject{}, biz.ErrObjectVerification
 	}
 	if _, err := hex.DecodeString(object.SHA256); err != nil {
@@ -55,34 +60,37 @@ func (v *Verifier) verify(ctx context.Context, scope cpup01.StorageScope, object
 		if ctx.Err() != nil {
 			return biz.VerifiedObject{}, ctx.Err()
 		}
-		return biz.VerifiedObject{}, biz.ErrObjectVerification
+		return biz.VerifiedObject{}, biz.ErrObjectSourceUnavailable
 	}
 	if response == nil || response.Body == nil {
-		return biz.VerifiedObject{}, biz.ErrObjectVerification
+		return biz.VerifiedObject{}, biz.ErrObjectSourceUnavailable
 	}
 	defer response.Body.Close()
-	if response.VersionId == nil || *response.VersionId != version {
-		return biz.VerifiedObject{}, biz.ErrObjectVerification
-	}
 	digest := sha256.New()
 	measured := &measuredReader{reader: io.TeeReader(io.LimitReader(response.Body, object.SizeBytes), digest)}
-	if inspect == nil {
-		_, err = io.Copy(io.Discard, measured)
-	} else {
-		err = inspect(measured)
+	var inspectErr error
+	if inspect != nil {
+		inspectErr = inspect(measured)
 	}
-	if err != nil {
-		if ctx.Err() != nil {
-			return biz.VerifiedObject{}, ctx.Err()
-		}
-		return biz.VerifiedObject{}, biz.ErrObjectVerification
+	// A parser can reject early or replace a transport read error with its own
+	// syntax error. Finish only the remaining bounded stream, retaining actual
+	// reader failures before deciding whether content is permanently invalid.
+	_, readErr := io.Copy(io.Discard, measured)
+	if err := ctx.Err(); err != nil {
+		return biz.VerifiedObject{}, err
+	}
+	if measured.readErr != nil || readErr != nil {
+		return biz.VerifiedObject{}, biz.ErrObjectSourceUnavailable
 	}
 	var extra [1]byte
 	n, extraErr := response.Body.Read(extra[:])
 	if err := ctx.Err(); err != nil {
 		return biz.VerifiedObject{}, err
 	}
-	if measured.size != object.SizeBytes || n != 0 || extraErr != io.EOF || hex.EncodeToString(digest.Sum(nil)) != object.SHA256 {
+	if extraErr != nil && extraErr != io.EOF || n == 0 && extraErr == nil {
+		return biz.VerifiedObject{}, biz.ErrObjectSourceUnavailable
+	}
+	if inspectErr != nil || response.VersionId == nil || *response.VersionId != version || measured.size != object.SizeBytes || n != 0 || hex.EncodeToString(digest.Sum(nil)) != object.SHA256 {
 		return biz.VerifiedObject{}, biz.ErrObjectVerification
 	}
 	object.VersionID = &version
@@ -90,13 +98,17 @@ func (v *Verifier) verify(ctx context.Context, scope cpup01.StorageScope, object
 }
 
 type measuredReader struct {
-	reader io.Reader
-	size   int64
+	reader  io.Reader
+	size    int64
+	readErr error
 }
 
 func (r *measuredReader) Read(p []byte) (int, error) {
 	n, err := r.reader.Read(p)
 	r.size += int64(n)
+	if err != nil && err != io.EOF && r.readErr == nil {
+		r.readErr = err
+	}
 	return n, err
 }
 
