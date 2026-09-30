@@ -48,7 +48,7 @@ func TestVerifyCSVRejectsShapesTheRegisteredTrainerCannotConsume(t *testing.T) {
 	valid := inputCSVFixture(t)
 	lines := strings.Split(valid, "\r\n")
 	cases := []struct {
-		name string
+		name    string
 		payload string
 	}{
 		{"wrong header", strings.Replace(valid, "x0,", "feature0,", 1)},

@@ -78,7 +78,7 @@ var decimalFeaturePattern = regexp.MustCompile(`^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[
 // counts them as malformed samples. Reject them before that information is lost.
 // The fixed input format also excludes multiline numeric cells.
 type csvPhysicalLines struct {
-	reader io.Reader
+	reader  io.Reader
 	content bool
 }
 
