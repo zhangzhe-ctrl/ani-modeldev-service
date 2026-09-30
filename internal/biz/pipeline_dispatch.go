@@ -119,7 +119,7 @@ type PipelineDispatchState string
 
 const (
 	PipelineDispatchSubmitting PipelineDispatchState = "SUBMITTING"
-	PipelineDispatchUncertain PipelineDispatchState = "SUBMISSION_UNCERTAIN"
+	PipelineDispatchUncertain  PipelineDispatchState = "SUBMISSION_UNCERTAIN"
 )
 
 type PipelineDispatch struct {

@@ -29,6 +29,7 @@ sql:
       - "migrations/0002_execution_identity.up.sql"
       - "migrations/0003_execution_close_intent.up.sql"
       - "migrations/0007_pipeline_dispatch.up.sql"
+      - "migrations/0009_submission_uncertainty.up.sql"
     queries: "internal/data/submission/queries.sql"
     gen:
       go:

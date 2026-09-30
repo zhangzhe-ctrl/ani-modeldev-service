@@ -15,7 +15,7 @@ WHERE tenant_id = sqlc.arg(tenant_id)::uuid
 
 -- name: GetPipelineDispatch :one
 SELECT tenant_id, execution_id, operation_id, spec_hash, attempt_id,
-    plan_canonical, plan_hash, state, reserved_at
+    plan_canonical, plan_hash, state, reserved_at, uncertain_at
 FROM modeldev_pipeline_dispatches
 WHERE tenant_id = sqlc.arg(tenant_id)::uuid
   AND execution_id = sqlc.arg(execution_id)::uuid;
@@ -39,4 +39,20 @@ WHERE tenant_id = sqlc.arg(tenant_id)::uuid
   AND close_generation = 0
   AND clock_timestamp() < sqlc.arg(deadline_at)::timestamptz
 RETURNING tenant_id, execution_id, operation_id, spec_hash, attempt_id,
-    plan_canonical, plan_hash, state, reserved_at;
+    plan_canonical, plan_hash, state, reserved_at, uncertain_at;
+
+-- The caller holds the shared identity lock and has matched the original
+-- attempt and frozen plan. Close/deadline do not discard late observations.
+-- An already uncertain row is read back unchanged rather than updated again.
+-- name: MarkSubmissionUncertain :one
+UPDATE modeldev_pipeline_dispatches
+SET state = 'SUBMISSION_UNCERTAIN', uncertain_at = sqlc.arg(observed_at)::timestamptz
+WHERE tenant_id = sqlc.arg(tenant_id)::uuid
+  AND execution_id = sqlc.arg(execution_id)::uuid
+  AND attempt_id = sqlc.arg(attempt_id)::uuid
+  AND plan_hash = sqlc.arg(plan_hash)::text
+  AND state = 'SUBMITTING'
+  AND uncertain_at IS NULL
+  AND sqlc.arg(observed_at)::timestamptz >= reserved_at
+RETURNING tenant_id, execution_id, operation_id, spec_hash, attempt_id,
+    plan_canonical, plan_hash, state, reserved_at, uncertain_at;
