@@ -393,6 +393,117 @@ var ModelDevQueryService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
+	ModelDevAdmissionService_ResolveAdmission_FullMethodName = "/ani.modeldev.v1.ModelDevAdmissionService/ResolveAdmission"
+)
+
+// ModelDevAdmissionServiceClient is the client API for ModelDevAdmissionService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// Only authenticated Governance may resolve a candidate after current actor
+// authorization and an original-key miss. This service does not accept an
+// execution, allocate command IDs or choose Governance's current Release.
+type ModelDevAdmissionServiceClient interface {
+	ResolveAdmission(ctx context.Context, in *ResolveAdmissionRequest, opts ...grpc.CallOption) (*ResolveAdmissionResponse, error)
+}
+
+type modelDevAdmissionServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewModelDevAdmissionServiceClient(cc grpc.ClientConnInterface) ModelDevAdmissionServiceClient {
+	return &modelDevAdmissionServiceClient{cc}
+}
+
+func (c *modelDevAdmissionServiceClient) ResolveAdmission(ctx context.Context, in *ResolveAdmissionRequest, opts ...grpc.CallOption) (*ResolveAdmissionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResolveAdmissionResponse)
+	err := c.cc.Invoke(ctx, ModelDevAdmissionService_ResolveAdmission_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ModelDevAdmissionServiceServer is the server API for ModelDevAdmissionService service.
+// All implementations must embed UnimplementedModelDevAdmissionServiceServer
+// for forward compatibility.
+//
+// Only authenticated Governance may resolve a candidate after current actor
+// authorization and an original-key miss. This service does not accept an
+// execution, allocate command IDs or choose Governance's current Release.
+type ModelDevAdmissionServiceServer interface {
+	ResolveAdmission(context.Context, *ResolveAdmissionRequest) (*ResolveAdmissionResponse, error)
+	mustEmbedUnimplementedModelDevAdmissionServiceServer()
+}
+
+// UnimplementedModelDevAdmissionServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedModelDevAdmissionServiceServer struct{}
+
+func (UnimplementedModelDevAdmissionServiceServer) ResolveAdmission(context.Context, *ResolveAdmissionRequest) (*ResolveAdmissionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ResolveAdmission not implemented")
+}
+func (UnimplementedModelDevAdmissionServiceServer) mustEmbedUnimplementedModelDevAdmissionServiceServer() {
+}
+func (UnimplementedModelDevAdmissionServiceServer) testEmbeddedByValue() {}
+
+// UnsafeModelDevAdmissionServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ModelDevAdmissionServiceServer will
+// result in compilation errors.
+type UnsafeModelDevAdmissionServiceServer interface {
+	mustEmbedUnimplementedModelDevAdmissionServiceServer()
+}
+
+func RegisterModelDevAdmissionServiceServer(s grpc.ServiceRegistrar, srv ModelDevAdmissionServiceServer) {
+	// If the following call panics, it indicates UnimplementedModelDevAdmissionServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&ModelDevAdmissionService_ServiceDesc, srv)
+}
+
+func _ModelDevAdmissionService_ResolveAdmission_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveAdmissionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModelDevAdmissionServiceServer).ResolveAdmission(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModelDevAdmissionService_ResolveAdmission_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModelDevAdmissionServiceServer).ResolveAdmission(ctx, req.(*ResolveAdmissionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// ModelDevAdmissionService_ServiceDesc is the grpc.ServiceDesc for ModelDevAdmissionService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var ModelDevAdmissionService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "ani.modeldev.v1.ModelDevAdmissionService",
+	HandlerType: (*ModelDevAdmissionServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ResolveAdmission",
+			Handler:    _ModelDevAdmissionService_ResolveAdmission_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "ani/modeldev/v1/modeldev.proto",
+}
+
+const (
 	ModelDevCommandService_AcceptExecution_FullMethodName  = "/ani.modeldev.v1.ModelDevCommandService/AcceptExecution"
 	ModelDevCommandService_ApplyCloseIntent_FullMethodName = "/ani.modeldev.v1.ModelDevCommandService/ApplyCloseIntent"
 )
