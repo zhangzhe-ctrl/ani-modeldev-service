@@ -29,7 +29,9 @@ func SnapshotCanonicalV1() []byte { return append([]byte{}, snapshotCanonicalV1.
 
 func IntentV1() cpup01.Intent {
 	intent, err := cpup01.ParseIntent(intentInputV1)
-	if err != nil { panic("invalid embedded CPU-P01 intent conformance fixture") }
+	if err != nil {
+		panic("invalid embedded CPU-P01 intent conformance fixture")
+	}
 	return intent
 }
 
@@ -37,7 +39,11 @@ func IntentV1() cpup01.Intent {
 // and optional object-reference fields. None identify a real environment.
 func SnapshotV1() cpup01.Snapshot {
 	var snapshot cpup01.Snapshot
-	if err := json.Unmarshal(snapshotCanonicalV1, &snapshot); err != nil { panic("invalid embedded CPU-P01 snapshot conformance fixture") }
-	if err := snapshot.Validate(); err != nil { panic("embedded CPU-P01 snapshot violates its contract") }
+	if err := json.Unmarshal(snapshotCanonicalV1, &snapshot); err != nil {
+		panic("invalid embedded CPU-P01 snapshot conformance fixture")
+	}
+	if err := snapshot.Validate(); err != nil {
+		panic("embedded CPU-P01 snapshot violates its contract")
+	}
 	return snapshot
 }

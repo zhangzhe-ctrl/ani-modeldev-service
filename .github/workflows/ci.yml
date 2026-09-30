@@ -21,7 +21,7 @@ jobs:
       - name: Install pinned tools
         run: make tools supply-chain-tools
       - name: Verify
-        run: make verify
+        run: python3 scripts/with-test-postgres.py make verify
       - name: Supply-chain verification
         run: |
           make audit
