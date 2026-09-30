@@ -118,5 +118,11 @@ Fixed candidate `5545f8c9a17d6f7e7eb4fcccfdce6b5d0fbb472b` reached behavioral RE
 Fedora: the trainer package compiled and failed its eight report-preservation
 cases plus negative/null generation and conflicting different-generation reports,
 exit 1 in 0.047 seconds. The HTTP payloads are source-derived with synthetic
-identities and timestamps; they are not live cluster captures. The minimal adapter
-fix is pending formatting and a new fixed-commit GREEN; CPU06 remains IN_PROGRESS.
+identities and timestamps; they are not live cluster captures. Implementation
+`0bd4732` was formatted on Fedora; only observation/test whitespace changed.
+After root reviewed and committed that output, fixed source
+`0275f4538fd479658f34402746ac55eb6bfe72fc` passed all seven trainer package tests
+and 48 table cases in 0.048 seconds, exit 0; the same package passed `-race` in
+1.195 seconds, exit 0. The new Fedora worktree remained clean. This closes the
+reviewed observer defect within the HTTP boundary; CPU06 remains IN_PROGRESS,
+with live observation and the independent Pod/writer facts still NOT_RUN.

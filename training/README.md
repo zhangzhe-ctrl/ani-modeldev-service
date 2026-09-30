@@ -197,8 +197,21 @@ openssl-provider-legacy) have now been downloaded on Fedora using the base
 image's Debian archive keyring and APT's signed repository checks. Their actual
 bytes match the signed index's SHA256 values; `system-packages.sha256` locks
 those bytes. The image build consumes these local packages offline using dpkg,
-retains the package database and records installed versions. This follow-up
-candidate has not been built or verified yet. The first package-preparation
+retains the package database and records installed versions. At fixed source
+`472c0805e58be773e30593c7c33529be5c62becc`, the new offline build produced
+`sha256:1431bc9bd89a71b1a90651d2899e6ecae57e5b92c5545d154c2747069ee4e1b3`.
+All six module tests passed in 61.697 seconds and image smoke passed, including
+the three installed u3 package versions, independent reload and SIGTERM exit
+143. SBOM generation passed. The same currently latest validated Grype database
+still returned exit 2 with 200 matches, zero Critical and 59 High, including nine
+OpenSSL matches for these upgraded packages. Debian's
+[DSA-6531-1](https://security-tracker.debian.org/tracker/DSA-6531-1) lists the
+three corresponding CVEs as fixed in u3. This scanner/vendor discrepancy is
+retained alongside the raw report; no ignore rule or passing security verdict
+was applied. The remaining High findings and required review still prevent
+declaring the image's security gate passed.
+
+The first package-preparation
 attempt failed because capability-restricted root could not write APT's existing
 directories; a fresh attempt used task-owned list/cache paths without adding
 capabilities or disabling repository checks.

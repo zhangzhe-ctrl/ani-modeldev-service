@@ -44,6 +44,12 @@ ModelDev 持有不可变目录，不另建当前启用指针。当前指针暂�
 重放、查询、停止；新受理须在事务中复核冻结前读取的 generation，远端目录解析
 发生于该事务之外。CAS 同目标重放不增加 generation，不绕过当前操作者授权。
 
+Governance 的当前 binding 代际受其 PostgreSQL bigint 存储约束，范围为
+`1..9223372036854775807`；创建请求的 expected_generation=0 仅表示尚无指针。
+超范围请求明确拒绝；最大代际可重放同目标，不能切换或回绕，失败须保留原记录。
+公共快照及 wire 继续使用 uint64，此界限只约束 Governance 当前指针的分配，
+不缩减 ModelDev 跨来源 close generation 的完整 uint64 合同。
+
 `intent_hash = lowercase_hex(SHA256(canonical_intent_utf8))`，无 BOM、无尾随换行。
 canonical_intent 是固定字段序 JSON：schema、name、kind、preset_id、dataset_version_id、
 image_version_id、general_parameters、source_execution_id；schema 恒为
