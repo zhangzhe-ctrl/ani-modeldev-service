@@ -20,6 +20,7 @@ var (
 	ErrAdmissionConflict = errors.New("ADMISSION_CONFLICT")
 	ErrExecutionNotFound = errors.New("NOT_FOUND")
 	ErrPersistence       = errors.New("PERSISTENCE_UNAVAILABLE")
+	ErrNotImplemented    = errors.New("NOT_IMPLEMENTED")
 )
 
 // Admission is the trusted, immutable command accepted by Governance. TenantID
@@ -105,9 +106,43 @@ type Execution struct {
 	Admission
 }
 
+type CloseReason string
+
+const CloseReasonUserStop CloseReason = "USER_STOP"
+
+type CloseState string
+
+const CloseStateClosing CloseState = "CLOSING"
+
+// CloseIntent is a trusted Governance USER_STOP delivery. SourceGeneration is
+// the sender's deduplication sequence, never the ModelDev creation fence.
+// Identity and SpecHash are known even if Admission delivery has not arrived.
+type CloseIntent struct {
+	TenantID         string
+	OperationID      string
+	ExecutionID      string
+	SpecHash         string
+	SourceGeneration uint64
+	Reason           CloseReason
+	RequestedAt      time.Time
+	RequestedActor   string
+}
+
+// CloseRecord carries both the original source sequence and the owner fence.
+// ModelDev alone allocates Generation for this execution across close sources;
+// a replay keeps the original Generation. CLOSING is not proof of no writers.
+type CloseRecord struct {
+	CloseIntent
+	Generation uint64
+	State      CloseState
+}
+
 // ExecutionRepository exposes only the persistence behaviors needed by the
-// admission slice. Accept must commit the command before returning success.
+// admission and first close-intent slices. Successful command receipts require
+// a durable commit. No runtime resource operation is implied by this port.
 type ExecutionRepository interface {
 	Accept(context.Context, Admission) (Execution, error)
 	Get(context.Context, string, string) (Execution, error)
+	ApplyCloseIntent(context.Context, CloseIntent) (CloseRecord, error)
+	GetCloseIntent(context.Context, string, string) (CloseRecord, error)
 }

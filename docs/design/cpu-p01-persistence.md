@@ -10,8 +10,10 @@ PERSISTENCE_UNAVAILABLE / exit 1。固定 `7e2a045` 的两项 repository 测试�
 GREEN / exit 0（含受限 PG preflight），gofmt 无差异。冲突/隔离候选 `7f0fb10`
 已取得真实 RED / exit 1：同租户及并发异参缺少稳定冲突错误，跨租户复用 ID
 错误地产生新记录。六 pool 原命令竞争、跨租户隐藏 Get、16 类非法受理以及
-原正向/重投均 PASS。当前修复候选待固定提交 GREEN；未接业务装配，不标整个
-CPU04 CODE_READY。
+原正向/重投均 PASS。修复在固定 `cd393c7` 的 repository 全量、真实 PG 并发
+race 和完整 make verify 均 GREEN / exit 0；该证据只覆盖该固定源码。
+后续 UUID 查询严格性修复和首墓碑候选尚待各自固定验证；未接业务装配，不标
+整个 CPU04 CODE_READY。
 
 ## 持久事实与最小边界
 
@@ -95,11 +97,37 @@ Fedora 执行者从受保护文件载入 `CPU_P01_TEST_DATABASE_URL` 和
 
 下一候选通过真实 repository 接口覆盖完整事实冲突、跨租户复用全局身份、
 六独立 pool 同命令竞争、异参唯一赢家、跨租户隐藏读取及非法受理不占 inbox。
-固定 `7f0fb10` 的失败与既有回归 PASS 分别保留；当前实现采用稳定冲突错误和
-0002 全局约束，尚待新固定提交的 GREEN。现有校验直接通过的用例记作回归
+固定 `7f0fb10` 的失败与 `cd393c7` 的全量 GREEN 分别保留；实现采用稳定冲突
+错误和 0002 全局约束。现有校验直接通过的用例记作回归
 PASS，不制造失败。测试只通过 Accept/Get 断言业务事实，不直接查业务表。
 
-并发、同键异参、跨租户负向、停止墓碑和恢复门闩是后续独立 RED/GREEN 切片；
-正向持久化或串行重复回放不能代替这些证据。真实 PG 模块结果亦不能
+并发、同键异参、跨租户负向已在上述固定 repository 范围验证；停止墓碑和
+恢复门闩是后续独立 RED/GREEN 切片。真实 PG 模块结果不能
 证明目标集群、BFF、KFP、Trainer、S3 或 L1–L4 验收通过。新 pool 读取证明数据库
 已提交的持久事实；进程中途终止与重启恢复属于 CPU10 后续验证，不在这里冒称完成。
+
+## 首个 USER_STOP 墓碑合同与测试候选
+
+`CloseIntent.SourceGeneration` 是 Governance 来件的去重序号，对应内部 RPC 的
+来源 intent generation；`CloseRecord.Generation` 是 ModelDev 独占分配、在同一
+execution 内跨所有关闭来源共享的持久围栏代际。两者不能混用：首条来源序号
+41 的关闭意图产生 owner fence 1，不把 41 直接写成 owner 代际。各新关闭意图
+由 ModelDev 事务至多递增一次，原来件重放不递增。USER_STOP、受管步骤和
+deadline 将共用这一权威；本切片只做来自可信 Governance 的首个 USER_STOP。
+
+该分工落实原 CPU10 的持久 stop/单调 generation 要求，没有改变业务范围。
+当前 actor 授权仍在受信入口核对，保存的 RequestedActor 只作审计事实。
+领域层只增加本行为实际需要的 ApplyCloseIntent/GetCloseIntent 两个方法；不预建
+Ensure/Create、worker 或跨系统关闭 adapter。
+
+`TestUserStopBeforeAdmissionPersistsClosingTombstoneAcrossNewConnections` 使用
+真实受限 PG：尚未有 Admission，先提交含 tenant/operation/execution/spec hash、
+SourceGeneration、reason、requested_at/actor 的关闭意图；关闭原 pool 后从新
+repository 读取同一墓碑，要求原事实、owner generation 1 和 CLOSING。查询
+Admission 仍为 NOT_FOUND，不创造伪快照，不将停止受理冒充 CLOSED。
+
+当前两个方法明确返回 NOT_IMPLEMENTED，测试候选尚待固定 RED；无新增持久
+实现或迁移。下一 matching late Admission 切片才通过真实并发测试引入共享身份
+anchor 与事务围栏，冻结 tenant/operation/execution/spec 关联，不能用两个互不
+关联的唯一表代替全局约束。此首墓碑切片绝不宣称迟到 Accept 或真实资源创建
+已经闭锁，也不证明 KFP/TrainJob 已终止或无活跃写者。
