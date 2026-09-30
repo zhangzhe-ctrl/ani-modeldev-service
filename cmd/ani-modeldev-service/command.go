@@ -67,7 +67,7 @@ func buildCommandServer(listener *conf.Server_GRPC, config *conf.GovernanceComma
 		return failed("command database unavailable")
 	}
 	command := service.NewCommand(execution.New(pool))
-	s, err := server.NewGovernanceCommandServer(listener, server.CommandTLS{Certificate: certificate, ClientCAs: roots, GovernanceDNSName: config.GovernanceDnsName}, command, middlewares...)
+	s, err := server.NewGovernanceCommandServer(listener, server.CommandTLS{Certificate: certificate, ClientCAs: roots, GovernanceDNSName: config.GovernanceDnsName}, command, nil, middlewares...)
 	if err != nil {
 		pool.Close()
 		return failed("command listener configuration invalid")

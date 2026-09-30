@@ -31,10 +31,11 @@ type CommandTLS struct {
 	GovernanceDNSName string
 }
 
-// NewGovernanceCommandServer registers the command surface on a dedicated mTLS
-// server. Every RPC rechecks the peer against the configured private CA and
-// current certificate validity; a prior TLS handshake is not permanent access.
-func NewGovernanceCommandServer(c *conf.Server_GRPC, security CommandTLS, command modeldevv1.ModelDevCommandServiceServer, middlewares ...middleware.Middleware) (*kratosgrpc.Server, error) {
+// NewGovernanceCommandServer registers commands and optional read-only admission
+// resolution on a dedicated mTLS server. Every RPC rechecks the peer against the
+// configured private CA and current certificate validity; a prior TLS handshake
+// is not permanent access.
+func NewGovernanceCommandServer(c *conf.Server_GRPC, security CommandTLS, command modeldevv1.ModelDevCommandServiceServer, admission modeldevv1.ModelDevAdmissionServiceServer, middlewares ...middleware.Middleware) (*kratosgrpc.Server, error) {
 	if c == nil || security.ClientCAs == nil || len(security.Certificate.Certificate) == 0 || security.Certificate.PrivateKey == nil || security.GovernanceDNSName == "" || strings.ContainsAny(security.GovernanceDNSName, "* /\t\r\n") || command == nil {
 		return nil, errors.New("explicit command TLS and handler configuration required")
 	}
@@ -64,7 +65,10 @@ func NewGovernanceCommandServer(c *conf.Server_GRPC, security CommandTLS, comman
 		if !ok || verifyPeer(tlsInfo.State) != nil {
 			return nil, denied
 		}
-		if info.FullMethod != modeldevv1.ModelDevCommandService_ApplyCloseIntent_FullMethodName && info.FullMethod != modeldevv1.ModelDevCommandService_AcceptExecution_FullMethodName {
+		allowed := info.FullMethod == modeldevv1.ModelDevCommandService_ApplyCloseIntent_FullMethodName ||
+			info.FullMethod == modeldevv1.ModelDevCommandService_AcceptExecution_FullMethodName ||
+			(admission != nil && info.FullMethod == modeldevv1.ModelDevAdmissionService_ResolveAdmission_FullMethodName)
+		if !allowed {
 			return nil, status.Error(codes.PermissionDenied, "Governance delivery does not permit this method")
 		}
 		md, ok := metadata.FromIncomingContext(ctx)
@@ -72,7 +76,7 @@ func NewGovernanceCommandServer(c *conf.Server_GRPC, security CommandTLS, comman
 			return nil, denied
 		}
 		// User credentials and forwarded certificate headers cannot accompany
-		// this durable workload command or substitute for the actual TLS peer.
+		// these workload requests or substitute for the actual TLS peer.
 		for _, key := range []string{"authorization", "proxy-authorization", "cookie", "x-forwarded-client-cert", "ani-workload-token", "ani-delegation"} {
 			if len(md.Get(key)) != 0 {
 				return nil, denied
@@ -109,6 +113,9 @@ func NewGovernanceCommandServer(c *conf.Server_GRPC, security CommandTLS, comman
 		kratosgrpc.Middleware(middlewares...), kratosgrpc.DisableReflection(),
 	)
 	modeldevv1.RegisterModelDevCommandServiceServer(s, command)
+	if admission != nil {
+		modeldevv1.RegisterModelDevAdmissionServiceServer(s, admission)
+	}
 	return s, nil
 }
 

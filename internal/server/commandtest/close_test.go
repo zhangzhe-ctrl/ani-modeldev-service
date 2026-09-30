@@ -108,7 +108,7 @@ func commandConnection(t *testing.T, address string, tlsConfig *tls.Config) *grp
 
 func startCommandListener(t *testing.T, repository biz.ExecutionRepository, certificates commandtls.Certificates) (string, func()) {
 	t.Helper()
-	s, err := server.NewGovernanceCommandServer(&conf.Server_GRPC{Network: "tcp", Addr: "127.0.0.1:0", Timeout: durationpb.New(5 * time.Second)}, server.CommandTLS{Certificate: certificates.Server, ClientCAs: certificates.Roots, GovernanceDNSName: commandtls.GovernanceDNSName}, service.NewCommand(repository))
+	s, err := server.NewGovernanceCommandServer(&conf.Server_GRPC{Network: "tcp", Addr: "127.0.0.1:0", Timeout: durationpb.New(5 * time.Second)}, server.CommandTLS{Certificate: certificates.Server, ClientCAs: certificates.Roots, GovernanceDNSName: commandtls.GovernanceDNSName}, service.NewCommand(repository), nil)
 	if err != nil {
 		t.Fatalf("TLS server fixture: %v", err)
 	}

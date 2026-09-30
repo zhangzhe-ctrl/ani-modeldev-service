@@ -49,26 +49,7 @@ func TestResolveManagedAdmissionUsesPinnedFactsWithDurableInput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve from the loaded facts owner and actual durable input: %v", err)
 	}
-	release, imported := fixture.release, fixture.imported
-	// The complete expectation is authored independently of either resolver.
-	// Only unchanged immutable source fields are copied; argv, parameters,
-	// generation and deadline are fixed examples, not computed by product code.
-	want := cpup01.Snapshot{
-		SchemaVersion: cpup01.SnapshotSchemaVersion, Kind: "GENERAL_TRAINING", DeliveryMode: "SAVE_ARTIFACTS",
-		Release: cpup01.ReleaseSnapshot{
-			ReleaseID: release.ReleaseID, ReleaseDigest: conformance.ReleaseSHA256V1, PresetID: release.PresetID, AcceptedBindingGeneration: 7,
-			PipelineID: release.PipelineID, PipelineVersionID: release.PipelineVersionID, PipelineIRSHA256: release.PipelineIRSHA256, Runtime: release.Runtime,
-		},
-		Input: cpup01.InputRef{InputVersionID: imported.InputVersionID, Object: imported.Object, Format: "CSV", SchemaVersion: "ani.cpu.csv.v1", RowCount: 1024, FeatureCount: 16},
-		Program: cpup01.ProgramRef{
-			ImageVersionID: release.Program.ImageVersionID, ImageDigest: release.Program.ImageDigest, Command: release.Program.Command,
-			ResolvedArgs:       []string{"--data", "/prepared-fixture/data.csv", "--output", "/trained-fixture", "--expected-input-sha256", "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "--expected-input-bytes", "65536", "--learning-rate", "0.02"},
-			ResolvedParameters: []cpup01.Parameter{{Name: "batch_size", Type: "INTEGER", Value: "64"}, {Name: "epochs", Type: "INTEGER", Value: "3"}, {Name: "learning_rate", Type: "DECIMAL", Value: "0.02"}},
-		},
-		Resources: release.Resources, Environment: fixture.facts.Environment, Workspace: release.Workspace,
-		PublicationScope: fixture.facts.PublicationScope, OutputContract: release.OutputContract,
-		DeadlineAt: time.Date(2026, 9, 30, 12, 33, 0, 123000, time.UTC),
-	}
+	want := expectedManagedSnapshot(fixture)
 	wantCanonical, err := want.Canonical()
 	if err != nil {
 		t.Fatalf("authored expected snapshot violates the shared contract: %v", err)
@@ -89,11 +70,34 @@ func TestResolveManagedAdmissionUsesPinnedFactsWithDurableInput(t *testing.T) {
 	if err != nil || beforeHash != afterHash || !bytes.Equal(beforeIntent, afterIntent) || (*fixture.selection.Intent.GeneralParameters)[0].Value != "0.0200" {
 		t.Fatal("managed resolution changed original user intent or optional-field presence")
 	}
-	stored, err := input.New(fixture.openPool()).Get(fixture.ctx, imported.TenantID, imported.InputVersionID)
+	stored, err := input.New(fixture.openPool()).Get(fixture.ctx, fixture.imported.TenantID, fixture.imported.InputVersionID)
 	if err != nil || !reflect.DeepEqual(stored, fixture.ready) {
 		t.Fatalf("managed resolution changed the durable READY input: %v", err)
 	}
 	requireNoResolvedExecution(t, fixture)
+}
+
+func expectedManagedSnapshot(fixture resolutionFixture) cpup01.Snapshot {
+	release, imported := fixture.release, fixture.imported
+	// The complete expectation is authored independently of either resolver.
+	// Only unchanged immutable source fields are copied; argv, parameters,
+	// generation and deadline are fixed examples, not computed by product code.
+	return cpup01.Snapshot{
+		SchemaVersion: cpup01.SnapshotSchemaVersion, Kind: "GENERAL_TRAINING", DeliveryMode: "SAVE_ARTIFACTS",
+		Release: cpup01.ReleaseSnapshot{
+			ReleaseID: release.ReleaseID, ReleaseDigest: conformance.ReleaseSHA256V1, PresetID: release.PresetID, AcceptedBindingGeneration: 7,
+			PipelineID: release.PipelineID, PipelineVersionID: release.PipelineVersionID, PipelineIRSHA256: release.PipelineIRSHA256, Runtime: release.Runtime,
+		},
+		Input: cpup01.InputRef{InputVersionID: imported.InputVersionID, Object: imported.Object, Format: "CSV", SchemaVersion: "ani.cpu.csv.v1", RowCount: 1024, FeatureCount: 16},
+		Program: cpup01.ProgramRef{
+			ImageVersionID: release.Program.ImageVersionID, ImageDigest: release.Program.ImageDigest, Command: release.Program.Command,
+			ResolvedArgs:       []string{"--data", "/prepared-fixture/data.csv", "--output", "/trained-fixture", "--expected-input-sha256", "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "--expected-input-bytes", "65536", "--learning-rate", "0.02"},
+			ResolvedParameters: []cpup01.Parameter{{Name: "batch_size", Type: "INTEGER", Value: "64"}, {Name: "epochs", Type: "INTEGER", Value: "3"}, {Name: "learning_rate", Type: "DECIMAL", Value: "0.02"}},
+		},
+		Resources: release.Resources, Environment: fixture.facts.Environment, Workspace: release.Workspace,
+		PublicationScope: fixture.facts.PublicationScope, OutputContract: release.OutputContract,
+		DeadlineAt: time.Date(2026, 9, 30, 12, 33, 0, 123000, time.UTC),
+	}
 }
 
 // The test authors the private JSON shape independently of the reader's
