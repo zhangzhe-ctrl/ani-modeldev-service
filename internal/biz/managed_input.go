@@ -105,5 +105,5 @@ func validInputText(value string) bool {
 }
 
 func validInputKey(value string) bool {
-	return validInputText(value) && len(value) <= 1024 && value != "." && !strings.HasPrefix(value, "/") && !strings.Contains(value, "\\") && path.Clean(value) == value
+	return validInputText(value) && len(value) <= 1024 && value != "." && value != ".." && !strings.HasPrefix(value, "../") && !strings.HasPrefix(value, "/") && !strings.Contains(value, "\\") && path.Clean(value) == value
 }

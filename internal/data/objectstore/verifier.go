@@ -106,7 +106,7 @@ func (r *measuredReader) Read(p []byte) (int, error) {
 var bucketPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`)
 
 func validKey(value string) bool {
-	return validText(value) && len(value) <= 1024 && value != "." && !strings.HasPrefix(value, "/") && !strings.Contains(value, "\\") && path.Clean(value) == value
+	return validText(value) && len(value) <= 1024 && value != "." && value != ".." && !strings.HasPrefix(value, "../") && !strings.HasPrefix(value, "/") && !strings.Contains(value, "\\") && path.Clean(value) == value
 }
 
 func validText(value string) bool {
