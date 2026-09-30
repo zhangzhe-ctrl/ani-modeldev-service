@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"sync"
 	"time"
 
 	kratos "github.com/go-kratos/kratos/v3"
@@ -13,7 +15,20 @@ import (
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/server"
 )
 
-func buildApp(bc *conf.Bootstrap, logger *slog.Logger) (*kratos.App, error) {
+// application owns dependencies outside the transport lifecycle. Kratos may
+// return before AfterStop when listener binding fails, so Run also releases
+// them. Both paths share one cleanup and preserve any shutdown failure.
+type application struct {
+	*kratos.App
+	release func() error
+}
+
+func (app *application) Run() (err error) {
+	defer func() { err = errors.Join(err, app.release()) }()
+	return app.App.Run()
+}
+
+func buildApp(bc *conf.Bootstrap, logger *slog.Logger) (*application, error) {
 	if err := bc.Validate(); err != nil {
 		return nil, err
 	}
@@ -39,7 +54,13 @@ func buildApp(bc *conf.Bootstrap, logger *slog.Logger) (*kratos.App, error) {
 		}
 	}
 	adminServer := server.NewAdminServer(bc.Server.Admin, readiness, observability.Gatherer(), middlewares...)
-	return newApp(logger, grpcServer, adminServer, readiness, observability, bc.Server.ShutdownTimeout.AsDuration(), cleanup), nil
+	release := sync.OnceValue(func() error {
+		cleanup()
+		ctx, cancel := context.WithTimeout(context.Background(), bc.Server.ShutdownTimeout.AsDuration())
+		defer cancel()
+		return observability.Shutdown(ctx)
+	})
+	return &application{App: newApp(logger, grpcServer, adminServer, readiness, bc.Server.ShutdownTimeout.AsDuration(), release), release: release}, nil
 }
 
 func newApp(
@@ -47,9 +68,8 @@ func newApp(
 	grpcServer *kratosgrpc.Server,
 	adminServer *kratoshttp.Server,
 	readiness *server.Readiness,
-	observability *server.Observability,
 	stopTimeout time.Duration,
-	cleanup func(),
+	release func() error,
 ) *kratos.App {
 	return kratos.New(
 		kratos.ID(id),
@@ -61,10 +81,7 @@ func newApp(
 			readiness.Set(false)
 			return nil
 		}),
-		kratos.AfterStop(func(ctx context.Context) error {
-			cleanup()
-			return observability.Shutdown(ctx)
-		}),
+		kratos.AfterStop(func(context.Context) error { return release() }),
 		kratos.StopTimeout(stopTimeout),
 	)
 }

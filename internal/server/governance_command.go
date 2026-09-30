@@ -73,7 +73,7 @@ func NewGovernanceCommandServer(c *conf.Server_GRPC, security CommandTLS, comman
 		}
 		// User credentials and forwarded certificate headers cannot accompany
 		// this durable workload command or substitute for the actual TLS peer.
-		for _, key := range []string{"authorization", "cookie", "x-forwarded-client-cert"} {
+		for _, key := range []string{"authorization", "proxy-authorization", "cookie", "x-forwarded-client-cert", "ani-workload-token", "ani-delegation"} {
 			if len(md.Get(key)) != 0 {
 				return nil, denied
 			}
