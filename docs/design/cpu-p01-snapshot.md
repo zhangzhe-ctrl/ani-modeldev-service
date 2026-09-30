@@ -60,6 +60,13 @@ resolved_args 顺序有意义，不排序。全部排序操作使用副本，不
 resolved_parameters 必须完整包含 epochs INTEGER=3、batch_size INTEGER=64、
 learning_rate DECIMAL (0,0.1]；小数去尾零，不能再次查询默认值。
 
+快照的非可选 repeated 字段不携带用户意图的 presence：合法的空
+program.resolved_args 在 Go 中无论 nil 还是空切片，都规范化为 JSON `[]`，
+不能输出 null。这保证 protobuf repeated 字段经过真实 wire 后摘要不变。
+runtime.target_jobs、command、resolved_parameters 和 required_files 仍须满足
+各自非空校验，不因这条编码规则放宽。UserIntent 的 general_parameters 缺省
+和显式空数组仍有不同意图摘要，继续使用可选 ParameterSelection 保留。
+
 固定对象必须恰有一个不可变依据：非空 version_id 或 immutable_copy=true。
 缺失、两者同时存在、immutable_copy=false 均拒绝。该字段是批准配置的事实，
 本地校验不能证明对象不可覆盖；CPU04 输入导入仍必须固化并读取实际字节验证。
@@ -106,4 +113,7 @@ evidence/cpu01-snapshot-validation-red-0a93b04.txt。
 现已实现本地结构校验并接入 Canonical/Digest；任何非法快照均应返回
 INVALID_ARGUMENT，不产生规范字节或摘要。错误只写固定字段类别，不回显配置值。
 CPU04 可以复用这一纯本地边界，仍须验证受理 envelope 与可信外部事实。
-此候选等待 Fedora GREEN，不能因本地源码完成标记 CPU01 CODE_READY。
+固定 87b28548786443431e32fa53a22176646a30c3b2 的 Fedora 合同测试已通过，
+包括已实现的纯快照校验及 protobuf 正负 roundtrip。现追加空 resolved_args
+跨 wire 的规范化回归和 managed-copy oneof 的 roundtrip 回归；只写测试与规范，
+等待新固定 commit 的 Fedora RED 后实施。不能因此标记整个 CPU01 CODE_READY。

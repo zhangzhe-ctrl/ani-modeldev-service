@@ -125,3 +125,68 @@ func TestCodecRejectsUnknownWireFactsAndUnsupportedEnums(t *testing.T) {
 		if _, err := codec.EncodeSnapshot(cpup01.Snapshot{}); !errors.Is(err, cpup01.ErrInvalidArgument) { t.Errorf("invalid snapshot: %v", err) }
 	})
 }
+
+// Resolved snapshot arguments have no user-intent presence semantics. Protobuf
+// repeated fields lose nil-versus-empty representation, so both domain forms
+// must retain the same canonical bytes and digest after an actual wire hop.
+func TestSnapshotEmptyResolvedArgsStayCanonicalAcrossWire(t *testing.T) {
+	var expectedCanonical []byte
+	var expectedDigest string
+	for _, test := range []struct {
+		name string
+		arguments []string
+	}{
+		{name: "nil", arguments: nil},
+		{name: "explicit empty", arguments: []string{}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			snapshot := conformance.SnapshotV1()
+			snapshot.Program.ResolvedArgs = test.arguments
+			canonical, err := snapshot.Canonical()
+			if err != nil { t.Fatal(err) }
+			if !bytes.Contains(canonical, []byte(`"resolved_args":[]`)) { t.Error("empty resolved arguments must serialize as [], never null") }
+			digest, err := snapshot.Digest()
+			if err != nil { t.Fatal(err) }
+			if expectedCanonical == nil {
+				expectedCanonical, expectedDigest = canonical, digest
+			} else if !bytes.Equal(canonical, expectedCanonical) || digest != expectedDigest {
+				t.Error("nil and explicit empty resolved arguments have different spec identities")
+			}
+			message, err := codec.EncodeSnapshot(snapshot)
+			if err != nil { t.Fatal(err) }
+			wire, err := proto.Marshal(message)
+			if err != nil { t.Fatal(err) }
+			var received modeldevv1.ExecutionSnapshot
+			if err := proto.Unmarshal(wire, &received); err != nil { t.Fatal(err) }
+			decoded, err := codec.DecodeSnapshot(&received)
+			if err != nil { t.Fatal(err) }
+			afterCanonical, err := decoded.Canonical()
+			if err != nil { t.Fatal(err) }
+			afterDigest, err := decoded.Digest()
+			if err != nil { t.Fatal(err) }
+			if !bytes.Equal(canonical, afterCanonical) || digest != afterDigest { t.Error("empty resolved arguments changed execution_spec_hash across protobuf") }
+			if (snapshot.Program.ResolvedArgs == nil) != (test.arguments == nil) { t.Error("canonicalization or codec mutated caller slice presence") }
+		})
+	}
+}
+
+func TestSnapshotManagedCopyImmutabilitySurvivesWire(t *testing.T) {
+	snapshot := conformance.SnapshotV1()
+	fixed := true
+	snapshot.Input.Object.VersionID = nil
+	snapshot.Input.Object.ImmutableCopy = &fixed
+	before, err := snapshot.Digest()
+	if err != nil { t.Fatal(err) }
+	message, err := codec.EncodeSnapshot(snapshot)
+	if err != nil { t.Fatal(err) }
+	wire, err := proto.Marshal(message)
+	if err != nil { t.Fatal(err) }
+	var received modeldevv1.ExecutionSnapshot
+	if err := proto.Unmarshal(wire, &received); err != nil { t.Fatal(err) }
+	decoded, err := codec.DecodeSnapshot(&received)
+	if err != nil { t.Fatal(err) }
+	if decoded.Input.Object.VersionID != nil || decoded.Input.Object.ImmutableCopy == nil || !*decoded.Input.Object.ImmutableCopy { t.Fatal("wire changed the fixed-input immutability proof") }
+	after, err := decoded.Digest()
+	if err != nil { t.Fatal(err) }
+	if before != after { t.Fatal("wire changed immutable-copy snapshot identity") }
+}
