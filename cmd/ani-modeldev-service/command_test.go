@@ -87,7 +87,7 @@ func commandAppFixture(t *testing.T) (*conf.Bootstrap, func() *pgxpool.Pool, com
 	}
 	query := connectionURL.Query()
 	query.Set("search_path", pool.Config().ConnConfig.RuntimeParams["search_path"])
-	applicationName := "cpu-command-"+uuid.NewString()
+	applicationName := "cpu-command-" + uuid.NewString()
 	query.Set("application_name", applicationName)
 	connectionURL.RawQuery = query.Encode()
 	databaseFile := filepath.Join(t.TempDir(), "database")
@@ -102,7 +102,9 @@ func commandAppFixture(t *testing.T) (*conf.Bootstrap, func() *pgxpool.Pool, com
 func TestConfiguredCommandReleasesDatabaseAfterListenerStartupFailure(t *testing.T) {
 	config, openPool, _, applicationName := commandAppFixture(t)
 	occupied, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil { t.Fatal("occupied listener fixture unavailable") }
+	if err != nil {
+		t.Fatal("occupied listener fixture unavailable")
+	}
 	defer occupied.Close()
 	config.Server.Grpc.Addr = occupied.Addr().String()
 	observer := openPool()
@@ -116,28 +118,38 @@ func TestConfiguredCommandReleasesDatabaseAfterListenerStartupFailure(t *testing
 		}
 	})
 	app, err := buildApp(config, newRuntimeLogger(io.Discard))
-	if err != nil { t.Fatalf("startup fixture failed before listener bind: %v", err) }
+	if err != nil {
+		t.Fatalf("startup fixture failed before listener bind: %v", err)
+	}
 	count := func() int {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		var result int
-		if err := observer.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE application_name = $1 AND usename = current_user AND datname = current_database()", applicationName).Scan(&result); err != nil { t.Fatal("inspect task-owned command connection") }
+		if err := observer.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE application_name = $1 AND usename = current_user AND datname = current_database()", applicationName).Scan(&result); err != nil {
+			t.Fatal("inspect task-owned command connection")
+		}
 		return result
 	}
-	if count() == 0 { t.Fatal("no real command database connection; cleanup behavior NOT_RUN") }
+	if count() == 0 {
+		t.Fatal("no real command database connection; cleanup behavior NOT_RUN")
+	}
 	done := make(chan error, 1)
 	go func() { done <- app.Run() }()
 	select {
 	case err := <-done:
-		if err == nil { t.Fatal("occupied listener unexpectedly started") }
-	case <-time.After(6*time.Second):
+		if err == nil {
+			t.Fatal("occupied listener unexpectedly started")
+		}
+	case <-time.After(6 * time.Second):
 		_ = app.Stop()
 		t.Fatal("startup failure was not bounded")
 	}
 	deadline := time.Now().Add(time.Second)
 	for count() != 0 {
-		if time.Now().After(deadline) { t.Fatal("CPU_COMMAND_CLEANUP_BEHAVIOR: startup failure retained the command database connection") }
-		time.Sleep(10*time.Millisecond)
+		if time.Now().After(deadline) {
+			t.Fatal("CPU_COMMAND_CLEANUP_BEHAVIOR: startup failure retained the command database connection")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

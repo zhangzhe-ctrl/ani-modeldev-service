@@ -38,17 +38,20 @@ hash 和原 Admission 派生字段。完整原件或计划不一致返回 ADMISS
 数据库时钟观测，证明等待 identity 锁期间到期后拒绝首次预约；轮询间隔不作为
 排序依据。这些证据只覆盖持久预约，不证明后续 KFP HTTP 调用已获准或已完成。
 
-## 当前不成立的能力
+## 原提交结果不明
 
 原预约的不明结果在 `70b4957` 取得真实 PG 行为 RED；SQL 0009 和独立 sqlc
-输出已固定。当前 `MarkSubmissionUncertain` 实现候选尚待固定提交后的 GREEN。
+输出已固定。`MarkSubmissionUncertain` 在 `e8550d9` 取得真实 PG GREEN，
+`eacb2e3` 完整 submission 回归与限定 race 通过。
 它仅接受原 tenant/execution/attempt/plan hash；合法观察时间规范到 UTC、精确到
 微秒且不得早于 reserved_at。首次成功提交的 SUBMISSION_UNCERTAIN/UncertainAt
 不被重放刷新；关闭或原 deadline 不丢弃迟到不明观察。Get/Reserve 保留原冻结计划
 且不再发许可，原 Admission 和 close 事实不变。这个方法不证明实际发送过网络
 请求，也不决定关闭完成。
 
-Phase A 未实现 HTTP 调用、Run 句柄、租约、发送恢复或权威 Run CAS。
+## 当前不成立的能力
+
+当前持久化切片未实现 HTTP 调用、Run 句柄、租约、发送恢复或权威 Run CAS。
 现有 KFP CreateRun 仍从客户端配置读取 root，故此候选不把预约接到该客户端。
 后续独立行为必须证明：close 先到拒绝新许可；预约先到后关闭不能漏掉在途
 创建；HTTP 不明只能保留 UNCERTAIN，不能因租约到期或查询未命中盲重发；

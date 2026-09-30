@@ -54,6 +54,10 @@ the typed `ANI` environment configuration when the deployment design is added.
   checks belong to the production composition when those adapters are added.
 - `/metrics` exports the local Prometheus registry.
 
-CPU-P01 domain and RPC contracts are present. Production business handlers,
-persistent repositories, external adapters, and deployment bindings are not yet
-assembled; unimplemented business RPCs fail explicitly.
+CPU-P01 domain, persistence and adapter slices are present. An explicit typed
+`command` configuration assembles the Governance mTLS `ApplyCloseIntent` handler
+and real PostgreSQL repository using mounted connection/certificate references.
+Missing materials fail startup; omitting the block keeps the unready shell.
+See [command delivery](docs/design/cpu-p01-command-delivery.md) for the trust,
+receipt and configuration boundaries. AcceptExecution, Query, Step and the full
+training/publication chain are not assembled; unavailable RPCs fail explicitly.
