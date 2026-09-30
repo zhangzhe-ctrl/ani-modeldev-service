@@ -52,14 +52,18 @@ func TestGovernanceCommandCommitFailureHasNoACKAndRetryCommitsFirst(t *testing.T
 	removeFault()
 	restarted, _ := startCommandServer(t, execution.New(openPool()), certificates)
 	first, err := restarted.ApplyCloseIntent(commandContext(ctx, request), request)
-	if err != nil { t.Fatalf("original delivery could not retry after rollback and restart: %v", err) }
+	if err != nil {
+		t.Fatalf("original delivery could not retry after rollback and restart: %v", err)
+	}
 	assertCloseResponse(t, first, request, false)
 	stored, err := reader.GetCloseIntent(ctx, request.ResourceTenantId, request.Identity.ExecutionId)
 	if err != nil || stored.Generation != 1 || stored.SourceGeneration != request.IntentGeneration {
 		t.Fatalf("retry ACK did not reflect the first committed close: %v", err)
 	}
 	replay, err := restarted.ApplyCloseIntent(commandContext(ctx, request), request)
-	if err != nil { t.Fatalf("committed retry did not replay: %v", err) }
+	if err != nil {
+		t.Fatalf("committed retry did not replay: %v", err)
+	}
 	assertCloseResponse(t, replay, request, true)
 }
 
@@ -79,7 +83,9 @@ func rejectCommandCommit(t *testing.T, runtimePool *pgxpool.Pool) func() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	admin, err := pgx.ConnectConfig(ctx, adminConfig)
-	if err != nil { t.Fatal("CPU_COMMAND_DB_PREFLIGHT: migration connection failed; behavior NOT_RUN") }
+	if err != nil {
+		t.Fatal("CPU_COMMAND_DB_PREFLIGHT: migration connection failed; behavior NOT_RUN")
+	}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -90,7 +96,9 @@ func rejectCommandCommit(t *testing.T, runtimePool *pgxpool.Pool) func() {
 	removed := false
 	remove := func() {
 		t.Helper()
-		if removed { return }
+		if removed {
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if _, err := admin.Exec(ctx, "DROP TRIGGER IF EXISTS reject_command_commit ON "+table); err != nil {

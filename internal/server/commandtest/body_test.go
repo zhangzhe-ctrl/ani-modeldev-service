@@ -22,16 +22,22 @@ func TestGovernanceCommandRejectsInvalidBodiesBeforePersistence(t *testing.T) {
 	client, _ := startCommandServer(t, execution.New(openPool()), commandtls.New(t))
 	reader := execution.New(openPool())
 	for _, testCase := range []struct {
-		name string
+		name   string
 		change func(*modeldevv1.ApplyCloseIntentRequest)
 	}{
 		{"missing identity", func(r *modeldevv1.ApplyCloseIntentRequest) { r.Identity = nil }},
 		{"missing timestamp", func(r *modeldevv1.ApplyCloseIntentRequest) { r.RequestedAt = nil }},
 		{"unknown command field", func(r *modeldevv1.ApplyCloseIntentRequest) { r.ProtoReflect().SetUnknown([]byte{0xa0, 0x06, 0x01}) }},
-		{"unknown identity field", func(r *modeldevv1.ApplyCloseIntentRequest) { r.Identity.ProtoReflect().SetUnknown([]byte{0xa0, 0x06, 0x01}) }},
-		{"unknown timestamp field", func(r *modeldevv1.ApplyCloseIntentRequest) { r.RequestedAt.ProtoReflect().SetUnknown([]byte{0xa0, 0x06, 0x01}) }},
+		{"unknown identity field", func(r *modeldevv1.ApplyCloseIntentRequest) {
+			r.Identity.ProtoReflect().SetUnknown([]byte{0xa0, 0x06, 0x01})
+		}},
+		{"unknown timestamp field", func(r *modeldevv1.ApplyCloseIntentRequest) {
+			r.RequestedAt.ProtoReflect().SetUnknown([]byte{0xa0, 0x06, 0x01})
+		}},
 		{"unknown reason", func(r *modeldevv1.ApplyCloseIntentRequest) { r.Reason = modeldevv1.CloseReason(999) }},
-		{"unspecified reason", func(r *modeldevv1.ApplyCloseIntentRequest) { r.Reason = modeldevv1.CloseReason_CLOSE_REASON_UNSPECIFIED }},
+		{"unspecified reason", func(r *modeldevv1.ApplyCloseIntentRequest) {
+			r.Reason = modeldevv1.CloseReason_CLOSE_REASON_UNSPECIFIED
+		}},
 		{"deadline is not Governance user stop", func(r *modeldevv1.ApplyCloseIntentRequest) { r.Reason = modeldevv1.CloseReason_CLOSE_REASON_DEADLINE }},
 		{"zero source generation", func(r *modeldevv1.ApplyCloseIntentRequest) { r.IntentGeneration = 0 }},
 		{"timestamp invalid seconds", func(r *modeldevv1.ApplyCloseIntentRequest) { r.RequestedAt.Seconds = 253402300800 }},

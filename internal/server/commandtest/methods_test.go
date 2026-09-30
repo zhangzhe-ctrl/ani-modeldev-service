@@ -50,7 +50,9 @@ func TestGovernanceIdentityCannotReachOtherCapabilitiesOnCommandPort(t *testing.
 	} {
 		t.Run(method, func(t *testing.T) {
 			stream, err := connection.NewStream(ctx, &grpc.StreamDesc{ClientStreams: true, ServerStreams: true}, method)
-			if err != nil { t.Fatalf("stream fixture could not start: %v", err) }
+			if err != nil {
+				t.Fatalf("stream fixture could not start: %v", err)
+			}
 			// Empty is wire-compatible with the empty health/reflection request.
 			// Send errors alone do not prove a denial: read the server's status.
 			_ = stream.SendMsg(&emptypb.Empty{})
@@ -68,6 +70,8 @@ func TestGovernanceIdentityCannotReachOtherCapabilitiesOnCommandPort(t *testing.
 	}
 	assertNoCommandFacts(t, execution.New(openPool()), request)
 	response, err := modeldevv1.NewModelDevCommandServiceClient(connection).ApplyCloseIntent(ctx, request)
-	if err != nil { t.Fatalf("authorized control failed after method matrix: %v", err) }
+	if err != nil {
+		t.Fatalf("authorized control failed after method matrix: %v", err)
+	}
 	assertCloseResponse(t, response, request, false)
 }

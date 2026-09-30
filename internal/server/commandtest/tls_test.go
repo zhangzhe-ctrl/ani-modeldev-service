@@ -39,13 +39,20 @@ func TestGovernanceCommandRejectsUntrustedTLSBeforePersistence(t *testing.T) {
 			c.Certificates = []tls.Certificate{certificates.ClientCertificate(t, func(leaf *x509.Certificate) { leaf.DNSNames = []string{"ordinary-training"} })}
 		}},
 		{"CN only impersonation", func(t *testing.T, c *tls.Config) {
-			c.Certificates = []tls.Certificate{certificates.ClientCertificate(t, func(leaf *x509.Certificate) { leaf.DNSNames = nil; leaf.Subject.CommonName = commandtls.GovernanceDNSName })}
+			c.Certificates = []tls.Certificate{certificates.ClientCertificate(t, func(leaf *x509.Certificate) {
+				leaf.DNSNames = nil
+				leaf.Subject.CommonName = commandtls.GovernanceDNSName
+			})}
 		}},
 		{"multiple DNS SANs", func(t *testing.T, c *tls.Config) {
-			c.Certificates = []tls.Certificate{certificates.ClientCertificate(t, func(leaf *x509.Certificate) { leaf.DNSNames = []string{commandtls.GovernanceDNSName, "ordinary-training"} })}
+			c.Certificates = []tls.Certificate{certificates.ClientCertificate(t, func(leaf *x509.Certificate) {
+				leaf.DNSNames = []string{commandtls.GovernanceDNSName, "ordinary-training"}
+			})}
 		}},
 		{"DNS and URI identity", func(t *testing.T, c *tls.Config) {
-			c.Certificates = []tls.Certificate{certificates.ClientCertificate(t, func(leaf *x509.Certificate) { leaf.URIs = []*url.URL{{Scheme: "spiffe", Host: "test", Path: "/ordinary-training"}} })}
+			c.Certificates = []tls.Certificate{certificates.ClientCertificate(t, func(leaf *x509.Certificate) {
+				leaf.URIs = []*url.URL{{Scheme: "spiffe", Host: "test", Path: "/ordinary-training"}}
+			})}
 		}},
 		{"wildcard DNS SAN", func(t *testing.T, c *tls.Config) {
 			c.Certificates = []tls.Certificate{certificates.ClientCertificate(t, func(leaf *x509.Certificate) { leaf.DNSNames = []string{"*.ani-governance"} })}

@@ -22,7 +22,7 @@ func TestGovernanceCommandRejectsAmbiguousOrAmbientMetadataBeforePersistence(t *
 	client, _ := startCommandServer(t, execution.New(openPool()), commandtls.New(t))
 	reader := execution.New(openPool())
 	type mutation struct {
-		name string
+		name  string
 		apply func(metadata.MD)
 	}
 	var cases []mutation
@@ -37,7 +37,7 @@ func TestGovernanceCommandRejectsAmbiguousOrAmbientMetadataBeforePersistence(t *
 		cases = append(cases,
 			mutation{"nil UUID " + key, func(md metadata.MD) { md.Set(key, uuid.Nil.String()) }},
 			mutation{"uppercase UUID " + key, func(md metadata.MD) { md.Set(key, strings.ToUpper("abcdefab-1234-4234-8234-abcdefabcdef")) }},
-			mutation{"braced UUID " + key, func(md metadata.MD) { md.Set(key, "{" + uuid.NewString() + "}") }},
+			mutation{"braced UUID " + key, func(md metadata.MD) { md.Set(key, "{"+uuid.NewString()+"}") }},
 		)
 	}
 	// These are credential channels, not audit fields. In particular the IAM
@@ -66,7 +66,9 @@ func TestGovernanceCommandRejectsAmbiguousOrAmbientMetadataBeforePersistence(t *
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
 			response, err := client.ApplyCloseIntent(commandContext(ctx, request), request)
-			if err != nil { t.Fatalf("canonical authorized control failed: %v", err) }
+			if err != nil {
+				t.Fatalf("canonical authorized control failed: %v", err)
+			}
 			assertCloseResponse(t, response, request, false)
 		})
 	}
@@ -80,7 +82,11 @@ func TestGovernanceCommandBodyCannotReplaceVerifiedTenantOrActor(t *testing.T) {
 		t.Run(field, func(t *testing.T) {
 			verified := validCloseRequest()
 			body := proto.Clone(verified).(*modeldevv1.ApplyCloseIntentRequest)
-			if field == "tenant" { body.ResourceTenantId = uuid.NewString() } else { body.RequestedActorId = "governance:user:43" }
+			if field == "tenant" {
+				body.ResourceTenantId = uuid.NewString()
+			} else {
+				body.RequestedActorId = "governance:user:43"
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
 			response, err := client.ApplyCloseIntent(commandContext(ctx, verified), body)
