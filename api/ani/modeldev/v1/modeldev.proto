@@ -428,7 +428,9 @@ message AcceptExecutionResponse {
 message ApplyCloseIntentRequest {
   ani.training.v1.ExecutionIdentity identity = 1;
   string resource_tenant_id = 2;
-  uint64 close_generation = 3;
+  // Governance's durable source command sequence, used only for deduplication.
+  // It is independent of the ModelDev-owned creation fence generation.
+  uint64 intent_generation = 3;
   CloseReason reason = 4;
   google.protobuf.Timestamp requested_at = 5;
   // Trusted Governance audit identity; current authorization is checked before
@@ -438,6 +440,8 @@ message ApplyCloseIntentRequest {
 
 message ApplyCloseIntentResponse {
   ani.training.v1.ExecutionIdentity identity = 1;
+  // ModelDev allocates this monotonic creation fence in the commit transaction.
+  // Governance, managed steps and deadline handling cannot supply its value.
   uint64 close_generation = 2;
   CloseState close_state = 3;
   bool replayed = 4;

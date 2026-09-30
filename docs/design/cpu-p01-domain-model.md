@@ -73,6 +73,14 @@ Stop/deadline 先持久保存意图及单调 generation，再封闭新创建，�
 deletionTimestamp 或 KFP canceled 不证明 CLOSED；无法证明时 NEEDS_REVIEW。
 重启只继续原观察/投递/关闭，不延长 deadline，不重新训练。关闭与删除独立。
 
+创建围栏的 `close_generation` 只由 ModelDev 在持久事务内分配。Governance
+持久关闭命令的 `intent_generation` 仅标识该来源的命令次序与重复投递，不能
+替代或覆盖围栏代际。受管步骤关闭与 owner deadline 同样走 ModelDev 的关闭
+事务；新关闭事实递增围栏一次，完全相同的命令回放不递增。不同来源的序号
+不相互比较，迟到命令不会重新开启创建，CLOSING 不表示已经没有写者。
+首个 USER_STOP 墓碑切片只保存并重读事实；同一全局身份、迟到受理、创建许可
+以及跨来源去重都须有对应事务及独立测试后才可接入真实创建。
+
 TrainingInput 带 execution/spec、已核验准备清单、登记程序/镜像/参数、CPU 资源、真实
 Workspace UID/受限子路径、输出合同和原 deadline。TrainingResult 是 WORKSPACE_ONLY
 候选，只有 CHECKPOINT；collector 检查路径、文件类型、实长和 SHA。
