@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01/conformance"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
@@ -17,11 +18,25 @@ import (
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/testsupport/postgres"
 )
 
-func TestResolveAdmissionFreezesSelectedReleaseAndReadyInput(t *testing.T) {
+type resolutionFixture struct {
+	ctx context.Context
+	openPool func() *pgxpool.Pool
+	release cpup01.ReleaseDocument
+	imported biz.InputImport
+	ready biz.InputVersion
+	selection biz.AdmissionResolutionRequest
+	facts biz.TenantAdmissionFacts
+	resolver *biz.AdmissionResolver
+	releaseReader *retainedReleaseReader
+	inputReader *retainedInputReader
+}
+
+func prepareResolution(t *testing.T) resolutionFixture {
+	t.Helper()
 	openPool := postgres.Prepare(t)
 	writer := openPool()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	t.Cleanup(cancel)
 	directory := t.TempDir()
 	release := conformance.ReleaseV1()
 	if _, err := catalogue.ImportRelease(ctx, directory, conformance.ReleaseCanonicalV1(), conformance.ReleaseSHA256V1); err != nil {
@@ -81,10 +96,6 @@ func TestResolveAdmissionFreezesSelectedReleaseAndReadyInput(t *testing.T) {
 		Name: "fixed-resolution", Kind: "GENERAL_TRAINING", PresetID: release.PresetID,
 		DatasetVersionID: request.InputVersionID, GeneralParameters: &parameters,
 	}
-	beforeIntent, beforeHash, err := cpup01.CanonicalIntent(intent)
-	if err != nil {
-		t.Fatalf("RESOLUTION_PREFLIGHT: intent fixture invalid; behavior NOT_RUN: %v", err)
-	}
 	selection := biz.AdmissionResolutionRequest{
 		TenantID: request.TenantID, Intent: intent,
 		Release:    biz.AdmissionReleaseSelection{ReleaseID: release.ReleaseID, ReleaseDigest: conformance.ReleaseSHA256V1, BindingGeneration: 7},
@@ -93,6 +104,24 @@ func TestResolveAdmissionFreezesSelectedReleaseAndReadyInput(t *testing.T) {
 	releaseReader := &retainedReleaseReader{delegate: catalogue.NewReader(directory)}
 	inputReader := &retainedInputReader{delegate: reader}
 	resolver := biz.NewAdmissionResolver(releaseReader, inputReader)
+	return resolutionFixture{
+		ctx: ctx, openPool: openPool, release: release, imported: request, ready: ready,
+		selection: selection, facts: facts, resolver: resolver,
+		releaseReader: releaseReader, inputReader: inputReader,
+	}
+}
+
+func TestResolveAdmissionFreezesSelectedReleaseAndReadyInput(t *testing.T) {
+	fixture := prepareResolution(t)
+	ctx, openPool := fixture.ctx, fixture.openPool
+	request, release, ready := fixture.imported, fixture.release, fixture.ready
+	selection, facts := fixture.selection, fixture.facts
+	intent, parameters := selection.Intent, *selection.Intent.GeneralParameters
+	beforeIntent, beforeHash, err := cpup01.CanonicalIntent(intent)
+	if err != nil {
+		t.Fatalf("RESOLUTION_PREFLIGHT: intent fixture invalid; behavior NOT_RUN: %v", err)
+	}
+	releaseReader, inputReader, resolver := fixture.releaseReader, fixture.inputReader, fixture.resolver
 	resolved, err := resolver.Resolve(ctx, selection, facts)
 	if err != nil {
 		t.Fatalf("resolve the selected immutable Release and persisted READY input: %v", err)
