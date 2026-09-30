@@ -30,3 +30,16 @@ func TestImportReleaseIsReadableByItsFixedIdentityAfterSuccess(t *testing.T) {
 		t.Fatalf("successful import was not independently readable: %+v, %v", loaded, err)
 	}
 }
+
+func TestImportReleaseExactReplayReturnsTheOriginalFileWithoutCreatingAgain(t *testing.T) {
+	directory:=t.TempDir()
+	first,err:=catalogue.ImportRelease(context.Background(),directory,conformance.ReleaseCanonicalV1(),conformance.ReleaseSHA256V1)
+	if err!=nil || !first.Created {t.Fatalf("initial import setup failed: %+v, %v",first,err)}
+	replayed,err:=catalogue.ImportRelease(context.Background(),directory,conformance.ReleaseCanonicalV1(),conformance.ReleaseSHA256V1)
+	if err!=nil {t.Fatalf("exact import replay: %v",err)}
+	if replayed.Created || replayed.ReleaseID!=first.ReleaseID || replayed.Digest!=first.Digest {
+		t.Fatalf("exact replay did not acknowledge original immutable identity: %+v",replayed)
+	}
+	loaded,err:=catalogue.ReadRelease(context.Background(),directory,first.ReleaseID,first.Digest)
+	if err!=nil || !reflect.DeepEqual(loaded,releaseFixtureDocument()) {t.Fatalf("replay did not preserve original complete file: %+v, %v",loaded,err)}
+}

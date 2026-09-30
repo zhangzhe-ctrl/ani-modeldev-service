@@ -134,6 +134,10 @@ schema 和当前启用记录均不在本切片。
 已在 Fedora 取得有效 RED：目录与 reader 预检 PASS 后 Import 返回
 `RELEASE_IMPORT_NOT_IMPLEMENTED`，exit 1（0.004s）。首次原子安装实现候选
 复用仓库已锁定 x/sys v0.47.0，实际使用 RENAME_NOREPLACE 和文件/目录 fsync；
-尚未取得 GREEN，同件 replay 暂未实现，下一独立测试补齐。随后依次
+格式与 x/sys direct 分类回传后，固定 `341ca00f685d865140cbb4386d4d3dbdec7b98d9`
+的首次 Import、目录全模块及完整合同/protobuf GREEN / test.exit 0。该版本的
+verify-source 生成内容稳定，最后全仓格式 gate 因并行输入模块未格式化而失败，
+不冒称全 gate PASS。同件 replay 暂未实现，下一独立测试要求 Created=false、
+原 ID/digest 回执及完整旧文件保持，待固定候选取得 RED。随后依次
 覆盖原件重投、同 ID 异件、竞争、取消与失败保留。真实文件测试不证明断电恢复，
 更不证明 T02 的真实环境校验或授权入口已经交付。
