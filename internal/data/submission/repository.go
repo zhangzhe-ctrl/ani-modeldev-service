@@ -90,7 +90,7 @@ func (repository *Repository) Reserve(ctx context.Context, request biz.PipelineD
 	}
 	row, err := queries.GetPipelineDispatch(ctx, submissionsql.GetPipelineDispatchParams{TenantID: tenantID, ExecutionID: executionID})
 	if err == nil {
-		dispatch, err := dispatchFromRow(row, admission)
+		dispatch, err := readDispatch(ctx, queries, row, admission)
 		if err != nil {
 			return biz.PipelineDispatchReservation{}, err
 		}
@@ -125,7 +125,7 @@ func (repository *Repository) Reserve(ctx context.Context, request biz.PipelineD
 	if err != nil {
 		return biz.PipelineDispatchReservation{}, biz.ErrPersistence
 	}
-	dispatch, err := dispatchFromRow(row, admission)
+	dispatch, err := dispatchFromRow(row, admission, nil)
 	if err != nil {
 		return biz.PipelineDispatchReservation{}, err
 	}
@@ -152,7 +152,14 @@ func (repository *Repository) Get(ctx context.Context, tenant, execution string)
 	if repository == nil || repository.pool == nil {
 		return biz.PipelineDispatch{}, biz.ErrPersistence
 	}
-	queries := submissionsql.New(repository.pool)
+	// State and immutable handles must come from one snapshot. Separate
+	// ReadCommitted statements could combine old state with a new Run list.
+	transaction, err := repository.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return biz.PipelineDispatch{}, biz.ErrPersistence
+	}
+	defer rollback(transaction)
+	queries := submissionsql.New(transaction)
 	row, err := queries.GetPipelineDispatch(ctx, submissionsql.GetPipelineDispatchParams{TenantID: tenantID, ExecutionID: executionID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return biz.PipelineDispatch{}, biz.ErrExecutionNotFound
@@ -164,7 +171,14 @@ func (repository *Repository) Get(ctx context.Context, tenant, execution string)
 	if err != nil {
 		return biz.PipelineDispatch{}, biz.ErrPersistence
 	}
-	return dispatchFromRow(row, admission)
+	dispatch, err := readDispatch(ctx, queries, row, admission)
+	if err != nil {
+		return biz.PipelineDispatch{}, err
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return biz.PipelineDispatch{}, biz.ErrPersistence
+	}
+	return dispatch, nil
 }
 
 var _ biz.PipelineDispatchRepository = (*Repository)(nil)
@@ -186,7 +200,19 @@ func rollback(transaction pgx.Tx) {
 	_ = transaction.Rollback(ctx)
 }
 
-func dispatchFromRow(row submissionsql.ModeldevPipelineDispatch, original submissionsql.ModeldevExecution) (biz.PipelineDispatch, error) {
+// The caller supplies either a locked writer transaction or a read-only
+// RepeatableRead transaction, so the parent and child facts cannot be torn.
+func readDispatch(ctx context.Context, queries *submissionsql.Queries, row submissionsql.ModeldevPipelineDispatch, original submissionsql.ModeldevExecution) (biz.PipelineDispatch, error) {
+	runs, err := queries.ListConfirmedPipelineRuns(ctx, submissionsql.ListConfirmedPipelineRunsParams{
+		TenantID: row.TenantID, ExecutionID: row.ExecutionID, AttemptID: row.AttemptID, PlanHash: row.PlanHash,
+	})
+	if err != nil {
+		return biz.PipelineDispatch{}, biz.ErrPersistence
+	}
+	return dispatchFromRow(row, original, runs)
+}
+
+func dispatchFromRow(row submissionsql.ModeldevPipelineDispatch, original submissionsql.ModeldevExecution, runs []submissionsql.ModeldevPipelineConfirmedRun) (biz.PipelineDispatch, error) {
 	if !row.TenantID.Valid || !row.ExecutionID.Valid || !row.OperationID.Valid || !row.AttemptID.Valid || row.AttemptID.Bytes == [16]byte{} ||
 		!row.ReservedAt.Valid || row.ReservedAt.InfinityModifier != pgtype.Finite || row.ReservedAt.Time.IsZero() ||
 		row.TenantID != original.TenantID || row.ExecutionID != original.ExecutionID || row.OperationID != original.OperationID || row.SpecHash != original.SpecHash ||
@@ -220,19 +246,42 @@ func dispatchFromRow(row submissionsql.ModeldevPipelineDispatch, original submis
 		return biz.PipelineDispatch{}, biz.ErrPersistence
 	}
 	dispatch := biz.PipelineDispatch{AttemptID: row.AttemptID.String(), Plan: plan, PlanHash: hash, State: biz.PipelineDispatchState(row.State), ReservedAt: row.ReservedAt.Time.UTC()}
-	switch dispatch.State {
-	case biz.PipelineDispatchSubmitting:
-		if row.UncertainAt.Valid {
-			return biz.PipelineDispatch{}, biz.ErrPersistence
-		}
-	case biz.PipelineDispatchUncertain:
-		if !row.UncertainAt.Valid || row.UncertainAt.InfinityModifier != pgtype.Finite || !validUncertaintyTime(row.UncertainAt.Time) || row.UncertainAt.Time.Before(dispatch.ReservedAt) {
+	if row.UncertainAt.Valid {
+		if row.UncertainAt.InfinityModifier != pgtype.Finite || !validObservationTime(row.UncertainAt.Time) || row.UncertainAt.Time.Before(dispatch.ReservedAt) {
 			return biz.PipelineDispatch{}, biz.ErrPersistence
 		}
 		observedAt := row.UncertainAt.Time.UTC()
 		dispatch.UncertainAt = &observedAt
+	}
+	switch dispatch.State {
+	case biz.PipelineDispatchSubmitting:
+		if row.UncertainAt.Valid || len(runs) != 0 {
+			return biz.PipelineDispatch{}, biz.ErrPersistence
+		}
+	case biz.PipelineDispatchUncertain:
+		if !row.UncertainAt.Valid || len(runs) != 0 {
+			return biz.PipelineDispatch{}, biz.ErrPersistence
+		}
+	case biz.PipelineDispatchConfirmed:
+		if len(runs) == 0 {
+			return biz.PipelineDispatch{}, biz.ErrPersistence
+		}
 	default:
 		return biz.PipelineDispatch{}, biz.ErrPersistence
+	}
+	previousRunID := ""
+	for _, run := range runs {
+		if run.TenantID != row.TenantID || run.ExecutionID != row.ExecutionID || run.AttemptID != row.AttemptID || run.PlanHash != row.PlanHash ||
+			!run.RunID.Valid || run.RunID.Bytes == [16]byte{} || !run.FirstObservedAt.Valid || run.FirstObservedAt.InfinityModifier != pgtype.Finite ||
+			!validObservationTime(run.FirstObservedAt.Time) || run.FirstObservedAt.Time.Before(dispatch.ReservedAt) {
+			return biz.PipelineDispatch{}, biz.ErrPersistence
+		}
+		runID := run.RunID.String()
+		if runID <= previousRunID {
+			return biz.PipelineDispatch{}, biz.ErrPersistence
+		}
+		previousRunID = runID
+		dispatch.ConfirmedRuns = append(dispatch.ConfirmedRuns, biz.PipelineConfirmedRun{RunID: runID, FirstObservedAt: run.FirstObservedAt.Time.UTC()})
 	}
 	return dispatch, nil
 }
