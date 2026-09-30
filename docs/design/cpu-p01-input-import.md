@@ -29,5 +29,15 @@ ModelDev 维护版本化 SQL/sqlc。输入记录使用 tenant_id 的显式查询
 使用已有 Fedora 专属 PostgreSQL 的受限 runtime、独立随机 schema；复用
 execution 的真实数据库准备方法，准备失败与行为 RED 分开报告。
 
-当前 VerifyCSV 固定 `3910d33` 的 SDK 边界测试 PASS。输入持久化、READY CAS、
-受管入口和 List/Get 授权正在逐个实施；本文合同不是已交付状态。
+当前 VerifyCSV 包括字段长度检查的 SDK 边界测试、输入固定申请/重放/新连接读取，
+已在 `3ebe0a0` 完整 Fedora `make verify` 中 PASS。输入并发和作用域回归继续。
+
+下一切片 `RecordVerifiedCSV` 是受信内部持久边界：锁定原输入后比较完整申请，
+匹配校验过的同一对象版本、实长、SHA 与固定 CSV schema/行列数才从 VALIDATING
+变为 READY。原申请字段永不改写；保存校验时间、schema 和行列数，并以原固定
+对象记录恢复匹配的实字节证明。校验时间按 PostgreSQL 微秒精度规范化。
+同一已 READY 输入的等价校验返回最早保存的证明，不刷新时间；不同申请或
+证明冲突/拒绝，不能将 READY 降回校验中。这一能力正在 TDD，尚未取得 GREEN。
+
+管理员入口、当前授权、真实 S3 装配和 List/Get 授权尚未实现；本文合同不是
+已交付状态，仓储的合成校验证明不代表 S3 或端到端业务通过。

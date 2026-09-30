@@ -43,11 +43,15 @@ type InputImport struct {
 
 type InputState string
 
-const InputStateValidating InputState = "VALIDATING"
+const (
+	InputStateValidating InputState = "VALIDATING"
+	InputStateReady InputState = "READY"
+)
 
 type InputVersion struct {
 	Import InputImport
 	State  InputState
+	Verification *VerifiedCSV
 }
 
 // Validate checks the immutable request's structure, not source permissions or
