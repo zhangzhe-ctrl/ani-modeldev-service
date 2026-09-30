@@ -29,7 +29,7 @@ func TestInputVerificationBecomesReadyOnlyAfterMatchingProofIsDurable(t *testing
 	// transition. Actual byte/CSV verification has separate SDK boundary tests.
 	proof := biz.VerifiedCSV{
 		VerifiedObject: biz.VerifiedObject{Object: request.Object, VerifiedAt: request.RequestedAt.Add(time.Minute)},
-		SchemaVersion: "ani.cpu.csv.v1", RowCount: 1024, FeatureCount: 16,
+		SchemaVersion:  "ani.cpu.csv.v1", RowCount: 1024, FeatureCount: 16,
 	}
 	ready, err := repository.RecordVerifiedCSV(ctx, request, proof)
 	if err != nil {

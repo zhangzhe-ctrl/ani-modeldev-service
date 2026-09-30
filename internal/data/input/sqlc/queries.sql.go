@@ -12,7 +12,7 @@ import (
 )
 
 const getInputVersion = `-- name: GetInputVersion :one
-SELECT tenant_id, input_version_id, request_id, actor, requested_at, storage_connection_id, bucket, approved_prefix, object_key, object_version_id, size_bytes, sha256, state, credential_reference FROM modeldev_input_versions
+SELECT tenant_id, input_version_id, request_id, actor, requested_at, storage_connection_id, bucket, approved_prefix, object_key, object_version_id, size_bytes, sha256, state, credential_reference, verified_at, verified_schema_version, verified_row_count, verified_feature_count FROM modeldev_input_versions
 WHERE tenant_id = $1::uuid
   AND input_version_id = $2::uuid
 `
@@ -40,6 +40,10 @@ func (q *Queries) GetInputVersion(ctx context.Context, arg GetInputVersionParams
 		&i.Sha256,
 		&i.State,
 		&i.CredentialReference,
+		&i.VerifiedAt,
+		&i.VerifiedSchemaVersion,
+		&i.VerifiedRowCount,
+		&i.VerifiedFeatureCount,
 	)
 	return i, err
 }
@@ -56,7 +60,7 @@ INSERT INTO modeldev_input_versions (
     $9, $10, $11, $12, $13
 )
 ON CONFLICT DO NOTHING
-RETURNING tenant_id, input_version_id, request_id, actor, requested_at, storage_connection_id, bucket, approved_prefix, object_key, object_version_id, size_bytes, sha256, state, credential_reference
+RETURNING tenant_id, input_version_id, request_id, actor, requested_at, storage_connection_id, bucket, approved_prefix, object_key, object_version_id, size_bytes, sha256, state, credential_reference, verified_at, verified_schema_version, verified_row_count, verified_feature_count
 `
 
 type InsertFrozenImportParams struct {
@@ -107,6 +111,106 @@ func (q *Queries) InsertFrozenImport(ctx context.Context, arg InsertFrozenImport
 		&i.Sha256,
 		&i.State,
 		&i.CredentialReference,
+		&i.VerifiedAt,
+		&i.VerifiedSchemaVersion,
+		&i.VerifiedRowCount,
+		&i.VerifiedFeatureCount,
+	)
+	return i, err
+}
+
+const lockInputVersion = `-- name: LockInputVersion :one
+SELECT tenant_id, input_version_id, request_id, actor, requested_at, storage_connection_id, bucket, approved_prefix, object_key, object_version_id, size_bytes, sha256, state, credential_reference, verified_at, verified_schema_version, verified_row_count, verified_feature_count FROM modeldev_input_versions
+WHERE tenant_id = $1::uuid
+  AND input_version_id = $2::uuid
+FOR UPDATE
+`
+
+type LockInputVersionParams struct {
+	TenantID       pgtype.UUID
+	InputVersionID pgtype.UUID
+}
+
+func (q *Queries) LockInputVersion(ctx context.Context, arg LockInputVersionParams) (ModeldevInputVersion, error) {
+	row := q.db.QueryRow(ctx, lockInputVersion, arg.TenantID, arg.InputVersionID)
+	var i ModeldevInputVersion
+	err := row.Scan(
+		&i.TenantID,
+		&i.InputVersionID,
+		&i.RequestID,
+		&i.Actor,
+		&i.RequestedAt,
+		&i.StorageConnectionID,
+		&i.Bucket,
+		&i.ApprovedPrefix,
+		&i.ObjectKey,
+		&i.ObjectVersionID,
+		&i.SizeBytes,
+		&i.Sha256,
+		&i.State,
+		&i.CredentialReference,
+		&i.VerifiedAt,
+		&i.VerifiedSchemaVersion,
+		&i.VerifiedRowCount,
+		&i.VerifiedFeatureCount,
+	)
+	return i, err
+}
+
+const recordVerifiedCSV = `-- name: RecordVerifiedCSV :one
+UPDATE modeldev_input_versions
+SET state = 'READY',
+    verified_at = $1,
+    verified_schema_version = $2,
+    verified_row_count = $3,
+    verified_feature_count = $4
+WHERE tenant_id = $5::uuid
+  AND input_version_id = $6::uuid
+  AND request_id = $7::uuid
+  AND state = 'VALIDATING'
+RETURNING tenant_id, input_version_id, request_id, actor, requested_at, storage_connection_id, bucket, approved_prefix, object_key, object_version_id, size_bytes, sha256, state, credential_reference, verified_at, verified_schema_version, verified_row_count, verified_feature_count
+`
+
+type RecordVerifiedCSVParams struct {
+	VerifiedAt            pgtype.Timestamptz
+	VerifiedSchemaVersion pgtype.Text
+	VerifiedRowCount      pgtype.Int4
+	VerifiedFeatureCount  pgtype.Int4
+	TenantID              pgtype.UUID
+	InputVersionID        pgtype.UUID
+	RequestID             pgtype.UUID
+}
+
+func (q *Queries) RecordVerifiedCSV(ctx context.Context, arg RecordVerifiedCSVParams) (ModeldevInputVersion, error) {
+	row := q.db.QueryRow(ctx, recordVerifiedCSV,
+		arg.VerifiedAt,
+		arg.VerifiedSchemaVersion,
+		arg.VerifiedRowCount,
+		arg.VerifiedFeatureCount,
+		arg.TenantID,
+		arg.InputVersionID,
+		arg.RequestID,
+	)
+	var i ModeldevInputVersion
+	err := row.Scan(
+		&i.TenantID,
+		&i.InputVersionID,
+		&i.RequestID,
+		&i.Actor,
+		&i.RequestedAt,
+		&i.StorageConnectionID,
+		&i.Bucket,
+		&i.ApprovedPrefix,
+		&i.ObjectKey,
+		&i.ObjectVersionID,
+		&i.SizeBytes,
+		&i.Sha256,
+		&i.State,
+		&i.CredentialReference,
+		&i.VerifiedAt,
+		&i.VerifiedSchemaVersion,
+		&i.VerifiedRowCount,
+		&i.VerifiedFeatureCount,
 	)
 	return i, err
 }

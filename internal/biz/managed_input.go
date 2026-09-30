@@ -28,6 +28,21 @@ type VerifiedCSV struct {
 	FeatureCount  uint32
 }
 
+// ValidateFor binds a trusted byte observation to the already frozen request.
+// It does not obtain the observation or establish the caller's authority.
+func (verified VerifiedCSV) ValidateFor(request InputImport) error {
+	object, expected := verified.Object, request.Object
+	when := verified.VerifiedAt.UTC()
+	if request.Validate() != nil || when.IsZero() || when.Year() < 1 || when.Year() > 9999 || when.Before(request.RequestedAt) ||
+		verified.SchemaVersion != "ani.cpu.csv.v1" || verified.RowCount != 1024 || verified.FeatureCount != 16 ||
+		object.StorageConnectionID != expected.StorageConnectionID || object.Bucket != expected.Bucket || object.Key != expected.Key ||
+		object.VersionID == nil || expected.VersionID == nil || *object.VersionID != *expected.VersionID || object.ImmutableCopy != nil ||
+		object.SizeBytes != expected.SizeBytes || object.SHA256 != expected.SHA256 {
+		return ErrInputVerification
+	}
+	return nil
+}
+
 // InputImport is a trusted request fixed before any remote validation. Tenant,
 // actor and storage scope must come from the managed import authorization path.
 // Neither a request nor its durable receipt establishes a READY input.
@@ -45,12 +60,12 @@ type InputState string
 
 const (
 	InputStateValidating InputState = "VALIDATING"
-	InputStateReady InputState = "READY"
+	InputStateReady      InputState = "READY"
 )
 
 type InputVersion struct {
-	Import InputImport
-	State  InputState
+	Import       InputImport
+	State        InputState
 	Verification *VerifiedCSV
 }
 

@@ -19,39 +19,21 @@ type Repository struct{ pool *pgxpool.Pool }
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
 
 func (r *Repository) FreezeImport(ctx context.Context, request biz.InputImport) (biz.InputVersion, error) {
-	if err := request.Validate(); err != nil {
+	command, err := importCommand(request)
+	if err != nil {
 		return biz.InputVersion{}, err
 	}
 	if r == nil || r.pool == nil {
 		return biz.InputVersion{}, biz.ErrPersistence
 	}
-	tenant, err := databaseID(request.TenantID)
-	if err != nil {
-		return biz.InputVersion{}, err
-	}
-	inputID, err := databaseID(request.InputVersionID)
-	if err != nil {
-		return biz.InputVersion{}, err
-	}
-	requestID, err := databaseID(request.RequestID)
-	if err != nil {
-		return biz.InputVersion{}, err
-	}
 	// One immutable row is the complete import command. The autocommit INSERT
 	// must finish before this method can acknowledge the VALIDATING receipt.
-	command := inputsql.InsertFrozenImportParams{
-		TenantID: tenant, InputVersionID: inputID, RequestID: requestID,
-		Actor: request.Actor, RequestedAt: pgtype.Timestamptz{Time: request.RequestedAt.UTC(), Valid: true},
-		StorageConnectionID: request.Scope.StorageConnectionID, Bucket: request.Scope.Bucket, ApprovedPrefix: request.Scope.ApprovedPrefix,
-		CredentialReference: request.Scope.CredentialReference,
-		ObjectKey:           request.Object.Key, ObjectVersionID: *request.Object.VersionID, SizeBytes: request.Object.SizeBytes, Sha256: request.Object.SHA256,
-	}
 	queries := inputsql.New(r.pool)
 	row, err := queries.InsertFrozenImport(ctx, command)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// ON CONFLICT waits for a competing insertion to finish. Immutable
 		// request fields can then be compared through this explicit tenant read.
-		row, err = queries.GetInputVersion(ctx, inputsql.GetInputVersionParams{TenantID: tenant, InputVersionID: inputID})
+		row, err = queries.GetInputVersion(ctx, inputsql.GetInputVersionParams{TenantID: command.TenantID, InputVersionID: command.InputVersionID})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return biz.InputVersion{}, biz.ErrInputConflict
 		}
@@ -66,6 +48,31 @@ func (r *Repository) FreezeImport(ctx context.Context, request biz.InputImport) 
 		return biz.InputVersion{}, biz.ErrPersistence
 	}
 	return versionFromRow(row)
+}
+
+func importCommand(request biz.InputImport) (inputsql.InsertFrozenImportParams, error) {
+	if err := request.Validate(); err != nil {
+		return inputsql.InsertFrozenImportParams{}, err
+	}
+	tenant, err := databaseID(request.TenantID)
+	if err != nil {
+		return inputsql.InsertFrozenImportParams{}, err
+	}
+	inputID, err := databaseID(request.InputVersionID)
+	if err != nil {
+		return inputsql.InsertFrozenImportParams{}, err
+	}
+	requestID, err := databaseID(request.RequestID)
+	if err != nil {
+		return inputsql.InsertFrozenImportParams{}, err
+	}
+	return inputsql.InsertFrozenImportParams{
+		TenantID: tenant, InputVersionID: inputID, RequestID: requestID,
+		Actor: request.Actor, RequestedAt: pgtype.Timestamptz{Time: request.RequestedAt.UTC(), Valid: true},
+		StorageConnectionID: request.Scope.StorageConnectionID, Bucket: request.Scope.Bucket, ApprovedPrefix: request.Scope.ApprovedPrefix,
+		CredentialReference: request.Scope.CredentialReference,
+		ObjectKey: request.Object.Key, ObjectVersionID: *request.Object.VersionID, SizeBytes: request.Object.SizeBytes, Sha256: request.Object.SHA256,
+	}, nil
 }
 
 func sameImport(row inputsql.ModeldevInputVersion, command inputsql.InsertFrozenImportParams) bool {
@@ -109,7 +116,7 @@ func databaseID(value string) (pgtype.UUID, error) {
 }
 
 func versionFromRow(row inputsql.ModeldevInputVersion) (biz.InputVersion, error) {
-	if !row.TenantID.Valid || !row.InputVersionID.Valid || !row.RequestID.Valid || !row.RequestedAt.Valid || row.RequestedAt.InfinityModifier != pgtype.Finite || row.State != string(biz.InputStateValidating) {
+	if !row.TenantID.Valid || !row.InputVersionID.Valid || !row.RequestID.Valid || !row.RequestedAt.Valid || row.RequestedAt.InfinityModifier != pgtype.Finite {
 		return biz.InputVersion{}, biz.ErrPersistence
 	}
 	request := biz.InputImport{
@@ -120,5 +127,26 @@ func versionFromRow(row inputsql.ModeldevInputVersion) (biz.InputVersion, error)
 	if request.Validate() != nil {
 		return biz.InputVersion{}, biz.ErrPersistence
 	}
-	return biz.InputVersion{Import: request, State: biz.InputStateValidating}, nil
+	version := biz.InputVersion{Import: request, State: biz.InputState(row.State)}
+	switch version.State {
+	case biz.InputStateValidating:
+		if row.VerifiedAt.Valid || row.VerifiedSchemaVersion.Valid || row.VerifiedRowCount.Valid || row.VerifiedFeatureCount.Valid {
+			return biz.InputVersion{}, biz.ErrPersistence
+		}
+	case biz.InputStateReady:
+		if !row.VerifiedAt.Valid || row.VerifiedAt.InfinityModifier != pgtype.Finite || !row.VerifiedSchemaVersion.Valid || !row.VerifiedRowCount.Valid || !row.VerifiedFeatureCount.Valid {
+			return biz.InputVersion{}, biz.ErrPersistence
+		}
+		proof := biz.VerifiedCSV{
+			VerifiedObject: biz.VerifiedObject{Object: request.Object, VerifiedAt: row.VerifiedAt.Time.UTC()},
+			SchemaVersion: row.VerifiedSchemaVersion.String, RowCount: uint32(row.VerifiedRowCount.Int32), FeatureCount: uint32(row.VerifiedFeatureCount.Int32),
+		}
+		if proof.ValidateFor(request) != nil {
+			return biz.InputVersion{}, biz.ErrPersistence
+		}
+		version.Verification = &proof
+	default:
+		return biz.InputVersion{}, biz.ErrPersistence
+	}
+	return version, nil
 }
