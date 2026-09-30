@@ -34,6 +34,16 @@ actor 是 Governance 验证过的 `governance:user:<id>` 或
 action 固定为本片 CreateExecution。先检查已有键，再解析当前 Release；权限仍按当前
 主体和资源重新检查。同键同意图返回原操作和快照，同键异意图返回 IDEMPOTENCY_CONFLICT。
 
+本切片的 Governance 当前启用指针按 `(resource_tenant_id, preset_id)` 定位；
+其本地 tenant_id 必须与已验证的 resource_tenant_id 映射相符，并由复合约束保留
+这层租户关系。指针保存不可变 release_id/digest、单调 generation 和
+new_submissions_enabled。它不是按 actor 选择的个人默认，也不是全平台无租户
+settings。此作用域落实 CPU05 的测试租户受管启用及原有租户边界；原 v0.4 只给出
+binding_key 的抽象描述，本段明确本切片的实现选择，不声称旧来源已定义同一维度。
+ModelDev 持有不可变目录，不另建当前启用指针。当前指针暂停或变化仍不影响原键
+重放、查询、停止；新受理须在事务中复核冻结前读取的 generation，远端目录解析
+发生于该事务之外。CAS 同目标重放不增加 generation，不绕过当前操作者授权。
+
 `intent_hash = lowercase_hex(SHA256(canonical_intent_utf8))`，无 BOM、无尾随换行。
 canonical_intent 是固定字段序 JSON：schema、name、kind、preset_id、dataset_version_id、
 image_version_id、general_parameters、source_execution_id；schema 恒为
