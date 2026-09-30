@@ -143,13 +143,17 @@ func Prepare(t *testing.T) func() *pgxpool.Pool {
 func repositoryRoot(t *testing.T) string {
 	t.Helper()
 	directory, err := os.Getwd()
-	if err != nil { t.Fatal("CPU04_DB_PREFLIGHT: cannot locate checkout; behavior NOT_RUN") }
+	if err != nil {
+		t.Fatal("CPU04_DB_PREFLIGHT: cannot locate checkout; behavior NOT_RUN")
+	}
 	for {
 		if info, err := os.Stat(filepath.Join(directory, "go.mod")); err == nil && info.Mode().IsRegular() {
 			return directory
 		}
 		parent := filepath.Dir(directory)
-		if parent == directory { t.Fatal("CPU04_DB_PREFLIGHT: module root missing; behavior NOT_RUN") }
+		if parent == directory {
+			t.Fatal("CPU04_DB_PREFLIGHT: module root missing; behavior NOT_RUN")
+		}
 		directory = parent
 	}
 }

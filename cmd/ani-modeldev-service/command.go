@@ -24,26 +24,44 @@ import (
 func buildCommandServer(listener *conf.Server_GRPC, config *conf.GovernanceCommand, middlewares ...middleware.Middleware) (*kratosgrpc.Server, func(), error) {
 	failed := func(message string) (*kratosgrpc.Server, func(), error) { return nil, nil, errors.New(message) }
 	ca, err := readCommandMaterial(config.ClientCaFile, 1<<20)
-	if err != nil { return failed("command CA material unavailable") }
+	if err != nil {
+		return failed("command CA material unavailable")
+	}
 	roots := x509.NewCertPool()
-	if !roots.AppendCertsFromPEM(ca) { return failed("command CA material invalid") }
+	if !roots.AppendCertsFromPEM(ca) {
+		return failed("command CA material invalid")
+	}
 	certificatePEM, err := readCommandMaterial(config.CertificateFile, 1<<20)
-	if err != nil { return failed("command server certificate unavailable") }
+	if err != nil {
+		return failed("command server certificate unavailable")
+	}
 	privateKeyPEM, err := readCommandMaterial(config.PrivateKeyFile, 1<<20)
-	if err != nil { return failed("command server key unavailable") }
+	if err != nil {
+		return failed("command server key unavailable")
+	}
 	certificate, err := tls.X509KeyPair(certificatePEM, privateKeyPEM)
-	if err != nil { return failed("command server certificate pair invalid") }
+	if err != nil {
+		return failed("command server certificate pair invalid")
+	}
 	databaseBytes, err := readCommandMaterial(config.DatabaseUrlFile, 16<<10)
-	if err != nil { return failed("command database reference unavailable") }
+	if err != nil {
+		return failed("command database reference unavailable")
+	}
 	connection := strings.TrimSpace(string(databaseBytes))
-	if connection == "" { return failed("command database configuration invalid") }
+	if connection == "" {
+		return failed("command database configuration invalid")
+	}
 	poolConfig, err := pgxpool.ParseConfig(connection)
-	if err != nil { return failed("command database configuration invalid") }
+	if err != nil {
+		return failed("command database configuration invalid")
+	}
 	poolConfig.MaxConns = 4
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
-	if err != nil { return failed("command database unavailable") }
+	if err != nil {
+		return failed("command database unavailable")
+	}
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
 		return failed("command database unavailable")
@@ -63,9 +81,13 @@ func readCommandMaterial(path string, maximum int64) ([]byte, error) {
 		return nil, errors.New("command material unavailable")
 	}
 	file, err := os.Open(path)
-	if err != nil { return nil, errors.New("command material unavailable") }
+	if err != nil {
+		return nil, errors.New("command material unavailable")
+	}
 	defer file.Close()
 	value, err := io.ReadAll(io.LimitReader(file, maximum+1))
-	if err != nil || len(value) == 0 || int64(len(value)) > maximum { return nil, errors.New("command material unavailable") }
+	if err != nil || len(value) == 0 || int64(len(value)) > maximum {
+		return nil, errors.New("command material unavailable")
+	}
 	return value, nil
 }
