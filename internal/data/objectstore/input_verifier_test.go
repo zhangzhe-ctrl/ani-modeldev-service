@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -36,7 +37,7 @@ func TestVerifyCSVReadsFixedVersionAndActualRegisteredShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("verify fixed CSV bytes: %v", err)
 	}
-	if gets.Load() != 1 || got.Object != object || got.SchemaVersion != "ani.cpu.csv.v1" || got.RowCount != 1024 || got.FeatureCount != 16 || got.VerifiedAt.IsZero() {
+	if gets.Load() != 1 || !reflect.DeepEqual(got.Object, object) || got.SchemaVersion != "ani.cpu.csv.v1" || got.RowCount != 1024 || got.FeatureCount != 16 || got.VerifiedAt.IsZero() {
 		t.Fatalf("missing observed immutable input facts: %+v", got)
 	}
 }
