@@ -43,7 +43,7 @@ func (q *Queries) GetAdmission(ctx context.Context, arg GetAdmissionParams) (Mod
 
 const getPipelineDispatch = `-- name: GetPipelineDispatch :one
 SELECT tenant_id, execution_id, operation_id, spec_hash, attempt_id,
-    plan_canonical, plan_hash, state, reserved_at, uncertain_at
+    plan_canonical, plan_hash, state, reserved_at, uncertain_at, not_sent_at
 FROM modeldev_pipeline_dispatches
 WHERE tenant_id = $1::uuid
   AND execution_id = $2::uuid
@@ -68,6 +68,7 @@ func (q *Queries) GetPipelineDispatch(ctx context.Context, arg GetPipelineDispat
 		&i.State,
 		&i.ReservedAt,
 		&i.UncertainAt,
+		&i.NotSentAt,
 	)
 	return i, err
 }
@@ -120,7 +121,7 @@ WHERE tenant_id = $3::uuid
   AND execution_id = $4::uuid
   AND attempt_id = $5::uuid
   AND plan_hash = $6::text
-  AND state IN ('SUBMITTING', 'SUBMISSION_UNCERTAIN', 'SUBMISSION_CONFIRMED')
+  AND state IN ('SUBMITTING', 'SUBMISSION_NOT_SENT', 'SUBMISSION_UNCERTAIN', 'SUBMISSION_CONFIRMED')
   AND $2::timestamptz >= reserved_at
 ON CONFLICT (tenant_id, execution_id, attempt_id, run_id) DO NOTHING
 `
@@ -168,7 +169,7 @@ WHERE tenant_id = $4::uuid
   AND close_generation = 0
   AND clock_timestamp() < $8::timestamptz
 RETURNING tenant_id, execution_id, operation_id, spec_hash, attempt_id,
-    plan_canonical, plan_hash, state, reserved_at, uncertain_at
+    plan_canonical, plan_hash, state, reserved_at, uncertain_at, not_sent_at
 `
 
 type InsertPipelineDispatchParams struct {
@@ -208,6 +209,7 @@ func (q *Queries) InsertPipelineDispatch(ctx context.Context, arg InsertPipeline
 		&i.State,
 		&i.ReservedAt,
 		&i.UncertainAt,
+		&i.NotSentAt,
 	)
 	return i, err
 }
@@ -307,7 +309,7 @@ WHERE dispatch.tenant_id = $1::uuid
   AND dispatch.execution_id = $2::uuid
   AND dispatch.attempt_id = $3::uuid
   AND dispatch.plan_hash = $4::text
-  AND dispatch.state IN ('SUBMITTING', 'SUBMISSION_UNCERTAIN')
+  AND dispatch.state IN ('SUBMITTING', 'SUBMISSION_NOT_SENT', 'SUBMISSION_UNCERTAIN')
   AND EXISTS (
       SELECT 1
       FROM modeldev_pipeline_confirmed_runs AS observed
@@ -318,7 +320,7 @@ WHERE dispatch.tenant_id = $1::uuid
   )
 RETURNING dispatch.tenant_id, dispatch.execution_id, dispatch.operation_id,
     dispatch.spec_hash, dispatch.attempt_id, dispatch.plan_canonical,
-    dispatch.plan_hash, dispatch.state, dispatch.reserved_at, dispatch.uncertain_at
+    dispatch.plan_hash, dispatch.state, dispatch.reserved_at, dispatch.uncertain_at, dispatch.not_sent_at
 `
 
 type MarkSubmissionConfirmedParams struct {
@@ -329,7 +331,7 @@ type MarkSubmissionConfirmedParams struct {
 }
 
 // In the same transaction as the retained handle, mark the original attempt's
-// first confirmation without erasing an earlier uncertainty observation.
+// first confirmation without erasing earlier no-send/uncertainty observations.
 func (q *Queries) MarkSubmissionConfirmed(ctx context.Context, arg MarkSubmissionConfirmedParams) (ModeldevPipelineDispatch, error) {
 	row := q.db.QueryRow(ctx, markSubmissionConfirmed,
 		arg.TenantID,
@@ -349,6 +351,58 @@ func (q *Queries) MarkSubmissionConfirmed(ctx context.Context, arg MarkSubmissio
 		&i.State,
 		&i.ReservedAt,
 		&i.UncertainAt,
+		&i.NotSentAt,
+	)
+	return i, err
+}
+
+const markSubmissionNotSent = `-- name: MarkSubmissionNotSent :one
+UPDATE modeldev_pipeline_dispatches
+SET not_sent_at = $1::timestamptz,
+    state = CASE WHEN state = 'SUBMITTING' THEN 'SUBMISSION_NOT_SENT' ELSE state END
+WHERE tenant_id = $2::uuid
+  AND execution_id = $3::uuid
+  AND attempt_id = $4::uuid
+  AND plan_hash = $5::text
+  AND state IN ('SUBMITTING', 'SUBMISSION_NOT_SENT', 'SUBMISSION_UNCERTAIN', 'SUBMISSION_CONFIRMED')
+  AND not_sent_at IS NULL
+  AND $1::timestamptz >= reserved_at
+RETURNING tenant_id, execution_id, operation_id, spec_hash, attempt_id,
+    plan_canonical, plan_hash, state, reserved_at, uncertain_at, not_sent_at
+`
+
+type MarkSubmissionNotSentParams struct {
+	ObservedAt  pgtype.Timestamptz
+	TenantID    pgtype.UUID
+	ExecutionID pgtype.UUID
+	AttemptID   pgtype.UUID
+	PlanHash    string
+}
+
+// Keep the first local no-send observation even when a stronger observation
+// arrived first. Existing uncertainty/confirmation and all Run handles remain.
+// The caller holds the original identity lock and has matched the frozen plan.
+func (q *Queries) MarkSubmissionNotSent(ctx context.Context, arg MarkSubmissionNotSentParams) (ModeldevPipelineDispatch, error) {
+	row := q.db.QueryRow(ctx, markSubmissionNotSent,
+		arg.ObservedAt,
+		arg.TenantID,
+		arg.ExecutionID,
+		arg.AttemptID,
+		arg.PlanHash,
+	)
+	var i ModeldevPipelineDispatch
+	err := row.Scan(
+		&i.TenantID,
+		&i.ExecutionID,
+		&i.OperationID,
+		&i.SpecHash,
+		&i.AttemptID,
+		&i.PlanCanonical,
+		&i.PlanHash,
+		&i.State,
+		&i.ReservedAt,
+		&i.UncertainAt,
+		&i.NotSentAt,
 	)
 	return i, err
 }
@@ -360,11 +414,11 @@ WHERE tenant_id = $2::uuid
   AND execution_id = $3::uuid
   AND attempt_id = $4::uuid
   AND plan_hash = $5::text
-  AND state = 'SUBMITTING'
+  AND state IN ('SUBMITTING', 'SUBMISSION_NOT_SENT')
   AND uncertain_at IS NULL
   AND $1::timestamptz >= reserved_at
 RETURNING tenant_id, execution_id, operation_id, spec_hash, attempt_id,
-    plan_canonical, plan_hash, state, reserved_at, uncertain_at
+    plan_canonical, plan_hash, state, reserved_at, uncertain_at, not_sent_at
 `
 
 type MarkSubmissionUncertainParams struct {
@@ -398,6 +452,7 @@ func (q *Queries) MarkSubmissionUncertain(ctx context.Context, arg MarkSubmissio
 		&i.State,
 		&i.ReservedAt,
 		&i.UncertainAt,
+		&i.NotSentAt,
 	)
 	return i, err
 }

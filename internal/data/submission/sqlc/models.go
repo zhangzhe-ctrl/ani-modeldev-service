@@ -62,4 +62,5 @@ type ModeldevPipelineDispatch struct {
 	State         string
 	ReservedAt    pgtype.Timestamptz
 	UncertainAt   pgtype.Timestamptz
+	NotSentAt     pgtype.Timestamptz
 }
