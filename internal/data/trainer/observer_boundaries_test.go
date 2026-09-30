@@ -18,7 +18,7 @@ import (
 
 func TestObserveRejectsInvalidBindingBeforeRequest(t *testing.T) {
 	cases := []struct {
-		name string
+		name   string
 		change func(*biz.TrainJobBinding)
 	}{
 		{"invalid tenant", func(b *biz.TrainJobBinding) { b.TenantID = "not-a-tenant" }},
@@ -50,8 +50,8 @@ func TestObserveRejectsInvalidBindingBeforeRequest(t *testing.T) {
 
 func TestObserveRejectsForeignOrRecreatedResources(t *testing.T) {
 	cases := []struct {
-		name string
-		change func(*observationFixture)
+		name        string
+		change      func(*observationFixture)
 		jobRequests int32
 	}{
 		{"recreated namespace", func(f *observationFixture) { f.namespace["metadata"].(map[string]any)["uid"] = "another-namespace-uid" }, 0},
@@ -62,9 +62,15 @@ func TestObserveRejectsForeignOrRecreatedResources(t *testing.T) {
 		{"foreign TrainJob name", func(f *observationFixture) { f.job["metadata"].(map[string]any)["name"] = "another-job" }, 1},
 		{"wrong TrainJob kind", func(f *observationFixture) { f.job["kind"] = "JobSet" }, 1},
 		{"wrong TrainJob API", func(f *observationFixture) { f.job["apiVersion"] = "trainer.kubeflow.org/v9" }, 1},
-		{"foreign tenant", func(f *observationFixture) { f.annotations()["modeldev.ani.io/tenant-id"] = "33333333-3333-4333-8333-333333333333" }, 1},
-		{"foreign execution", func(f *observationFixture) { f.annotations()["modeldev.ani.io/execution-id"] = "33333333-3333-4333-8333-333333333333" }, 1},
-		{"different frozen spec", func(f *observationFixture) { f.annotations()["modeldev.ani.io/execution-spec-sha256"] = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }, 1},
+		{"foreign tenant", func(f *observationFixture) {
+			f.annotations()["modeldev.ani.io/tenant-id"] = "33333333-3333-4333-8333-333333333333"
+		}, 1},
+		{"foreign execution", func(f *observationFixture) {
+			f.annotations()["modeldev.ani.io/execution-id"] = "33333333-3333-4333-8333-333333333333"
+		}, 1},
+		{"different frozen spec", func(f *observationFixture) {
+			f.annotations()["modeldev.ani.io/execution-spec-sha256"] = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		}, 1},
 		{"missing ownership", func(f *observationFixture) { delete(f.job["metadata"].(map[string]any), "annotations") }, 1},
 	}
 	for _, tc := range cases {
@@ -85,7 +91,7 @@ func TestObserveRejectsForeignOrRecreatedResources(t *testing.T) {
 
 func TestObserveKeepsUnavailableConditionsUnknown(t *testing.T) {
 	cases := []struct {
-		name string
+		name       string
 		conditions []any
 	}{
 		{"missing status", nil},
@@ -122,16 +128,24 @@ func TestObserveKeepsUnavailableConditionsUnknown(t *testing.T) {
 
 func TestObserveRejectsAmbiguousConditions(t *testing.T) {
 	cases := []struct {
-		name string
+		name   string
 		change func(*observationFixture)
 	}{
 		{"missing generation", func(f *observationFixture) { delete(f.job["metadata"].(map[string]any), "generation") }},
 		{"invalid status value", func(f *observationFixture) { f.conditions([]any{observationCondition("Complete", "Succeeded", 7)}) }},
-		{"malformed status type", func(f *observationFixture) { c := observationCondition("Complete", "True", 7); c["status"] = 1; f.conditions([]any{c}) }},
+		{"malformed status type", func(f *observationFixture) {
+			c := observationCondition("Complete", "True", 7)
+			c["status"] = 1
+			f.conditions([]any{c})
+		}},
 		{"conditions not list", func(f *observationFixture) { f.job["status"] = map[string]any{"conditions": "Complete"} }},
 		{"condition not object", func(f *observationFixture) { f.conditions([]any{"Complete"}) }},
-		{"duplicate completion", func(f *observationFixture) { f.conditions([]any{observationCondition("Complete", "True", 7), observationCondition("Complete", "False", 7)}) }},
-		{"conflicting terminal states", func(f *observationFixture) { f.conditions([]any{observationCondition("Complete", "True", 7), observationCondition("Failed", "True", 7)}) }},
+		{"duplicate completion", func(f *observationFixture) {
+			f.conditions([]any{observationCondition("Complete", "True", 7), observationCondition("Complete", "False", 7)})
+		}},
+		{"conflicting terminal states", func(f *observationFixture) {
+			f.conditions([]any{observationCondition("Complete", "True", 7), observationCondition("Failed", "True", 7)})
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -148,11 +162,11 @@ func TestObserveRejectsAmbiguousConditions(t *testing.T) {
 
 func TestObservePreservesAPIReadErrors(t *testing.T) {
 	cases := []struct {
-		name string
+		name            string
 		namespaceStatus int
-		jobStatus int
-		isError func(error) bool
-		jobRequests int32
+		jobStatus       int
+		isError         func(error) bool
+		jobRequests     int32
 	}{
 		{"namespace absent", http.StatusNotFound, 0, apierrors.IsNotFound, 0},
 		{"TrainJob absent", 0, http.StatusNotFound, apierrors.IsNotFound, 1},
@@ -176,26 +190,26 @@ func TestObservePreservesAPIReadErrors(t *testing.T) {
 }
 
 type observationFixture struct {
-	namespace map[string]any
-	job map[string]any
+	namespace       map[string]any
+	job             map[string]any
 	namespaceStatus int
-	jobStatus int
+	jobStatus       int
 }
 
 type observationRequests struct {
 	namespace atomic.Int32
-	job atomic.Int32
+	job       atomic.Int32
 }
 
 func observationBinding() biz.TrainJobBinding {
 	return biz.TrainJobBinding{
-		TenantID: "11111111-1111-4111-8111-111111111111",
-		ExecutionID: "22222222-2222-4222-8222-222222222222",
-		SpecSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		Namespace: "cpu-execution",
+		TenantID:     "11111111-1111-4111-8111-111111111111",
+		ExecutionID:  "22222222-2222-4222-8222-222222222222",
+		SpecSHA256:   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Namespace:    "cpu-execution",
 		NamespaceUID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-		Name: "md-22222222-2222-4222-8222-222222222222",
-		UID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+		Name:         "md-22222222-2222-4222-8222-222222222222",
+		UID:          "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
 	}
 }
 
@@ -215,8 +229,8 @@ func newObservationFixture() *observationFixture {
 			"metadata": map[string]any{
 				"name": binding.Name, "namespace": binding.Namespace, "uid": binding.UID, "generation": 7,
 				"annotations": map[string]any{
-					"modeldev.ani.io/tenant-id": binding.TenantID,
-					"modeldev.ani.io/execution-id": binding.ExecutionID,
+					"modeldev.ani.io/tenant-id":             binding.TenantID,
+					"modeldev.ani.io/execution-id":          binding.ExecutionID,
 					"modeldev.ani.io/execution-spec-sha256": binding.SpecSHA256,
 				},
 			},
