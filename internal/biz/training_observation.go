@@ -23,8 +23,19 @@ const (
 	TrainingConditionTrue    TrainingConditionStatus = "True"
 )
 
+// TrainingConditionMetadata preserves the controller report's optional metadata.
+// ObservedGeneration may originate from a JobSet; it is not proof that the
+// TrainJob's current generation has been reconciled.
+type TrainingConditionMetadata struct {
+	Present               bool
+	ObservedGeneration    int64
+	HasObservedGeneration bool
+}
+
 // TrainJobObservation reports controller conditions only. Complete does not
-// prove successful Pod exit, artifact publication, or absence of active writers.
+// prove successful Pod exit, artifact publication, absence of active writers,
+// or permission to create resources. Generation belongs to the TrainJob itself;
+// each condition's reported generation is preserved separately without inference.
 type TrainJobObservation struct {
 	NamespaceUID string
 	TrainJobUID  string
@@ -32,5 +43,8 @@ type TrainJobObservation struct {
 	Suspended    TrainingConditionStatus
 	Complete     TrainingConditionStatus
 	Failed       TrainingConditionStatus
+	SuspendedMetadata TrainingConditionMetadata
+	CompleteMetadata  TrainingConditionMetadata
+	FailedMetadata    TrainingConditionMetadata
 	ObservedAt   time.Time
 }

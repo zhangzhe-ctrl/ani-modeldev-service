@@ -97,9 +97,6 @@ func TestObserveKeepsUnavailableConditionsUnknown(t *testing.T) {
 		{"missing status", nil},
 		{"empty conditions", []any{}},
 		{"explicit unknown", []any{observationCondition("Complete", "Unknown", 7)}},
-		{"stale completion", []any{observationCondition("Complete", "True", 6)}},
-		{"future completion", []any{observationCondition("Complete", "True", 8)}},
-		{"unversioned completion", []any{map[string]any{"type": "Complete", "status": "True", "reason": "Unversioned", "lastTransitionTime": "2026-09-30T09:00:00Z"}}},
 		{"unrelated true condition", []any{observationCondition("Created", "True", 7)}},
 	}
 	for _, tc := range cases {
@@ -126,6 +123,95 @@ func TestObserveKeepsUnavailableConditionsUnknown(t *testing.T) {
 	}
 }
 
+func TestObservePreservesUpstreamControllerReportsAndTheirGenerationMetadata(t *testing.T) {
+	// Trainer v2.1.0/pkg/controller/trainjob_controller.go:171-200 emits Suspended
+	// without observedGeneration; pkg/runtime/framework/plugins/jobset/jobset.go:285-298
+	// copies JobSet conditions. JobSet v0.10.1/pkg/controllers/jobset_controller.go:935-945 emits Completed
+	// without that field. These are source-derived API payloads, not live evidence.
+	// The former stale/future/unversioned Unknown cases assumed this optional field
+	// was always a TrainJob generation. Preserve the reports instead of that premise.
+	cases := []struct {
+		name string
+		payload string
+		suspended biz.TrainingConditionStatus
+		complete biz.TrainingConditionStatus
+		failed biz.TrainingConditionStatus
+		suspendedMetadata biz.TrainingConditionMetadata
+		completeMetadata biz.TrainingConditionMetadata
+		failedMetadata biz.TrainingConditionMetadata
+	}{
+		{
+			name: "Trainer suspended without observed generation",
+			payload: `[{"type":"Suspended","status":"True","reason":"Suspended","message":"TrainJob is suspended","lastTransitionTime":"2026-09-30T09:00:00Z"}]`,
+			suspended: biz.TrainingConditionTrue, complete: biz.TrainingConditionUnknown, failed: biz.TrainingConditionUnknown,
+			suspendedMetadata: biz.TrainingConditionMetadata{Present: true},
+		},
+		{
+			name: "Trainer resumed without observed generation",
+			payload: `[{"type":"Suspended","status":"False","reason":"Resumed","message":"TrainJob is resumed","lastTransitionTime":"2026-09-30T09:00:00Z"}]`,
+			suspended: biz.TrainingConditionFalse, complete: biz.TrainingConditionUnknown, failed: biz.TrainingConditionUnknown,
+			suspendedMetadata: biz.TrainingConditionMetadata{Present: true},
+		},
+		{
+			name: "JobSet completion copied into TrainJob",
+			payload: `[{"type":"Complete","status":"True","reason":"AllJobsCompleted","message":"jobset completed successfully","lastTransitionTime":"2026-09-30T09:00:00Z"}]`,
+			suspended: biz.TrainingConditionUnknown, complete: biz.TrainingConditionTrue, failed: biz.TrainingConditionUnknown,
+			completeMetadata: biz.TrainingConditionMetadata{Present: true},
+		},
+		{
+			name: "JobSet failure copied into TrainJob",
+			payload: `[{"type":"Failed","status":"True","reason":"FailedJobs","message":"jobset failed due to one or more job failures","lastTransitionTime":"2026-09-30T09:00:00Z"}]`,
+			suspended: biz.TrainingConditionUnknown, complete: biz.TrainingConditionUnknown, failed: biz.TrainingConditionTrue,
+			failedMetadata: biz.TrainingConditionMetadata{Present: true},
+		},
+		{
+			name: "explicit zero generation remains present",
+			payload: `[{"type":"Complete","status":"True","observedGeneration":0,"reason":"Reported","lastTransitionTime":"2026-09-30T09:00:00Z"}]`,
+			suspended: biz.TrainingConditionUnknown, complete: biz.TrainingConditionTrue, failed: biz.TrainingConditionUnknown,
+			completeMetadata: biz.TrainingConditionMetadata{Present: true, HasObservedGeneration: true},
+		},
+		{
+			name: "lower generation does not erase reported true",
+			payload: `[{"type":"Complete","status":"True","observedGeneration":6,"reason":"Reported","lastTransitionTime":"2026-09-30T09:00:00Z"}]`,
+			suspended: biz.TrainingConditionUnknown, complete: biz.TrainingConditionTrue, failed: biz.TrainingConditionUnknown,
+			completeMetadata: biz.TrainingConditionMetadata{Present: true, HasObservedGeneration: true, ObservedGeneration: 6},
+		},
+		{
+			name: "higher generation does not erase reported false",
+			payload: `[{"type":"Complete","status":"False","observedGeneration":8,"reason":"Reported","lastTransitionTime":"2026-09-30T09:00:00Z"}]`,
+			suspended: biz.TrainingConditionUnknown, complete: biz.TrainingConditionFalse, failed: biz.TrainingConditionUnknown,
+			completeMetadata: biz.TrainingConditionMetadata{Present: true, HasObservedGeneration: true, ObservedGeneration: 8},
+		},
+		{
+			name: "explicit unknown remains a reported condition",
+			payload: `[{"type":"Complete","status":"Unknown","reason":"Reported","lastTransitionTime":"2026-09-30T09:00:00Z"}]`,
+			suspended: biz.TrainingConditionUnknown, complete: biz.TrainingConditionUnknown, failed: biz.TrainingConditionUnknown,
+			completeMetadata: biz.TrainingConditionMetadata{Present: true},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var conditions []any
+			if err := json.Unmarshal([]byte(tc.payload), &conditions); err != nil {
+				t.Fatalf("decode source-derived condition fixture: %v", err)
+			}
+			fixture := newObservationFixture()
+			fixture.conditions(conditions)
+			adapter, _ := observationAPI(t, fixture)
+			got, err := adapter.ObserveTrainJob(context.Background(), observationBinding())
+			if err != nil {
+				t.Fatalf("observe reported upstream condition: %v", err)
+			}
+			if got.Suspended != tc.suspended || got.Complete != tc.complete || got.Failed != tc.failed || got.SuspendedMetadata != tc.suspendedMetadata || got.CompleteMetadata != tc.completeMetadata || got.FailedMetadata != tc.failedMetadata {
+				t.Fatalf("lost controller report or inferred TrainJob freshness: got=%+v", got)
+			}
+			if got.Generation != 7 || got.TrainJobUID != observationBinding().UID {
+				t.Fatalf("condition metadata changed the bound TrainJob identity: %+v", got)
+			}
+		})
+	}
+}
+
 func TestObserveRejectsAmbiguousConditions(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -138,6 +224,22 @@ func TestObserveRejectsAmbiguousConditions(t *testing.T) {
 			c["status"] = 1
 			f.conditions([]any{c})
 		}},
+		{"negative observed generation", func(f *observationFixture) { f.conditions([]any{observationCondition("Complete", "True", -1)}) }},
+		{"null observed generation", func(f *observationFixture) {
+			c := observationCondition("Complete", "True", 7)
+			c["observedGeneration"] = nil
+			f.conditions([]any{c})
+		}},
+		{"fractional observed generation", func(f *observationFixture) {
+			c := observationCondition("Complete", "True", 7)
+			c["observedGeneration"] = 7.5
+			f.conditions([]any{c})
+		}},
+		{"string observed generation", func(f *observationFixture) {
+			c := observationCondition("Complete", "True", 7)
+			c["observedGeneration"] = "7"
+			f.conditions([]any{c})
+		}},
 		{"conditions not list", func(f *observationFixture) { f.job["status"] = map[string]any{"conditions": "Complete"} }},
 		{"condition not object", func(f *observationFixture) { f.conditions([]any{"Complete"}) }},
 		{"duplicate completion", func(f *observationFixture) {
@@ -145,6 +247,9 @@ func TestObserveRejectsAmbiguousConditions(t *testing.T) {
 		}},
 		{"conflicting terminal states", func(f *observationFixture) {
 			f.conditions([]any{observationCondition("Complete", "True", 7), observationCondition("Failed", "True", 7)})
+		}},
+		{"conflicting reports with unrelated generations", func(f *observationFixture) {
+			f.conditions([]any{observationCondition("Complete", "True", 6), observationCondition("Failed", "True", 8)})
 		}},
 	}
 	for _, tc := range cases {
