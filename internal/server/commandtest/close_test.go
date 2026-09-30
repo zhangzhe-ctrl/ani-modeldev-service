@@ -68,9 +68,9 @@ func TestGovernanceCloseCommitsBeforeACKAndReplaysAfterServerRestart(t *testing.
 
 func validCloseRequest() *modeldevv1.ApplyCloseIntentRequest {
 	return &modeldevv1.ApplyCloseIntentRequest{
-		Identity: &trainingv1.ExecutionIdentity{OperationId: uuid.NewString(), ExecutionId: uuid.NewString(), ExecutionSpecHash: strings.Repeat("b", 64)},
+		Identity:         &trainingv1.ExecutionIdentity{OperationId: uuid.NewString(), ExecutionId: uuid.NewString(), ExecutionSpecHash: strings.Repeat("b", 64)},
 		ResourceTenantId: uuid.NewString(), IntentGeneration: 41,
-		Reason: modeldevv1.CloseReason_CLOSE_REASON_USER_STOP,
+		Reason:      modeldevv1.CloseReason_CLOSE_REASON_USER_STOP,
 		RequestedAt: timestamppb.New(time.Date(2026, 9, 30, 10, 0, 0, 123000, time.UTC)), RequestedActorId: "governance:user:42",
 	}
 }
@@ -87,7 +87,7 @@ func assertCloseResponse(t *testing.T, response *modeldevv1.ApplyCloseIntentResp
 }
 
 type commandCertificates struct {
-	roots *x509.CertPool
+	roots              *x509.CertPool
 	server, governance tls.Certificate
 }
 
@@ -96,21 +96,31 @@ type commandCertificates struct {
 func newCommandCertificates(t *testing.T) commandCertificates {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	now := time.Now().UTC()
 	ca := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "CPU command test CA"}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
 	der, err := x509.CreateCertificate(rand.Reader, ca, ca, &key.PublicKey, key)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	ca, err = x509.ParseCertificate(der)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	roots := x509.NewCertPool()
 	roots.AddCert(ca)
 	issue := func(serial int64, name string, usage x509.ExtKeyUsage) tls.Certificate {
 		leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		leaf := &x509.Certificate{SerialNumber: big.NewInt(serial), DNSNames: []string{name}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Hour), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{usage}}
 		encoded, err := x509.CreateCertificate(rand.Reader, leaf, ca, &leafKey.PublicKey, key)
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		return tls.Certificate{Certificate: [][]byte{encoded}, PrivateKey: leafKey}
 	}
 	return commandCertificates{roots: roots, server: issue(2, "modeldev.test", x509.ExtKeyUsageServerAuth), governance: issue(3, "ani-governance", x509.ExtKeyUsageClientAuth)}
@@ -118,17 +128,25 @@ func newCommandCertificates(t *testing.T) commandCertificates {
 
 func startCommandServer(t *testing.T, repository biz.ExecutionRepository, certificates commandCertificates) (modeldevv1.ModelDevCommandServiceClient, func()) {
 	t.Helper()
-	s, err := server.NewGovernanceCommandServer(&conf.Server_GRPC{Network: "tcp", Addr: "127.0.0.1:0", Timeout: durationpb.New(5*time.Second)}, server.CommandTLS{Certificate: certificates.server, ClientCAs: certificates.roots, GovernanceDNSName: "ani-governance"}, service.NewCommand(repository))
-	if err != nil { t.Fatalf("TLS server fixture: %v", err) }
+	s, err := server.NewGovernanceCommandServer(&conf.Server_GRPC{Network: "tcp", Addr: "127.0.0.1:0", Timeout: durationpb.New(5 * time.Second)}, server.CommandTLS{Certificate: certificates.server, ClientCAs: certificates.roots, GovernanceDNSName: "ani-governance"}, service.NewCommand(repository))
+	if err != nil {
+		t.Fatalf("TLS server fixture: %v", err)
+	}
 	endpoint, err := s.Endpoint()
-	if err != nil { t.Fatalf("TLS listener fixture: %v", err) }
+	if err != nil {
+		t.Fatalf("TLS listener fixture: %v", err)
+	}
 	done := make(chan error, 1)
 	go func() { done <- s.Start(context.Background()) }()
 	connection, err := grpc.NewClient(endpoint.Host, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS13, RootCAs: certificates.roots, ServerName: "modeldev.test", Certificates: []tls.Certificate{certificates.governance}})))
-	if err != nil { t.Fatalf("TLS client fixture: %v", err) }
+	if err != nil {
+		t.Fatalf("TLS client fixture: %v", err)
+	}
 	stopped := false
 	stop := func() {
-		if stopped { return }
+		if stopped {
+			return
+		}
 		stopped = true
 		connection.Close()
 		stopCommandServer(t, s, done)
@@ -141,10 +159,15 @@ func stopCommandServer(t *testing.T, s *kratosgrpc.Server, done <-chan error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := s.Stop(ctx); err != nil { t.Errorf("stop command server: %v", err) }
+	if err := s.Stop(ctx); err != nil {
+		t.Errorf("stop command server: %v", err)
+	}
 	select {
 	case err := <-done:
-		if err != nil && !errors.Is(err, grpc.ErrServerStopped) { t.Errorf("command server exited: %v", err) }
-	case <-ctx.Done(): t.Error("command server did not stop")
+		if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			t.Errorf("command server exited: %v", err)
+		}
+	case <-ctx.Done():
+		t.Error("command server did not stop")
 	}
 }
