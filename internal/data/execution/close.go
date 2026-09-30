@@ -13,8 +13,8 @@ import (
 	executionsql "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/execution/sqlc"
 )
 
-// RED candidate: the receipt shape is present, but replay discrimination is not
-// implemented until the reconnect behavior has failed against real PostgreSQL.
+// ApplyCloseIntent reports whether this transaction observed the original
+// command or committed it for the first time. No receipt escapes a failed commit.
 func (r *Repository) ApplyCloseIntent(ctx context.Context, intent biz.CloseIntent) (biz.CloseReceipt, error) {
 	if err := intent.Validate(); err != nil {
 		return biz.CloseReceipt{}, err
@@ -53,7 +53,7 @@ func (r *Repository) ApplyCloseIntent(ctx context.Context, intent biz.CloseInten
 		if err := transaction.Commit(ctx); err != nil {
 			return biz.CloseReceipt{}, biz.ErrPersistence
 		}
-		return biz.CloseReceipt{CloseRecord: record}, nil
+		return biz.CloseReceipt{CloseRecord: record, Replayed: true}, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return biz.CloseReceipt{}, biz.ErrPersistence

@@ -52,4 +52,5 @@ type ModeldevPipelineDispatch struct {
 	PlanHash      string
 	State         string
 	ReservedAt    pgtype.Timestamptz
+	UncertainAt   pgtype.Timestamptz
 }

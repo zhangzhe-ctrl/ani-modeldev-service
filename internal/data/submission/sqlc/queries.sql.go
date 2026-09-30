@@ -43,7 +43,7 @@ func (q *Queries) GetAdmission(ctx context.Context, arg GetAdmissionParams) (Mod
 
 const getPipelineDispatch = `-- name: GetPipelineDispatch :one
 SELECT tenant_id, execution_id, operation_id, spec_hash, attempt_id,
-    plan_canonical, plan_hash, state, reserved_at
+    plan_canonical, plan_hash, state, reserved_at, uncertain_at
 FROM modeldev_pipeline_dispatches
 WHERE tenant_id = $1::uuid
   AND execution_id = $2::uuid
@@ -67,6 +67,7 @@ func (q *Queries) GetPipelineDispatch(ctx context.Context, arg GetPipelineDispat
 		&i.PlanHash,
 		&i.State,
 		&i.ReservedAt,
+		&i.UncertainAt,
 	)
 	return i, err
 }
@@ -87,7 +88,7 @@ WHERE tenant_id = $4::uuid
   AND close_generation = 0
   AND clock_timestamp() < $8::timestamptz
 RETURNING tenant_id, execution_id, operation_id, spec_hash, attempt_id,
-    plan_canonical, plan_hash, state, reserved_at
+    plan_canonical, plan_hash, state, reserved_at, uncertain_at
 `
 
 type InsertPipelineDispatchParams struct {
@@ -126,6 +127,7 @@ func (q *Queries) InsertPipelineDispatch(ctx context.Context, arg InsertPipeline
 		&i.PlanHash,
 		&i.State,
 		&i.ReservedAt,
+		&i.UncertainAt,
 	)
 	return i, err
 }
@@ -161,6 +163,55 @@ func (q *Queries) LockExecutionIdentity(ctx context.Context, arg LockExecutionId
 		&i.OperationID,
 		&i.SpecHash,
 		&i.CreationOpen,
+	)
+	return i, err
+}
+
+const markSubmissionUncertain = `-- name: MarkSubmissionUncertain :one
+UPDATE modeldev_pipeline_dispatches
+SET state = 'SUBMISSION_UNCERTAIN', uncertain_at = $1::timestamptz
+WHERE tenant_id = $2::uuid
+  AND execution_id = $3::uuid
+  AND attempt_id = $4::uuid
+  AND plan_hash = $5::text
+  AND state = 'SUBMITTING'
+  AND uncertain_at IS NULL
+  AND $1::timestamptz >= reserved_at
+RETURNING tenant_id, execution_id, operation_id, spec_hash, attempt_id,
+    plan_canonical, plan_hash, state, reserved_at, uncertain_at
+`
+
+type MarkSubmissionUncertainParams struct {
+	ObservedAt  pgtype.Timestamptz
+	TenantID    pgtype.UUID
+	ExecutionID pgtype.UUID
+	AttemptID   pgtype.UUID
+	PlanHash    string
+}
+
+// The caller holds the shared identity lock and has matched the original
+// attempt and frozen plan. Close/deadline do not discard late observations.
+// An already uncertain row is read back unchanged rather than updated again.
+func (q *Queries) MarkSubmissionUncertain(ctx context.Context, arg MarkSubmissionUncertainParams) (ModeldevPipelineDispatch, error) {
+	row := q.db.QueryRow(ctx, markSubmissionUncertain,
+		arg.ObservedAt,
+		arg.TenantID,
+		arg.ExecutionID,
+		arg.AttemptID,
+		arg.PlanHash,
+	)
+	var i ModeldevPipelineDispatch
+	err := row.Scan(
+		&i.TenantID,
+		&i.ExecutionID,
+		&i.OperationID,
+		&i.SpecHash,
+		&i.AttemptID,
+		&i.PlanCanonical,
+		&i.PlanHash,
+		&i.State,
+		&i.ReservedAt,
+		&i.UncertainAt,
 	)
 	return i, err
 }
