@@ -37,6 +37,8 @@ func TestIntentRejectsAmbiguousOrUnsupportedUserInput(t *testing.T) {
 		"null field": strings.TrimSuffix(base, "}") + `,"image_version_id":null}`,
 		"trailing JSON": base + `{}`,
 		"unknown field": strings.TrimSuffix(base, "}") + `,"tenant_id":"forged"}`,
+		"case variant key": strings.Replace(base, `"name"`, `"Name"`, 1),
+		"lone surrogate": strings.Replace(base, "CPU", `CPU\ud800`, 1),
 		"invalid UTF8": strings.Replace(base, "CPU", string([]byte{0xff}), 1),
 		"missing required": strings.Replace(base, `"name":"CPU",`, "", 1),
 		"unsupported kind": strings.Replace(base, "GENERAL_TRAINING", "FINETUNING", 1),
