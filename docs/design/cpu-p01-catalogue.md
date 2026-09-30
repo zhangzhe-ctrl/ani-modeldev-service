@@ -88,5 +88,16 @@ target jobs 按名称、required_files 按 relative_path 排序。argv 顺序不
 授权，Runtime/CPU resources/Workspace/Output 的既有局部校验机械提取为共享
 私有函数，保持 Snapshot 的原字段错误；参数 grammar 从 Intent 机械提取为
 共享函数，保留 Intent presence 规则，不构造伪 Snapshot 或伪 Dataset ID。
-尚未取得新固定 SHA 的 GREEN，不是 CODE_READY。后续严格解析、同 ID
-改字节、缺失文件、路径和取消等负向分小步加入，不能由首条正向测试推导已覆盖。
+固定 `f16bcdeb375b5703044b7610b9e3d58381b445aa` 的完整 cpup01、protobuf 与
+目录首测试均 GREEN / exit 0，既有 Intent/Snapshot 向量未改变。verify-source
+的 Buf/Proto/sqlc/向量生成字节稳定，但其最终全仓 gofmt 检查因并行模块的
+`internal/data/objectstore/input_verifier_test.go` 未格式化而 exit 1；不能把该
+完整 gate 记 PASS，也没有改动其他 owner 文件。
+
+同 SHA 的 Fedora Python hashlib 独立计算模块 Release 字面量为 2362 字节，
+SHA256 `388c7687614c92a2b50a14c8ee29df04f4d8934cf1dbf88d7b31258efc9f3dae`。
+它是测试规范向量，不是真实可用 Release 或发布证据。
+
+下一候选增加精确摘要向量与严格 JSON/内容、同 ID 改字节、文内身份不符、
+软硬链接/FIFO/目录/空或超大文件、非法选择、缺失文件及取消负向。尚未运行
+这些新增测试，不把已通过的首条正向测试当作负向覆盖；整个 CPU04 仍 IN_PROGRESS。
