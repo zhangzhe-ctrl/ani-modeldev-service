@@ -155,9 +155,9 @@ func TestGetHidesOtherTenantExecutionAndReturnsOwnAdmission(t *testing.T) {
 
 func TestAcceptInvalidAdmissionDoesNotReserveInbox(t *testing.T) {
 	cases := []struct {
-		name    string
-		mutate  func(*biz.Admission)
-		rehash  bool
+		name   string
+		mutate func(*biz.Admission)
+		rehash bool
 	}{
 		{"invalid tenant", func(a *biz.Admission) { a.TenantID = "not-a-uuid" }, false},
 		{"zero operation", func(a *biz.Admission) { a.OperationID = "00000000-0000-0000-0000-000000000000" }, false},
