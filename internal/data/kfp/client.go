@@ -73,8 +73,7 @@ func New(config Config, tokens TokenProvider) (*Client, error) {
 	if endpoint.Path != "" && endpoint.Path != "/" && path.Clean(endpoint.Path) != strings.TrimSuffix(endpoint.Path, "/") {
 		return nil, ErrInvalidConfig
 	}
-	root, err := url.Parse(config.PipelineRoot)
-	if err != nil || root.Scheme != "s3" || root.Host == "" || root.User != nil || root.Port() != "" || root.RawQuery != "" || root.ForceQuery || root.Fragment != "" || root.RawPath != "" || root.Path == "" || path.Clean(root.Path) != strings.TrimSuffix(root.Path, "/") {
+	if !biz.ValidPipelineRoot(config.PipelineRoot) {
 		return nil, ErrInvalidConfig
 	}
 	if config.ConnectionRef == "" || strings.TrimSpace(config.ConnectionRef) != config.ConnectionRef || config.RootCAs == nil || config.Timeout <= 0 || config.Timeout > time.Minute || tokens == nil {

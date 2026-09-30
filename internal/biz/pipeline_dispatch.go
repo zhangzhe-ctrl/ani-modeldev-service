@@ -67,8 +67,7 @@ func (request PipelineDispatchRequest) Freeze() (PipelineDispatchPlan, error) {
 	if !pipelineOwnerReferencePattern.MatchString(owner.Reference) || strings.Contains(owner.Reference, "://") || !closeSpecHashPattern.MatchString(owner.RevisionSHA256) {
 		return PipelineDispatchPlan{}, ErrInvalidAdmission
 	}
-	root, err := url.Parse(owner.PipelineRoot)
-	if err != nil || root.Scheme != "s3" || root.Host == "" || root.User != nil || root.Port() != "" || root.RawQuery != "" || root.ForceQuery || root.Fragment != "" || root.RawPath != "" || root.Path == "" || path.Clean(root.Path) != strings.TrimSuffix(root.Path, "/") {
+	if !ValidPipelineRoot(owner.PipelineRoot) {
 		return PipelineDispatchPlan{}, ErrInvalidAdmission
 	}
 	var snapshot cpup01.Snapshot
@@ -86,6 +85,13 @@ func (request PipelineDispatchRequest) Freeze() (PipelineDispatchPlan, error) {
 		DisplayName: "md-" + strings.ToLower(request.Admission.ExecutionID),
 		DeadlineAt:  snapshot.DeadlineAt,
 	}, nil
+}
+
+// ValidPipelineRoot is the shared shape rule for the frozen owner plan and its
+// KFP client configuration. It establishes neither storage access nor ownership.
+func ValidPipelineRoot(value string) bool {
+	root, err := url.Parse(value)
+	return err == nil && root.Scheme == "s3" && root.Host != "" && root.User == nil && root.Port() == "" && root.RawQuery == "" && !root.ForceQuery && root.Fragment == "" && root.RawPath == "" && root.Path != "" && path.Clean(root.Path) == strings.TrimSuffix(root.Path, "/")
 }
 
 // Canonical encodes the internal plan in field order with no HTML escapes or
