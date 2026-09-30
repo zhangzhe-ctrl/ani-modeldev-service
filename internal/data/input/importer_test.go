@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -59,6 +60,78 @@ func TestManagedInputImportFreezesBeforeReadingBytesAndCommitsReady(t *testing.T
 	if err != nil || !reflect.DeepEqual(recovered, ready) {
 		t.Fatalf("READY was returned before its observation became durable: %+v, %v", recovered, err)
 	}
+}
+
+func TestManagedInputImportRejectsBadRemoteProofWithoutExposingReady(t *testing.T) {
+	for _, name := range []string{"different bytes", "different version", "invalid CSV shape"} {
+		t.Run(name, func(t *testing.T) {
+			openPool := postgres.Prepare(t)
+			request, payload := managedImportFixture()
+			version := *request.Object.VersionID
+			switch name {
+			case "different bytes":
+				payload = strings.Replace(payload, "0.25", "0.26", 1)
+			case "different version":
+				version = "unexpected-source-version"
+			case "invalid CSV shape":
+				payload = strings.Replace(payload, "x0,", "wrong_feature,", 1)
+				request.Object.SizeBytes = int64(len(payload))
+				hash := sha256.Sum256([]byte(payload))
+				request.Object.SHA256 = hex.EncodeToString(hash[:])
+			}
+			var reads atomic.Int64
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				reads.Add(1)
+				w.Header().Set("x-amz-version-id", version)
+				_, _ = io.WriteString(w, payload)
+			}))
+			defer server.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			got, err := biz.NewInputImporter(input.New(openPool()), managedImportVerifier(server, request.Scope.StorageConnectionID)).ImportCSV(ctx, request)
+			if !errors.Is(err, biz.ErrInputVerification) || reads.Load() != 1 || got.State == biz.InputStateReady || got.Verification != nil {
+				t.Fatalf("invalid remote proof exposed a ready input: %+v, %v", got, err)
+			}
+			stored, err := input.New(openPool()).Get(ctx, request.TenantID, request.InputVersionID)
+			if err != nil || stored.State == biz.InputStateReady || stored.Verification != nil || !reflect.DeepEqual(stored.Import, request) {
+				t.Fatalf("failed verification lost or promoted the frozen request: %+v, %v", stored, err)
+			}
+		})
+	}
+}
+
+func TestManagedInputImportReplayAndConflictDoNotReadAnotherObject(t *testing.T) {
+	openPool := postgres.Prepare(t)
+	request, payload := managedImportFixture()
+	var reads atomic.Int64
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		reads.Add(1)
+		w.Header().Set("x-amz-version-id", *request.Object.VersionID)
+		_, _ = io.WriteString(w, payload)
+	}))
+	defer server.Close()
+	verifier := managedImportVerifier(server, request.Scope.StorageConnectionID)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	writer := openPool()
+	first, err := biz.NewInputImporter(input.New(writer), verifier).ImportCSV(ctx, request)
+	if err != nil || first.State != biz.InputStateReady {
+		t.Fatalf("initial verified import: %+v, %v", first, err)
+	}
+	writer.Close()
+	reader := input.New(openPool())
+	importer := biz.NewInputImporter(reader, verifier)
+	replayed, err := importer.ImportCSV(ctx, request)
+	if err != nil || !reflect.DeepEqual(replayed, first) || reads.Load() != 1 {
+		t.Fatalf("replay changed the fixed version, proof, or repeated verification: %+v, %v", replayed, err)
+	}
+	conflicting := request
+	conflicting.Object.Key = "tenant/input/replacement.csv"
+	got, err := importer.ImportCSV(ctx, conflicting)
+	if !errors.Is(err, biz.ErrInputConflict) || !reflect.DeepEqual(got, biz.InputVersion{}) || reads.Load() != 1 {
+		t.Fatalf("conflicting retry reached another object or overwrote the import: %+v, %v", got, err)
+	}
+	requireStoredInputVersion(t, ctx, reader, first)
 }
 
 // The HTTPS server supplies module fixture bytes. It is not a real managed S3
