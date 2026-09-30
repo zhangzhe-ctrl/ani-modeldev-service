@@ -105,7 +105,7 @@ func Prepare(t *testing.T) func() *pgxpool.Pool {
 	if _, err := adminPool.Exec(ctx, "GRANT USAGE ON SCHEMA "+schemaSQL+" TO "+roleSQL); err != nil {
 		t.Fatal("CPU04_DB_PREFLIGHT: runtime schema grant failed; behavior NOT_RUN")
 	}
-	if _, err := adminPool.Exec(ctx, "GRANT INSERT, SELECT ON "+schemaSQL+".modeldev_executions, "+schemaSQL+".modeldev_execution_identities, "+schemaSQL+".modeldev_close_intents TO "+roleSQL); err != nil {
+	if _, err := adminPool.Exec(ctx, "GRANT INSERT, SELECT ON "+schemaSQL+".modeldev_executions, "+schemaSQL+".modeldev_execution_identities, "+schemaSQL+".modeldev_close_intents, "+schemaSQL+".modeldev_input_versions TO "+roleSQL); err != nil {
 		t.Fatal("CPU04_DB_PREFLIGHT: runtime table grant failed; behavior NOT_RUN")
 	}
 	if _, err := adminPool.Exec(ctx, "GRANT UPDATE (close_generation) ON "+schemaSQL+".modeldev_execution_identities TO "+roleSQL); err != nil {

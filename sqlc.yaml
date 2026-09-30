@@ -11,3 +11,11 @@ sql:
         package: "executionsql"
         out: "internal/data/execution/sqlc"
         sql_package: "pgx/v5"
+  - engine: "postgresql"
+    schema: "migrations/0004_input_import.up.sql"
+    queries: "internal/data/input/queries.sql"
+    gen:
+      go:
+        package: "inputsql"
+        out: "internal/data/input/sqlc"
+        sql_package: "pgx/v5"
