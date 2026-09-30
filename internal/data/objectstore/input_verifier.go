@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"io"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -32,7 +33,7 @@ func (v *Verifier) VerifyCSV(ctx context.Context, scope cpup01.StorageScope, obj
 }
 
 func inspectCPUCSV(stream io.Reader) error {
-	reader := csv.NewReader(stream)
+	reader := csv.NewReader(&csvPhysicalLines{reader: stream})
 	reader.FieldsPerRecord = 17
 	reader.ReuseRecord = true
 	header, err := reader.Read()
@@ -54,7 +55,11 @@ func inspectCPUCSV(stream io.Reader) error {
 			return biz.ErrInputVerification
 		}
 		for _, raw := range row[:16] {
-			value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+			text := strings.TrimSpace(raw)
+			if strings.ContainsAny(raw, "\r\n") || !decimalFeaturePattern.MatchString(text) {
+				return biz.ErrInputVerification
+			}
+			value, err := strconv.ParseFloat(text, 64)
 			if err != nil || math.IsNaN(value) || math.IsInf(value, 0) || math.Abs(value) > math.MaxFloat32 {
 				return biz.ErrInputVerification
 			}
@@ -65,4 +70,29 @@ func inspectCPUCSV(stream io.Reader) error {
 		return biz.ErrInputVerification
 	}
 	return nil
+}
+
+var decimalFeaturePattern = regexp.MustCompile(`^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$`)
+
+// encoding/csv silently skips blank lines, while the registered Python loader
+// counts them as malformed samples. Reject them before that information is lost.
+// The fixed input format also excludes multiline numeric cells.
+type csvPhysicalLines struct {
+	reader io.Reader
+	content bool
+}
+
+func (r *csvPhysicalLines) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	for _, value := range p[:n] {
+		if value == '\n' {
+			if !r.content {
+				return n, biz.ErrInputVerification
+			}
+			r.content = false
+		} else if value != '\r' {
+			r.content = true
+		}
+	}
+	return n, err
 }
