@@ -80,7 +80,7 @@ func TestAcceptDuplicateAfterReconnectReturnsOriginalAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatalf("duplicate Accept after reconnect must return the original admission: %v", err)
 	}
-	assertOriginalAdmission(t, replayed, command)
+	assertOriginalAdmission(t, replayed.Execution, command)
 	persisted, err := retryRepository.Get(retryContext, command.TenantID, command.ExecutionID)
 	if err != nil {
 		t.Fatalf("Get after duplicate Accept: %v", err)

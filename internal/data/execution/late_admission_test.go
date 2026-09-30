@@ -23,8 +23,8 @@ func TestLateAdmissionCarriesCommittedCloseFactsAcrossNewConnections(t *testing.
 	if err != nil {
 		t.Fatalf("matching late Admission must retain its immutable facts: %v", err)
 	}
-	assertOriginalAdmission(t, accepted, admission)
-	assertExecutionClose(t, accepted, stop)
+	assertOriginalAdmission(t, accepted.Execution, admission)
+	assertExecutionClose(t, accepted.Execution, stop)
 	pool.Close()
 
 	repository = execution.New(openRuntimePool())
@@ -38,8 +38,8 @@ func TestLateAdmissionCarriesCommittedCloseFactsAcrossNewConnections(t *testing.
 	if err != nil {
 		t.Fatalf("late Admission replay: %v", err)
 	}
-	assertOriginalAdmission(t, replayed, admission)
-	assertExecutionClose(t, replayed, stop)
+	assertOriginalAdmission(t, replayed.Execution, admission)
+	assertExecutionClose(t, replayed.Execution, stop)
 }
 
 func TestConcurrentAdmissionAndUserStopConvergeToClosingFacts(t *testing.T) {
@@ -56,7 +56,7 @@ func TestConcurrentAdmissionAndUserStopConvergeToClosingFacts(t *testing.T) {
 	go func() {
 		<-start
 		record, err := admissions.Accept(ctx, admission)
-		admissionDone <- admissionOutcome{execution: record, err: err}
+		admissionDone <- admissionOutcome{execution: record.Execution, err: err}
 	}()
 	go func() {
 		<-start
@@ -117,7 +117,7 @@ func TestLateAdmissionCannotTakeOverTombstoneIdentityOrSpec(t *testing.T) {
 				t.Fatalf("early USER_STOP: %v", err)
 			}
 			got, err := repository.Accept(ctx, candidate)
-			assertEmptyFailure(t, got, err, biz.ErrAdmissionConflict)
+			assertEmptyFailure(t, got.Execution, err, biz.ErrAdmissionConflict)
 			stored, err := repository.GetCloseIntent(ctx, stop.TenantID, stop.ExecutionID)
 			if err != nil {
 				t.Fatalf("Get original tombstone after conflict: %v", err)

@@ -59,7 +59,7 @@ func TestAcceptConflictingIdentityOrFactsPreservesOriginalAdmission(t *testing.T
 				t.Fatalf("initial Accept: %v", err)
 			}
 			got, err := repository.Accept(ctx, candidate)
-			assertEmptyFailure(t, got, err, biz.ErrAdmissionConflict)
+			assertEmptyFailure(t, got.Execution, err, biz.ErrAdmissionConflict)
 			stored, err := repository.Get(ctx, original.TenantID, original.ExecutionID)
 			if err != nil {
 				t.Fatalf("Get original after conflict: %v", err)
@@ -223,17 +223,17 @@ func TestAcceptInvalidAdmissionDoesNotReserveInbox(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			got, err := repository.Accept(ctx, invalid)
-			assertEmptyFailure(t, got, err, biz.ErrInvalidAdmission)
-			got, err = repository.Get(ctx, original.TenantID, original.ExecutionID)
+			receipt, err := repository.Accept(ctx, invalid)
+			assertEmptyFailure(t, receipt.Execution, err, biz.ErrInvalidAdmission)
+			got, err := repository.Get(ctx, original.TenantID, original.ExecutionID)
 			assertEmptyFailure(t, got, err, biz.ErrExecutionNotFound)
 			// Repairing the same command must still admit it. A rejected input
 			// cannot reserve its operation or execution identity in an inbox.
-			got, err = repository.Accept(ctx, original)
+			receipt, err = repository.Accept(ctx, original)
 			if err != nil {
 				t.Fatalf("corrected admission was poisoned by invalid delivery: %v", err)
 			}
-			assertOriginalAdmission(t, got, original)
+			assertOriginalAdmission(t, receipt.Execution, original)
 		})
 	}
 }
@@ -281,7 +281,7 @@ func raceAdmissions(t *testing.T, openRuntimePool func() *pgxpool.Pool, commands
 		go func(index int, admission biz.Admission) {
 			<-start
 			got, err := repositories[index].Accept(ctx, admission)
-			results <- admissionOutcome{index: index, execution: got, err: err}
+			results <- admissionOutcome{index: index, execution: got.Execution, err: err}
 		}(i, command)
 	}
 	close(start)

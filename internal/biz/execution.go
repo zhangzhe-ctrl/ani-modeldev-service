@@ -61,6 +61,13 @@ type Execution struct {
 	Close *CloseRecord
 }
 
+// AcceptReceipt is returned only after a successful admission transaction commits.
+// Replayed identifies this delivery's outcome, not a persisted execution fact.
+type AcceptReceipt struct {
+	Execution
+	Replayed bool
+}
+
 type CloseReason string
 
 const CloseReasonUserStop CloseReason = "USER_STOP"
@@ -119,7 +126,7 @@ type CloseReceipt struct {
 // admission and first close-intent slices. Successful command receipts require
 // a durable commit. No runtime resource operation is implied by this port.
 type ExecutionRepository interface {
-	Accept(context.Context, Admission) (Execution, error)
+	Accept(context.Context, Admission) (AcceptReceipt, error)
 	Get(context.Context, string, string) (Execution, error)
 	ApplyCloseIntent(context.Context, CloseIntent) (CloseReceipt, error)
 	GetCloseIntent(context.Context, string, string) (CloseRecord, error)

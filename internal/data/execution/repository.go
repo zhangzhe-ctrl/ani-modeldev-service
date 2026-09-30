@@ -25,22 +25,22 @@ func New(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
 }
 
-func (r *Repository) Accept(ctx context.Context, admission biz.Admission) (biz.Execution, error) {
+func (r *Repository) Accept(ctx context.Context, admission biz.Admission) (biz.AcceptReceipt, error) {
 	intent, snapshot, err := admission.CanonicalPayloads()
 	if err != nil {
-		return biz.Execution{}, err
+		return biz.AcceptReceipt{}, err
 	}
 	tenantID, err := databaseID(admission.TenantID)
 	if err != nil {
-		return biz.Execution{}, err
+		return biz.AcceptReceipt{}, err
 	}
 	executionID, err := databaseID(admission.ExecutionID)
 	if err != nil {
-		return biz.Execution{}, err
+		return biz.AcceptReceipt{}, err
 	}
 	operationID, err := databaseID(admission.OperationID)
 	if err != nil {
-		return biz.Execution{}, err
+		return biz.AcceptReceipt{}, err
 	}
 	command := executionsql.InsertExecutionParams{
 		TenantID:          tenantID,
@@ -57,7 +57,7 @@ func (r *Repository) Accept(ctx context.Context, admission biz.Admission) (biz.E
 		TenantID: tenantID, ExecutionID: executionID, OperationID: operationID, SpecHash: admission.SpecHash,
 	})
 	if err != nil {
-		return biz.Execution{}, err
+		return biz.AcceptReceipt{}, err
 	}
 	defer rollbackExecutionTransaction(transaction)
 	// The identity reservation and admission payload commit together. A close
@@ -68,25 +68,27 @@ func (r *Repository) Accept(ctx context.Context, admission biz.Admission) (biz.E
 			TenantID: tenantID, ExecutionID: executionID,
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
-			return biz.Execution{}, biz.ErrAdmissionConflict
+			return biz.AcceptReceipt{}, biz.ErrAdmissionConflict
 		}
 		if err != nil {
-			return biz.Execution{}, biz.ErrPersistence
+			return biz.AcceptReceipt{}, biz.ErrPersistence
 		}
 		if !sameAdmission(row, command) {
-			return biz.Execution{}, biz.ErrAdmissionConflict
+			return biz.AcceptReceipt{}, biz.ErrAdmissionConflict
 		}
 	} else if err != nil {
-		return biz.Execution{}, biz.ErrPersistence
+		return biz.AcceptReceipt{}, biz.ErrPersistence
 	}
 	execution, err := executionWithClose(ctx, queries, row)
 	if err != nil {
-		return biz.Execution{}, err
+		return biz.AcceptReceipt{}, err
 	}
 	if err := transaction.Commit(ctx); err != nil {
-		return biz.Execution{}, biz.ErrPersistence
+		return biz.AcceptReceipt{}, biz.ErrPersistence
 	}
-	return execution, nil
+	// RED stub: the receipt shape is present, but the transaction's replay
+	// outcome is not yet propagated. The concurrent receipt test must fail.
+	return biz.AcceptReceipt{Execution: execution, Replayed: false}, nil
 }
 
 func sameAdmission(row executionsql.ModeldevExecution, command executionsql.InsertExecutionParams) bool {
