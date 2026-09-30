@@ -21,7 +21,7 @@ type CSVVerifier interface {
 // The request carries an explicit fixed version, never an arbitrary endpoint.
 type InputImporter struct {
 	repository ManagedInputRepository
-	verifier CSVVerifier
+	verifier   CSVVerifier
 }
 
 func NewInputImporter(repository ManagedInputRepository, verifier CSVVerifier) *InputImporter {
