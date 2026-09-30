@@ -112,7 +112,9 @@ func TestVerificationOwnerOrScopeMisconfigurationNeverRejectsContentOrFetches(t 
 			}{
 				{"unconfigured connection", func(_ *cpup01.StorageScope, connection *string, _ *int64) { *connection = "" }},
 				{"different configured connection", func(_ *cpup01.StorageScope, connection *string, _ *int64) { *connection = "another-owner-store" }},
-				{"different scope connection", func(scope *cpup01.StorageScope, _ *string, _ *int64) { scope.StorageConnectionID = "another-scope-store" }},
+				{"different scope connection", func(scope *cpup01.StorageScope, _ *string, _ *int64) {
+					scope.StorageConnectionID = "another-scope-store"
+				}},
 				{"different scope bucket", func(scope *cpup01.StorageScope, _ *string, _ *int64) { scope.Bucket = "another-bucket" }},
 				{"different scope prefix", func(scope *cpup01.StorageScope, _ *string, _ *int64) { scope.ApprovedPrefix = "another-prefix" }},
 				{"invalid scope prefix", func(scope *cpup01.StorageScope, _ *string, _ *int64) { scope.ApprovedPrefix = "../input" }},
