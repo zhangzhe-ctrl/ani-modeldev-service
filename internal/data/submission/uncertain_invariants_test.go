@@ -98,7 +98,7 @@ func TestUncertaintyCannotCreateAMissingReservation(t *testing.T) {
 
 func TestUncertaintyRejectsInvalidObservationTimeWithoutRoundingOrReplacing(t *testing.T) {
 	cases := []struct {
-		name string
+		name  string
 		value func(time.Time) time.Time
 	}{
 		{"zero", func(time.Time) time.Time { return time.Time{} }},
@@ -183,7 +183,7 @@ func TestConcurrentUncertaintyObserversKeepOneFirstCommittedObservation(t *testi
 	observedTimes := []time.Time{first.Dispatch.ReservedAt.Add(time.Microsecond), first.Dispatch.ReservedAt.Add(2 * time.Microsecond)}
 	type result struct {
 		dispatch biz.PipelineDispatch
-		err error
+		err      error
 	}
 	start := make(chan struct{})
 	results := make(chan result, len(repositories))
@@ -241,11 +241,11 @@ func TestConcurrentCloseAndUncertaintyBothRemainDurable(t *testing.T) {
 	observations := submission.New(openPool())
 	type closeResult struct {
 		receipt biz.CloseReceipt
-		err error
+		err     error
 	}
 	type observationResult struct {
 		dispatch biz.PipelineDispatch
-		err error
+		err      error
 	}
 	start := make(chan struct{})
 	closeDone := make(chan closeResult, 1)

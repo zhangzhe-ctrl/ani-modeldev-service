@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	conf "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/conf/v1"
+	"github.com/google/uuid"
 	modeldevv1 "github.com/zhangzhe-ctrl/ani-modeldev-service/api/ani/modeldev/v1"
 	trainingv1 "github.com/zhangzhe-ctrl/ani-modeldev-service/api/ani/training/v1"
-	"github.com/google/uuid"
+	conf "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/conf/v1"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/execution"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/testsupport/commandtls"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/testsupport/postgres"
@@ -45,27 +45,36 @@ func TestConfiguredCommandRunsActualTLSAndDurableRepository(t *testing.T) {
 	config := commandAppConfig(t)
 	config.Command = &conf.GovernanceCommand{DatabaseUrlFile: databaseFile, ClientCaFile: files.CAFile, CertificateFile: files.CertificateFile, PrivateKeyFile: files.PrivateKeyFile, GovernanceDnsName: commandtls.GovernanceDNSName}
 	app, err := buildApp(config, newRuntimeLogger(io.Discard))
-	if err != nil { t.Fatalf("CPU_COMMAND_ASSEMBLY: complete actual dependencies rejected: %v", err) }
+	if err != nil {
+		t.Fatalf("CPU_COMMAND_ASSEMBLY: complete actual dependencies rejected: %v", err)
+	}
 	done := make(chan error, 1)
 	go func() { done <- app.Run() }()
 	t.Cleanup(func() {
-		if err := app.Stop(); err != nil { t.Errorf("stop assembled app: %v", err) }
+		if err := app.Stop(); err != nil {
+			t.Errorf("stop assembled app: %v", err)
+		}
 		select {
 		case err := <-done:
-			if err != nil { t.Errorf("assembled app exited: %v", err) }
-		case <-time.After(6*time.Second): t.Error("assembled app did not stop")
+			if err != nil {
+				t.Errorf("assembled app exited: %v", err)
+			}
+		case <-time.After(6 * time.Second):
+			t.Error("assembled app did not stop")
 		}
 	})
 	waitForHTTP(t, "http://"+config.Server.Admin.Addr+"/healthz")
 	connection, err := grpc.NewClient(config.Server.Grpc.Addr, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS13, RootCAs: certificates.Roots, ServerName: commandtls.ServerDNSName, Certificates: []tls.Certificate{certificates.Governance}})))
-	if err != nil { t.Fatalf("TLS client fixture: %v", err) }
+	if err != nil {
+		t.Fatalf("TLS client fixture: %v", err)
+	}
 	defer connection.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	tenantID := uuid.NewString()
 	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("x-ani-tenant-id", tenantID, "x-ani-actor", "governance:user:42", "x-ani-request-id", uuid.NewString()))
 	request := &modeldevv1.ApplyCloseIntentRequest{
-		Identity: &trainingv1.ExecutionIdentity{OperationId: uuid.NewString(), ExecutionId: uuid.NewString(), ExecutionSpecHash: strings.Repeat("b", 64)},
+		Identity:         &trainingv1.ExecutionIdentity{OperationId: uuid.NewString(), ExecutionId: uuid.NewString(), ExecutionSpecHash: strings.Repeat("b", 64)},
 		ResourceTenantId: tenantID, IntentGeneration: 41, Reason: modeldevv1.CloseReason_CLOSE_REASON_USER_STOP,
 		RequestedAt: timestamppb.New(time.Now().UTC().Truncate(time.Microsecond)), RequestedActorId: "governance:user:42",
 	}

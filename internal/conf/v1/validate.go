@@ -4,6 +4,8 @@ package conf
 import (
 	"fmt"
 	"net"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -18,6 +20,16 @@ func (c *Bootstrap) Validate() error {
 	}
 	if c.Server == nil || c.Server.Grpc == nil || c.Server.Admin == nil {
 		return fmt.Errorf("grpc and admin server config are required")
+	}
+	if c.Command != nil {
+		for _, reference := range []string{c.Command.DatabaseUrlFile, c.Command.ClientCaFile, c.Command.CertificateFile, c.Command.PrivateKeyFile} {
+			if !filepath.IsAbs(reference) || filepath.Clean(reference) != reference {
+				return fmt.Errorf("command connection materials require absolute file references")
+			}
+		}
+		if len(c.Command.GovernanceDnsName) > 253 || !commandDNSName.MatchString(c.Command.GovernanceDnsName) || c.Command.GovernanceDnsName == "unknown" {
+			return fmt.Errorf("command requires an explicit exact Governance DNS identity")
+		}
 	}
 	if err := validateListener("grpc", c.Server.Grpc.Network, c.Server.Grpc.Addr, c.Server.Grpc.Timeout); err != nil {
 		return err
@@ -34,6 +46,8 @@ func (c *Bootstrap) Validate() error {
 	}
 	return validateDuration("shutdown", c.Server.ShutdownTimeout, maximumTimeout)
 }
+
+var commandDNSName = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$`)
 
 func validateListener(name, network, address string, timeout *durationpb.Duration) error {
 	if network != "tcp" {
