@@ -14,7 +14,7 @@ import (
 var ErrInputVerification = errors.New("INPUT_VERIFICATION_FAILED")
 
 var (
-	ErrInvalidInput = errors.New("INVALID_INPUT")
+	ErrInvalidInput  = errors.New("INVALID_INPUT")
 	ErrInputConflict = errors.New("INPUT_IMPORT_CONFLICT")
 	ErrInputNotFound = errors.New("INPUT_VERSION_NOT_FOUND")
 )
@@ -75,7 +75,9 @@ func validInputText(value string) bool {
 		return false
 	}
 	for _, r := range value {
-		if unicode.IsControl(r) { return false }
+		if unicode.IsControl(r) {
+			return false
+		}
 	}
 	return true
 }
