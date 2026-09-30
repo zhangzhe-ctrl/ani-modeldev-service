@@ -29,5 +29,33 @@ func NewInputImporter(repository ManagedInputRepository, verifier CSVVerifier) *
 }
 
 func (importer *InputImporter) ImportCSV(ctx context.Context, request InputImport) (InputVersion, error) {
-	return InputVersion{}, ErrPersistence
+	if err := ctx.Err(); err != nil {
+		return InputVersion{}, err
+	}
+	if err := request.Validate(); err != nil {
+		return InputVersion{}, err
+	}
+	if importer == nil || importer.repository == nil || importer.verifier == nil {
+		return InputVersion{}, ErrPersistence
+	}
+	frozen, err := importer.repository.FreezeImport(ctx, request)
+	if err != nil {
+		return InputVersion{}, err
+	}
+	if frozen.State == InputStateReady {
+		return frozen, nil
+	}
+	if frozen.State != InputStateValidating {
+		return InputVersion{}, ErrPersistence
+	}
+	// The receipt has committed before this network call. Use its original
+	// version and approved scope, including when resuming after a process exit.
+	verified, err := importer.verifier.VerifyCSV(ctx, frozen.Import.Scope, frozen.Import.Object)
+	if err != nil {
+		return frozen, err
+	}
+	if err := verified.ValidateFor(frozen.Import); err != nil {
+		return frozen, err
+	}
+	return importer.repository.RecordVerifiedCSV(ctx, frozen.Import, verified)
 }
