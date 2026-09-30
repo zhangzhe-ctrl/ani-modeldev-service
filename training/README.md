@@ -81,8 +81,10 @@ The implementation now accepts the three registered recipes, with `success` as
 the default. Failure is raised after the fifth actual optimizer update and
 flushed metric. Slow-stop uses a fixed POSIX alarm beginning after input admission
 and before PyTorch import; its delay follows each real optimizer update. SIGTERM
-keeps its normal process termination semantics. The implementation awaits a new
-fixed commit and Fedora GREEN.
+keeps its normal process termination semantics. All six module tests passed at
+`d212f25e2180413a3e538370f1b4a011a6fadba7` on Fedora in 55.861 seconds, exit 0.
+This signal result applies to the workload subprocess; the packaged image's
+actual entrypoint and PID 1 still require the separate image smoke below.
 
 These recipe names select registered internal test commands. They are not
 ordinary user parameters, free-form command options, or a second training API.
@@ -90,3 +92,46 @@ No caller may supply a custom failure step, sleep duration, or total-step budget
 The initial subprocess reload is CPU03 module evidence; the
 independent BFF/S3 verifier belongs to CPU08/CPU09 and must not mount the original
 training PVC.
+
+## Offline image build and smoke
+
+`Dockerfile` fixes the actual Python base digest in both stages, installs the ten
+hash-pinned CPU wheels during the build without network access, and copies the
+resulting environment into a runtime image. Its default user is `10001:10001`;
+the entrypoint is the workload itself, with JSON metrics on stdout. It contains
+no selected dataset, checkpoint, or registry credentials. Its entrypoint performs
+no package installation or dependency download.
+
+On Fedora only, after these files are committed and the exact commit is checked
+out, use:
+
+```sh
+bash training/build-image.sh FULL_SOURCE_SHA \
+  /home/chabking/workspace/cpu-p01-20260930-01/cpu03/wheelhouse \
+  /home/chabking/workspace/cpu-p01-20260930-01/cpu03/build-NEW_ATTEMPT
+python3 training/tests/image_smoke.py "$(cat /home/chabking/workspace/cpu-p01-20260930-01/cpu03/build-NEW_ATTEMPT/image.id)" \
+  /home/chabking/workspace/cpu-p01-20260930-01/cpu03/smoke-NEW_ATTEMPT
+```
+
+The build script rejects an existing run directory, checks the current source
+revision, archives that immutable Git tree, and copies only wheels named in the
+lock before verifying their hashes. The build has no network or proxy forwarding,
+uses at most two CPUs / 2 GiB, and records the command, source, exits and local image
+identity. It neither downloads dependencies nor pushes an image.
+
+The image smoke runs the real packaged entrypoint under its declared nonroot
+user. It generates the selected fixture in a separate bounded Fedora container,
+then binds that input read-only and gives each recipe its own output directory.
+It checks success files and hashes, independently reloads the checkpoint in a new
+container, observes five real steps before explicit failure, and sends SIGTERM to
+the slow container only after observing real optimization. Every container is
+offline, read-only except its output/tmpfs, limited to two CPUs / 2 GiB, and has a
+90-second outer lifetime bound. The slow container is removed only by its exact
+returned ID after retaining evidence and output. The smoke deliberately tests the
+image's actual PID 1 behavior without adding an init wrapper.
+
+Build and image smoke are currently NOT_RUN. The existing CI workflow has no
+image-publish job; the consumed ENV handoff is still a NOT_RUN template without a
+registry reference. Registry push therefore remains NOT_RUN until an explicit
+authorized destination is available. A local image ID is not a registry digest,
+and neither is target-cluster Trainer evidence.
