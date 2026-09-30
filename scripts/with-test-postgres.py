@@ -41,8 +41,12 @@ def main():
                 "--publish", "127.0.0.1::5432", "--env-file", str(credentials), IMAGE,
             ], text=True).strip()
             for _ in range(30):
+                # The image starts a socket-only temporary server during init.
+                # Wait for the final TCP listener before issuing role DDL; a
+                # successful socket probe can race database creation/restart.
                 ready = subprocess.run([
-                    "docker", "exec", container_id, "pg_isready", "-U", "cpu_p01_owner", "-d", "cpu_p01_test",
+                    "docker", "exec", container_id, "pg_isready", "-h", "127.0.0.1",
+                    "-U", "cpu_p01_owner", "-d", "cpu_p01_test",
                 ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
                 if ready.returncode == 0:
                     break
