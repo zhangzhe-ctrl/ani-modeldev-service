@@ -7,7 +7,7 @@ import "context"
 type PipelineSubmissionState string
 
 const (
-	PipelineSubmissionNotSent PipelineSubmissionState = "NOT_SENT"
+	PipelineSubmissionNotSent   PipelineSubmissionState = "NOT_SENT"
 	PipelineSubmissionUncertain PipelineSubmissionState = "UNCERTAIN"
 	PipelineSubmissionConfirmed PipelineSubmissionState = "CONFIRMED"
 )

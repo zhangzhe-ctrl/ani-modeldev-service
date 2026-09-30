@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	ErrReleaseNotFound = errors.New("RELEASE_NOT_FOUND")
-	ErrInvalidRelease = errors.New("INVALID_RELEASE")
+	ErrReleaseNotFound      = errors.New("RELEASE_NOT_FOUND")
+	ErrInvalidRelease       = errors.New("INVALID_RELEASE")
 	ErrCatalogueUnavailable = errors.New("CATALOGUE_UNAVAILABLE")
 )
 

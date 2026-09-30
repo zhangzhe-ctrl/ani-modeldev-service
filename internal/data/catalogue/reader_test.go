@@ -55,20 +55,20 @@ func TestReadReleaseRetainsExplicitOldVersionAcrossFreshReads(t *testing.T) {
 func releaseFixtureDocument() cpup01.ReleaseDocument {
 	return cpup01.ReleaseDocument{
 		SchemaVersion: cpup01.ReleaseSchemaVersion,
-		ReleaseID: "11111111-1111-4111-8111-111111111111",
-		PresetID: "33333333-3333-4333-8333-333333333333",
-		Kind: "GENERAL_TRAINING", DeliveryMode: "SAVE_ARTIFACTS",
-		PipelineID: "44444444-4444-4444-8444-444444444444",
+		ReleaseID:     "11111111-1111-4111-8111-111111111111",
+		PresetID:      "33333333-3333-4333-8333-333333333333",
+		Kind:          "GENERAL_TRAINING", DeliveryMode: "SAVE_ARTIFACTS",
+		PipelineID:        "44444444-4444-4444-8444-444444444444",
 		PipelineVersionID: "55555555-5555-4555-8555-555555555555",
-		PipelineIRSHA256: strings.Repeat("a", 64),
+		PipelineIRSHA256:  strings.Repeat("a", 64),
 		Runtime: cpup01.RuntimeRef{
 			Name: "cpu-module-fixture", Kind: "ClusterTrainingRuntime", APIGroup: "trainer.kubeflow.org",
 			ContentSHA256: strings.Repeat("b", 64), TargetJobs: []string{"trainer"},
 		},
 		Program: cpup01.ReleaseProgram{
 			ImageVersionID: "66666666-6666-4666-8666-666666666666",
-			ImageDigest: "registry.example.test/cpu-mlp@sha256:"+strings.Repeat("c", 64),
-			Command: []string{"/opt/venv/bin/python", "-I", "/opt/cpu03/train_mlp.py"},
+			ImageDigest:    "registry.example.test/cpu-mlp@sha256:" + strings.Repeat("c", 64),
+			Command:        []string{"/opt/venv/bin/python", "-I", "/opt/cpu03/train_mlp.py"},
 			ArgsTemplate: []cpup01.ReleaseArgument{
 				{Literal: "--data"}, {Source: "INPUT_PATH"},
 				{Literal: "--output"}, {Source: "OUTPUT_PATH"},

@@ -94,7 +94,7 @@ func (v *Verifier) verify(ctx context.Context, scope cpup01.StorageScope, object
 
 type measuredReader struct {
 	reader io.Reader
-	size int64
+	size   int64
 }
 
 func (r *measuredReader) Read(p []byte) (int, error) {

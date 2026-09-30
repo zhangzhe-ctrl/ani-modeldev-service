@@ -22,8 +22,8 @@ import (
 
 var (
 	ErrInvalidConfig = errors.New("KFP_INVALID_OWNER_CONFIGURATION")
-	ErrNotSent = errors.New("KFP_CREATE_RUN_NOT_SENT")
-	ErrUncertain = errors.New("KFP_CREATE_RUN_UNCERTAIN")
+	ErrNotSent       = errors.New("KFP_CREATE_RUN_NOT_SENT")
+	ErrUncertain     = errors.New("KFP_CREATE_RUN_UNCERTAIN")
 )
 
 var bearerTokenPattern = regexp.MustCompile(`^[A-Za-z0-9._~+/-]+=*$`)
@@ -33,10 +33,10 @@ var bearerTokenPattern = regexp.MustCompile(`^[A-Za-z0-9._~+/-]+=*$`)
 // storage; freezing it into the execution contract is a prerequisite to wiring.
 type Config struct {
 	ConnectionRef string
-	Endpoint string
-	PipelineRoot string
-	RootCAs *x509.CertPool
-	Timeout time.Duration
+	Endpoint      string
+	PipelineRoot  string
+	RootCAs       *x509.CertPool
+	Timeout       time.Duration
 }
 
 // TokenProvider must authenticate the control workload and resolve the trusted
@@ -52,10 +52,10 @@ type TokenProvider interface {
 // received or lost response as uncertain until response validation is added.
 type Client struct {
 	connectionRef string
-	endpoint string
-	pipelineRoot string
-	tokens TokenProvider
-	http *http.Client
+	endpoint      string
+	pipelineRoot  string
+	tokens        TokenProvider
+	http          *http.Client
 }
 
 func New(config Config, tokens TokenProvider) (*Client, error) {
@@ -76,24 +76,24 @@ func New(config Config, tokens TokenProvider) (*Client, error) {
 	endpoint.Path = strings.TrimSuffix(endpoint.Path, "/") + "/apis/v2beta1/runs"
 	transport := &http.Transport{
 		// Do not inherit an ambient proxy or any caller-supplied retry transport.
-		Proxy: nil,
-		DialContext: (&net.Dialer{Timeout: config.Timeout}).DialContext,
-		TLSClientConfig: &tls.Config{RootCAs: config.RootCAs.Clone(), MinVersion: tls.VersionTLS12},
-		TLSHandshakeTimeout: config.Timeout,
+		Proxy:                 nil,
+		DialContext:           (&net.Dialer{Timeout: config.Timeout}).DialContext,
+		TLSClientConfig:       &tls.Config{RootCAs: config.RootCAs.Clone(), MinVersion: tls.VersionTLS12},
+		TLSHandshakeTimeout:   config.Timeout,
 		ResponseHeaderTimeout: config.Timeout,
-		MaxConnsPerHost: 2,
-		MaxIdleConnsPerHost: 2,
-		IdleConnTimeout: 30*time.Second,
-		DisableCompression: true,
+		MaxConnsPerHost:       2,
+		MaxIdleConnsPerHost:   2,
+		IdleConnTimeout:       30 * time.Second,
+		DisableCompression:    true,
 	}
 	return &Client{
 		connectionRef: config.ConnectionRef,
-		endpoint: endpoint.String(),
-		pipelineRoot: config.PipelineRoot,
-		tokens: tokens,
+		endpoint:      endpoint.String(),
+		pipelineRoot:  config.PipelineRoot,
+		tokens:        tokens,
 		http: &http.Client{
-			Transport: transport,
-			Timeout: config.Timeout,
+			Transport:     transport,
+			Timeout:       config.Timeout,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
 	}, nil
@@ -114,13 +114,13 @@ func (client *Client) CreateRun(ctx context.Context, admission biz.Admission) (b
 	}
 	requestBody, err := json.Marshal(createRunBody{
 		ExperimentID: strings.ToLower(environment.ExperimentID),
-		DisplayName: "md-" + strings.ToLower(admission.ExecutionID),
+		DisplayName:  "md-" + strings.ToLower(admission.ExecutionID),
 		PipelineVersionReference: pipelineVersionReference{
-			PipelineID: strings.ToLower(admission.Snapshot.Release.PipelineID),
+			PipelineID:        strings.ToLower(admission.Snapshot.Release.PipelineID),
 			PipelineVersionID: strings.ToLower(admission.Snapshot.Release.PipelineVersionID),
 		},
 		RuntimeConfig: runtimeConfig{
-			Parameters: map[string]string{"execution_id": strings.ToLower(admission.ExecutionID), "spec_hash": admission.SpecHash},
+			Parameters:   map[string]string{"execution_id": strings.ToLower(admission.ExecutionID), "spec_hash": admission.SpecHash},
 			PipelineRoot: client.pipelineRoot,
 		},
 		ServiceAccount: environment.Identities.KFPStepServiceAccount,
@@ -137,7 +137,7 @@ func (client *Client) CreateRun(ctx context.Context, admission biz.Admission) (b
 	// an idempotency key. No caller request/header map is available to forward.
 	request.GetBody = nil
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Authorization", "Bearer " + token)
+	request.Header.Set("Authorization", "Bearer "+token)
 	uncertain := biz.PipelineSubmissionObservation{State: biz.PipelineSubmissionUncertain}
 	response, err := client.http.Do(request)
 	if err != nil {
@@ -151,21 +151,21 @@ func (client *Client) CreateRun(ctx context.Context, admission biz.Admission) (b
 
 // Exact JSON field names follow the fixed KFP 2.16.0 v2beta1 API schema.
 type createRunBody struct {
-	ExperimentID string `json:"experiment_id"`
-	DisplayName string `json:"display_name"`
+	ExperimentID             string                   `json:"experiment_id"`
+	DisplayName              string                   `json:"display_name"`
 	PipelineVersionReference pipelineVersionReference `json:"pipeline_version_reference"`
-	RuntimeConfig runtimeConfig `json:"runtime_config"`
-	ServiceAccount string `json:"service_account"`
+	RuntimeConfig            runtimeConfig            `json:"runtime_config"`
+	ServiceAccount           string                   `json:"service_account"`
 }
 
 type pipelineVersionReference struct {
-	PipelineID string `json:"pipeline_id"`
+	PipelineID        string `json:"pipeline_id"`
 	PipelineVersionID string `json:"pipeline_version_id"`
 }
 
 type runtimeConfig struct {
-	Parameters map[string]string `json:"parameters"`
-	PipelineRoot string `json:"pipeline_root"`
+	Parameters   map[string]string `json:"parameters"`
+	PipelineRoot string            `json:"pipeline_root"`
 }
 
 var _ biz.PipelineRunCreator = (*Client)(nil)

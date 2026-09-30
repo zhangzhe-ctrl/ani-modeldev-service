@@ -88,10 +88,10 @@ func TestCreateRunResponseLostPreservesUncertaintyWithoutResending(t *testing.T)
 	})
 	client, err := kfp.New(kfp.Config{
 		ConnectionRef: admission.Snapshot.Environment.KFPConnectionRef,
-		Endpoint: server.URL,
-		PipelineRoot: "s3://fixture-kfp-artifacts/managed-root",
-		RootCAs: certificates,
-		Timeout: 3*time.Second,
+		Endpoint:      server.URL,
+		PipelineRoot:  "s3://fixture-kfp-artifacts/managed-root",
+		RootCAs:       certificates,
+		Timeout:       3 * time.Second,
 	}, provider)
 	if err != nil {
 		t.Fatalf("construct candidate client: %v", err)
@@ -114,18 +114,18 @@ func (provider tokenProviderFunc) BearerToken(ctx context.Context, tenant string
 func fixtureAdmission(t *testing.T) biz.Admission {
 	t.Helper()
 	snapshot := conformance.SnapshotV1()
-	intent := cpup01.Intent{Name:"kfp-boundary-fixture", Kind:"GENERAL_TRAINING", PresetID:snapshot.Release.PresetID, DatasetVersionID:snapshot.Input.InputVersionID}
+	intent := cpup01.Intent{Name: "kfp-boundary-fixture", Kind: "GENERAL_TRAINING", PresetID: snapshot.Release.PresetID, DatasetVersionID: snapshot.Input.InputVersionID}
 	_, intentHash, err := cpup01.CanonicalIntent(intent)
 	if err != nil {
 		t.Fatalf("fixture intent: %v", err)
 	}
 	return biz.Admission{
-		TenantID:"11111111-2222-4333-8444-555555555555",
-		Actor:"governance:synthetic-fixture",
-		OperationID:"bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
-		ExecutionID:"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
-		Intent:intent, IntentHash:intentHash,
-		Snapshot:snapshot, SpecHash:conformance.SnapshotSHA256V1,
-		AcceptedAt:snapshot.DeadlineAt.Add(-time.Hour).UTC(),
+		TenantID:    "11111111-2222-4333-8444-555555555555",
+		Actor:       "governance:synthetic-fixture",
+		OperationID: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+		ExecutionID: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+		Intent:      intent, IntentHash: intentHash,
+		Snapshot: snapshot, SpecHash: conformance.SnapshotSHA256V1,
+		AcceptedAt: snapshot.DeadlineAt.Add(-time.Hour).UTC(),
 	}
 }
