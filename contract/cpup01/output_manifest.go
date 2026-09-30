@@ -1,10 +1,8 @@
 package cpup01
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"sort"
 	"strings"
 )
@@ -71,13 +69,10 @@ func OutputManifestBytes(admission AdmissionEnvelope, files []OutputFile) ([]byt
 		ReleaseID: strings.ToLower(admission.Snapshot.Release.ReleaseID), ImageDigest: admission.Snapshot.Program.ImageDigest,
 		StorageState: "WORKSPACE_ONLY", Files: ordered,
 	}
-	var buffer bytes.Buffer
-	encoder := json.NewEncoder(&buffer)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(manifest); err != nil {
+	canonical, err := encodeCanonicalJSON(manifest)
+	if err != nil {
 		return nil, "", ErrInvalidArgument
 	}
-	canonical := bytes.TrimSuffix(buffer.Bytes(), []byte("\n"))
 	digest := sha256.Sum256(canonical)
 	return canonical, hex.EncodeToString(digest[:]), nil
 }

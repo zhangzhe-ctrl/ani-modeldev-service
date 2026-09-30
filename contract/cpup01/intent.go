@@ -12,7 +12,6 @@ import (
 	"io"
 	"math/big"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -83,26 +82,17 @@ func CanonicalIntent(intent Intent) ([]byte, string, error) {
 		intent.SourceExecutionID = &value
 	}
 	if intent.GeneralParameters != nil {
-		parameters := append([]Parameter{}, (*intent.GeneralParameters)...)
-		for i := range parameters {
-			if parameters[i].Type == "DECIMAL" && strings.Contains(parameters[i].Value, ".") {
-				parameters[i].Value = strings.TrimRight(strings.TrimRight(parameters[i].Value, "0"), ".")
-			}
-		}
-		sort.Slice(parameters, func(i, j int) bool { return parameters[i].Name < parameters[j].Name })
+		parameters := canonicalParameters(*intent.GeneralParameters)
 		intent.GeneralParameters = &parameters
 	}
 	value := struct {
 		Schema string `json:"schema"`
 		Intent
 	}{Schema: "ani.modeldev.intent.v1", Intent: intent}
-	var buffer bytes.Buffer
-	encoder := json.NewEncoder(&buffer)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(value); err != nil {
+	canonical, err := encodeCanonicalJSON(value)
+	if err != nil {
 		return nil, "", fmt.Errorf("%w: intent encoding", ErrInvalidArgument)
 	}
-	canonical := bytes.TrimSuffix(buffer.Bytes(), []byte("\n"))
 	digest := sha256.Sum256(canonical)
 	return canonical, hex.EncodeToString(digest[:]), nil
 }

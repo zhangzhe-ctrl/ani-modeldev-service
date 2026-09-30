@@ -1,10 +1,8 @@
 package cpup01
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"path"
 	"regexp"
@@ -160,28 +158,17 @@ func (snapshot Snapshot) Canonical() ([]byte, error) {
 	snapshot.Release.Runtime.TargetJobs = append([]string{}, snapshot.Release.Runtime.TargetJobs...)
 	sort.Strings(snapshot.Release.Runtime.TargetJobs)
 	snapshot.Program.ResolvedArgs = append([]string{}, snapshot.Program.ResolvedArgs...)
-	snapshot.Program.ResolvedParameters = append([]Parameter{}, snapshot.Program.ResolvedParameters...)
-	for i := range snapshot.Program.ResolvedParameters {
-		parameter := &snapshot.Program.ResolvedParameters[i]
-		if parameter.Type == "DECIMAL" && strings.Contains(parameter.Value, ".") {
-			parameter.Value = strings.TrimRight(strings.TrimRight(parameter.Value, "0"), ".")
-		}
-	}
-	sort.Slice(snapshot.Program.ResolvedParameters, func(i, j int) bool {
-		return snapshot.Program.ResolvedParameters[i].Name < snapshot.Program.ResolvedParameters[j].Name
-	})
+	snapshot.Program.ResolvedParameters = canonicalParameters(snapshot.Program.ResolvedParameters)
 	snapshot.OutputContract.RequiredFiles = append([]RequiredOutput{}, snapshot.OutputContract.RequiredFiles...)
 	sort.Slice(snapshot.OutputContract.RequiredFiles, func(i, j int) bool {
 		return snapshot.OutputContract.RequiredFiles[i].RelativePath < snapshot.OutputContract.RequiredFiles[j].RelativePath
 	})
 	snapshot.DeadlineAt = snapshot.DeadlineAt.UTC()
-	var buffer bytes.Buffer
-	encoder := json.NewEncoder(&buffer)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(snapshot); err != nil {
+	canonical, err := encodeCanonicalJSON(snapshot)
+	if err != nil {
 		return nil, fmt.Errorf("%w: snapshot encoding", ErrInvalidArgument)
 	}
-	return bytes.TrimSuffix(buffer.Bytes(), []byte("\n")), nil
+	return canonical, nil
 }
 
 // Digest returns lowercase SHA256 of Canonical, with no trailing newline.
