@@ -80,6 +80,8 @@ snapshot_test.go，SHA 必须由 Fedora Python hashlib 独立计算并归档。
 
 ## 实施状态
 
-当前只建立纯Go类型、Canonical/Digest/Validate 最小未实现 stub 和一条正向
-canonical tracer 测试。等待主代理对固定 commit 完成 Fedora RED，再实现该
-行为。尚未运行测试、计算样例摘要或完成 CPU01。
+固定 f55fb60 已在 Fedora 对首次 canonical tracer 取得预期 RED（未实现）。
+当前实现 Canonical/Digest 正向行为；model.pt 替换后规范向量仍按路径排序，
+等待 Fedora 对更正后的规范字节独立计算 SHA 和执行 GREEN。
+Validate 仍明确返回未实现；下一轮先取得负向 RED 再实现并接入 Canonical。
+本阶段不得用于产品受理或标记 CPU01 CODE_READY。

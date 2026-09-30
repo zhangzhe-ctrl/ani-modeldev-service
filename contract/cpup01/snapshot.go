@@ -1,7 +1,14 @@
 package cpup01
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -132,21 +139,58 @@ type OutputContract struct {
 	CreateTarBundle bool `json:"create_tar_bundle"`
 }
 
-var errSnapshotNotImplemented = errors.New("snapshot canonicalization not implemented")
+var errSnapshotValidationNotImplemented = errors.New("snapshot validation not implemented")
 
-// Canonical returns v1 canonical UTF-8 bytes after validating the frozen
-// configuration. It never resolves current defaults or performs network I/O.
+// Canonical returns v1 canonical UTF-8 bytes. It never resolves current defaults
+// or performs network I/O. Admission remains unavailable until the separate
+// validation behavior is implemented and connected to this boundary.
 func (snapshot Snapshot) Canonical() ([]byte, error) {
-	return nil, errSnapshotNotImplemented
+	snapshot.Release.ReleaseID = strings.ToLower(snapshot.Release.ReleaseID)
+	snapshot.Release.PresetID = strings.ToLower(snapshot.Release.PresetID)
+	snapshot.Release.PipelineID = strings.ToLower(snapshot.Release.PipelineID)
+	snapshot.Release.PipelineVersionID = strings.ToLower(snapshot.Release.PipelineVersionID)
+	snapshot.Input.InputVersionID = strings.ToLower(snapshot.Input.InputVersionID)
+	snapshot.Program.ImageVersionID = strings.ToLower(snapshot.Program.ImageVersionID)
+	snapshot.Environment.BindingID = strings.ToLower(snapshot.Environment.BindingID)
+	snapshot.Environment.ClusterID = strings.ToLower(snapshot.Environment.ClusterID)
+	snapshot.Environment.NamespaceUID = strings.ToLower(snapshot.Environment.NamespaceUID)
+	snapshot.Environment.ExperimentID = strings.ToLower(snapshot.Environment.ExperimentID)
+	snapshot.Release.Runtime.TargetJobs = append([]string{}, snapshot.Release.Runtime.TargetJobs...)
+	sort.Strings(snapshot.Release.Runtime.TargetJobs)
+	snapshot.Program.ResolvedParameters = append([]Parameter{}, snapshot.Program.ResolvedParameters...)
+	for i := range snapshot.Program.ResolvedParameters {
+		parameter := &snapshot.Program.ResolvedParameters[i]
+		if parameter.Type == "DECIMAL" && strings.Contains(parameter.Value, ".") {
+			parameter.Value = strings.TrimRight(strings.TrimRight(parameter.Value, "0"), ".")
+		}
+	}
+	sort.Slice(snapshot.Program.ResolvedParameters, func(i, j int) bool {
+		return snapshot.Program.ResolvedParameters[i].Name < snapshot.Program.ResolvedParameters[j].Name
+	})
+	snapshot.OutputContract.RequiredFiles = append([]RequiredOutput{}, snapshot.OutputContract.RequiredFiles...)
+	sort.Slice(snapshot.OutputContract.RequiredFiles, func(i, j int) bool {
+		return snapshot.OutputContract.RequiredFiles[i].RelativePath < snapshot.OutputContract.RequiredFiles[j].RelativePath
+	})
+	snapshot.DeadlineAt = snapshot.DeadlineAt.UTC()
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(snapshot); err != nil {
+		return nil, fmt.Errorf("%w: snapshot encoding", ErrInvalidArgument)
+	}
+	return bytes.TrimSuffix(buffer.Bytes(), []byte("\n")), nil
 }
 
 // Digest returns lowercase SHA256 of Canonical, with no trailing newline.
 func (snapshot Snapshot) Digest() (string, error) {
-	return "", errSnapshotNotImplemented
+	canonical, err := snapshot.Canonical()
+	if err != nil { return "", err }
+	digest := sha256.Sum256(canonical)
+	return hex.EncodeToString(digest[:]), nil
 }
 
 // Validate checks the local contract only. A valid shape is not evidence that
 // an environment, immutable object, image, or Runtime actually exists.
 func (snapshot Snapshot) Validate() error {
-	return errSnapshotNotImplemented
+	return errSnapshotValidationNotImplemented
 }
