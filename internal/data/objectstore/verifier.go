@@ -5,12 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
-	"path"
 	"regexp"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -43,10 +40,10 @@ func (v *Verifier) verify(ctx context.Context, scope cpup01.StorageScope, object
 	if err := ctx.Err(); err != nil {
 		return biz.VerifiedObject{}, err
 	}
-	if v == nil || v.client == nil || v.connectionID == "" || scope.StorageConnectionID != v.connectionID || object.StorageConnectionID != v.connectionID || object.Bucket != scope.Bucket || !bucketPattern.MatchString(scope.Bucket) || !validKey(scope.ApprovedPrefix) || !validKey(object.Key) || !strings.HasPrefix(object.Key, scope.ApprovedPrefix+"/") {
+	if v == nil || v.client == nil || v.connectionID == "" || scope.StorageConnectionID != v.connectionID || object.StorageConnectionID != v.connectionID || object.Bucket != scope.Bucket || !bucketPattern.MatchString(scope.Bucket) || !biz.ValidStorageKey(scope.ApprovedPrefix) || !biz.ValidStorageKey(object.Key) || !strings.HasPrefix(object.Key, scope.ApprovedPrefix+"/") {
 		return biz.VerifiedObject{}, biz.ErrObjectVerification
 	}
-	if v.maxObjectBytes <= 0 || object.VersionID == nil || object.ImmutableCopy != nil || !validText(*object.VersionID) || strings.EqualFold(*object.VersionID, "null") || object.SizeBytes <= 0 || object.SizeBytes > v.maxObjectBytes || len(object.SHA256) != 64 || strings.ToLower(object.SHA256) != object.SHA256 {
+	if v.maxObjectBytes <= 0 || object.VersionID == nil || object.ImmutableCopy != nil || !biz.ValidStorageReference(*object.VersionID) || strings.EqualFold(*object.VersionID, "null") || object.SizeBytes <= 0 || object.SizeBytes > v.maxObjectBytes || len(object.SHA256) != 64 || strings.ToLower(object.SHA256) != object.SHA256 {
 		return biz.VerifiedObject{}, biz.ErrObjectVerification
 	}
 	if _, err := hex.DecodeString(object.SHA256); err != nil {
@@ -104,19 +101,3 @@ func (r *measuredReader) Read(p []byte) (int, error) {
 }
 
 var bucketPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`)
-
-func validKey(value string) bool {
-	return validText(value) && len(value) <= 1024 && value != "." && value != ".." && !strings.HasPrefix(value, "../") && !strings.HasPrefix(value, "/") && !strings.Contains(value, "\\") && path.Clean(value) == value
-}
-
-func validText(value string) bool {
-	if value == "" || len(value) > 4096 || !utf8.ValidString(value) || strings.TrimSpace(value) != value {
-		return false
-	}
-	for _, r := range value {
-		if unicode.IsControl(r) {
-			return false
-		}
-	}
-	return true
-}

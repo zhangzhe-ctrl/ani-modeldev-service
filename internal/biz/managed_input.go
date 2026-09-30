@@ -2,11 +2,8 @@ package biz
 
 import (
 	"errors"
-	"path"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01"
 )
@@ -80,30 +77,14 @@ func (request InputImport) Validate() error {
 		return ErrInvalidInput
 	}
 	object, scope := request.Object, request.Scope
-	if scope.CredentialReference != "" && !validInputText(scope.CredentialReference) {
+	if scope.CredentialReference != "" && !ValidStorageReference(scope.CredentialReference) {
 		return ErrInvalidInput
 	}
-	if !validInputText(scope.StorageConnectionID) || !validInputText(scope.Bucket) || object.StorageConnectionID != scope.StorageConnectionID || object.Bucket != scope.Bucket || !validInputKey(scope.ApprovedPrefix) || !validInputKey(object.Key) || !strings.HasPrefix(object.Key, scope.ApprovedPrefix+"/") {
+	if !ValidStorageReference(scope.StorageConnectionID) || !ValidStorageReference(scope.Bucket) || object.StorageConnectionID != scope.StorageConnectionID || object.Bucket != scope.Bucket || !ValidStorageKey(scope.ApprovedPrefix) || !ValidStorageKey(object.Key) || !strings.HasPrefix(object.Key, scope.ApprovedPrefix+"/") {
 		return ErrInvalidInput
 	}
-	if object.VersionID == nil || object.ImmutableCopy != nil || !validInputText(*object.VersionID) || strings.EqualFold(*object.VersionID, "null") || object.SizeBytes <= 0 || object.SizeBytes > 32*1024*1024 || !closeSpecHashPattern.MatchString(object.SHA256) {
+	if object.VersionID == nil || object.ImmutableCopy != nil || !ValidStorageReference(*object.VersionID) || strings.EqualFold(*object.VersionID, "null") || object.SizeBytes <= 0 || object.SizeBytes > 32*1024*1024 || !closeSpecHashPattern.MatchString(object.SHA256) {
 		return ErrInvalidInput
 	}
 	return nil
-}
-
-func validInputText(value string) bool {
-	if value == "" || len(value) > 4096 || !utf8.ValidString(value) || strings.TrimSpace(value) != value {
-		return false
-	}
-	for _, r := range value {
-		if unicode.IsControl(r) {
-			return false
-		}
-	}
-	return true
-}
-
-func validInputKey(value string) bool {
-	return validInputText(value) && len(value) <= 1024 && value != "." && value != ".." && !strings.HasPrefix(value, "../") && !strings.HasPrefix(value, "/") && !strings.Contains(value, "\\") && path.Clean(value) == value
 }
