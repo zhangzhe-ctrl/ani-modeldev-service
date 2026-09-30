@@ -159,6 +159,7 @@ func (snapshot Snapshot) Canonical() ([]byte, error) {
 	snapshot.Environment.ExperimentID = strings.ToLower(snapshot.Environment.ExperimentID)
 	snapshot.Release.Runtime.TargetJobs = append([]string{}, snapshot.Release.Runtime.TargetJobs...)
 	sort.Strings(snapshot.Release.Runtime.TargetJobs)
+	snapshot.Program.ResolvedArgs = append([]string{}, snapshot.Program.ResolvedArgs...)
 	snapshot.Program.ResolvedParameters = append([]Parameter{}, snapshot.Program.ResolvedParameters...)
 	for i := range snapshot.Program.ResolvedParameters {
 		parameter := &snapshot.Program.ResolvedParameters[i]

@@ -114,6 +114,9 @@ evidence/cpu01-snapshot-validation-red-0a93b04.txt。
 INVALID_ARGUMENT，不产生规范字节或摘要。错误只写固定字段类别，不回显配置值。
 CPU04 可以复用这一纯本地边界，仍须验证受理 envelope 与可信外部事实。
 固定 87b28548786443431e32fa53a22176646a30c3b2 的 Fedora 合同测试已通过，
-包括已实现的纯快照校验及 protobuf 正负 roundtrip。现追加空 resolved_args
-跨 wire 的规范化回归和 managed-copy oneof 的 roundtrip 回归；只写测试与规范，
-等待新固定 commit 的 Fedora RED 后实施。不能因此标记整个 CPU01 CODE_READY。
+包括已实现的纯快照校验及 protobuf 正负 roundtrip。空 resolved_args 跨 wire 的
+规范化回归在固定 870994e29f28e170eef6314fd09569e6d7728ac7 取得预期 RED：
+nil 输出 null，显式空数组跨 wire 后摘要变化；managed-copy oneof roundtrip 已通过。
+证据为 evidence/cpu01-empty-args-red-870994e.txt/.exit。现仅在 Canonical 中将
+resolved_args 的副本统一为空数组，等待固定提交的 Fedora GREEN。不能因此标记
+整个 CPU01 CODE_READY。
