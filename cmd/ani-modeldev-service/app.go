@@ -17,6 +17,7 @@ func buildApp(bc *conf.Bootstrap, logger *slog.Logger) (*kratos.App, error) {
 	if err := bc.Validate(); err != nil {
 		return nil, err
 	}
+	// Business adapters are not assembled yet, so process startup cannot grant readiness.
 	readiness := server.NewReadiness()
 	observability, err := server.NewObservability(Name, Version, readiness)
 	if err != nil {
@@ -42,10 +43,6 @@ func newApp(
 		kratos.Version(Version),
 		kratos.Logger(logger),
 		kratos.Server(grpcServer, adminServer),
-		kratos.AfterStart(func(context.Context) error {
-			readiness.Set(true)
-			return nil
-		}),
 		kratos.BeforeStop(func(context.Context) error {
 			readiness.Set(false)
 			return nil

@@ -1,11 +1,13 @@
-# Generic Runtime Contract
+# ModelDev Runtime Contract
 
-- Status: **FROZEN CONTRACT**
-- Scope: runtime shell emitted by LAYOUT-0
+- Status: service-owned CPU-P01 runtime contract
+- Scope: runtime shell inherited from LAYOUT-0 and its ModelDev readiness policy
 
-This is the minimum runtime contract shared by newly generated ANI services.
-It standardizes application mechanics while leaving business ownership to the
-service.
+The service retains the application mechanics inherited from LAYOUT-0. CPU-P01
+explicitly changes the template's process-only readiness rule: a listening
+ModelDev process must not claim that its unassembled business capabilities are
+ready. The service owns this source and runtime contract independently of the
+layout.
 
 ## Process topology
 
@@ -13,7 +15,7 @@ One Kratos application owns two listeners:
 
 | Listener | Purpose | Default local bind | Public business API |
 | --- | --- | --- | --- |
-| gRPC | future service APIs plus standard gRPC health | `127.0.0.1:19090` | no API supplied by the layout |
+| gRPC | service APIs plus standard gRPC health | `127.0.0.1:19090` | contracts exist; business handlers are not assembled yet |
 | admin HTTP | process health, readiness, and metrics | `127.0.0.1:19091` | no |
 
 The committed defaults are safe for local execution. A service deployment may
@@ -75,29 +77,34 @@ panics, request metadata, trace context, validation failures, latency, and statu
 are observable consistently.
 
 Kratos error and codec handlers remain the transport boundary. gRPC reflection
-is disabled by default. The standard gRPC health service is enabled.
+is disabled by default. The standard gRPC health service is enabled and reports
+transport availability; SERVING does not establish business dependency
+readiness. Unimplemented business RPCs fail explicitly.
 
 ## Administrative endpoints
 
 | Endpoint | Meaning | Must not imply |
 | --- | --- | --- |
 | `GET /healthz` | the process and admin server can answer | downstream dependencies are healthy |
-| `GET /readyz` | the generic process reached its running lifecycle state | business dependency readiness |
+| `GET /readyz` | mandatory ModelDev business dependencies are ready; HTTP 503 while they are unassembled | listener startup alone proves the service can accept executions |
 | `GET /metrics` | Prometheus exposition for registered runtime metrics | telemetry has been scraped or exported |
 
 Administrative handlers use the same Kratos error, codec, and middleware path
 rather than an unrelated ad-hoc HTTP stack.
 
-`/readyz` is intentionally process-only in this template. When a service owns a
-database, broker, provider, or other mandatory dependency, the service must add
-an explicit readiness contribution and tests. It must not reinterpret the
-generic result silently.
+The current composition does not set readiness merely because its listeners
+started. It keeps `/readyz` at HTTP 503 with `NOT_READY`, while `/healthz` remains
+available for liveness and diagnosis. Readiness stays false during shutdown.
+CPU04's real persistent repository and subsequent required business adapters
+must contribute actual dependency checks when they are composed. There is no
+configuration switch that declares absent capabilities ready.
 
 ## Telemetry
 
 - Prometheus exposes process and Kratos transport metrics on the admin listener;
 - OpenTelemetry provides trace propagation and an export integration seam;
-- the generic readiness gauge is named `ani_runtime_ready`;
+- the readiness gauge is named `ani_runtime_ready` and remains 0 while the
+  composition has no ready business dependencies;
 - telemetry initialization and shutdown are owned by the application lifecycle;
   and
 - absence of an external collector must not invent successful export evidence.
@@ -108,7 +115,7 @@ dashboard, alert, or trace backend.
 ## Extension seams
 
 A generated service adds its own API, use cases, repositories, providers, and
-dependency-specific probes below the explicit composition root. The empty
+dependency-specific probes below the explicit composition root. The
 `internal/biz`, `internal/data`, and `internal/service` packages are navigation
 seams, not permission boundaries and not a mandate to reproduce ANI's historical
 Core/Service split.

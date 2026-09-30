@@ -2,8 +2,8 @@ package server
 
 import "sync/atomic"
 
-// Readiness records only the local process lifecycle. A service with external
-// dependencies must add domain-specific readiness checks at composition time.
+// Readiness records the decision supplied by the composition root. It starts
+// false; process startup alone does not establish business dependency readiness.
 type Readiness struct {
 	ready atomic.Bool
 }

@@ -9,7 +9,11 @@ independent source snapshot: builds and runtime do not require the layout.
 MIT notice. This generated repository intentionally has no project `LICENSE`;
 its owner must make that choice before publication.
 
-## Local commands
+## Runtime and verification commands
+
+For CPU-P01, execute these commands only in the task's fixed Fedora checkout.
+Starting the runtime shell there is module verification, not target-cluster
+business acceptance.
 
 ```bash
 make tools
@@ -31,9 +35,11 @@ the typed `ANI` environment configuration when the deployment design is added.
 - gRPC and a separate admin HTTP server.
 - Structured redacted logs, tracing, metrics, and middleware.
 - `/healthz` reports process liveness.
-- `/readyz` reports only completion of the local runtime start hook; add checks
-  for real dependencies when the first vertical slice introduces them.
+- `/readyz` remains HTTP 503 while the required business adapters are absent;
+  starting listeners does not establish business readiness. Real dependency
+  checks belong to the production composition when those adapters are added.
 - `/metrics` exports the local Prometheus registry.
 
-There is intentionally no sample domain, persistence, broker, auth, provider,
-container, or deployment configuration.
+CPU-P01 domain and RPC contracts are present. Production business handlers,
+persistent repositories, external adapters, and deployment bindings are not yet
+assembled; unimplemented business RPCs fail explicitly.
