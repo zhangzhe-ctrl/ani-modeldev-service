@@ -1,7 +1,10 @@
 # KFP CreateRun boundary (CPU07 candidate)
 
-This package is an unwired first TDD slice. The initial implementation is an
-explicit `KFP_CREATE_RUN_NOT_IMPLEMENTED` stub. It has no durable submission
+This package is an unwired first TDD slice. Fixed commit `ffa993b` first produced
+Fedora behavior RED against an explicit `KFP_CREATE_RUN_NOT_IMPLEMENTED` stub.
+The candidate implementation sends once and conservatively treats every
+response as uncertain; confirmed-response validation is still outstanding.
+It has no durable submission
 worker, Run authority binding, training creation permit, or product entry point.
 
 The target wire contract is the official candidate KFP **2.16.0**
@@ -37,4 +40,6 @@ The first test uses an in-process TLS server which receives the request then
 disconnects. It checks one POST, fixed payload and uncertain outcome. It is
 neither real KFP nor proof of multi-user authorization, storage, durable worker
 recovery, real callbacks, Trainer creation, or LIVE. All execution and format
-checks run only on Fedora at an immutable source SHA.
+checks run only on Fedora at an immutable source SHA. The lost-response test
+is the first behavior; malformed-response, constructor, preflight and redirect
+negative tests and response confirmation remain follow-on verification.
