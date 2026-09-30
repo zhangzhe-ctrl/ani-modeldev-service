@@ -155,4 +155,11 @@ KFP/TrainJob 已终止或无活跃写者。重复关闭的成功回执/来源代
 该测试在固定 `f8c88ca` 取得真实 PG RED / exit 1：preflight PASS 后重放返回
 PERSISTENCE_UNAVAILABLE。候选实现先持有共享身份锁，按 tenant/execution 和
 GOVERNANCE 来源序号查原 receipt；完整身份、spec、原因和审计事实一致才回放，
-跳过 owner 代际递增。异参同来源序号、后续来源序号和并发重放分开验证。
+跳过 owner 代际递增。固定 `70da54b` 格式无差异，全部 repository 和真实 PG
+受理并发 race 均 GREEN / exit 0。
+
+下一组 close 不变量候选通过公开 repository 接口覆盖：同来源序号的审计/身份
+冲突及失败不消费 owner 代际，跨租户读取隐藏和 UUID 拒绝，六 pool 同件竞争、
+异参唯一赢家，以及后续来源受理后旧来源重放不覆盖最新 owner 围栏。
+这些场景等待固定候选验证；已有实现正确的场景如实记回归 PASS，不制造 RED。
+迟到 Admission 携带关闭事实和创建许可消费仍是后续独立行为。

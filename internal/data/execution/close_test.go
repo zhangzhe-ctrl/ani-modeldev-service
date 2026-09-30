@@ -91,14 +91,19 @@ func TestUserStopDuplicateAfterReconnectReturnsOriginalFenceAndFacts(t *testing.
 
 func assertInitialCloseTombstone(t *testing.T, got biz.CloseRecord, want biz.CloseIntent) {
 	t.Helper()
+	assertCloseTombstone(t, got, want, 1)
+}
+
+func assertCloseTombstone(t *testing.T, got biz.CloseRecord, want biz.CloseIntent, generation uint64) {
+	t.Helper()
 	if got.TenantID != want.TenantID || got.OperationID != want.OperationID || got.ExecutionID != want.ExecutionID || got.SpecHash != want.SpecHash {
 		t.Fatal("close tombstone lost its original tenant/operation/execution/spec binding")
 	}
 	if got.SourceGeneration != want.SourceGeneration || got.Reason != want.Reason || got.RequestedActor != want.RequestedActor || !got.RequestedAt.Equal(want.RequestedAt) {
 		t.Fatal("close tombstone changed the original source intent or audit facts")
 	}
-	if got.Generation != 1 {
-		t.Fatalf("first ModelDev fence generation = %d, want 1 independently of source generation %d", got.Generation, want.SourceGeneration)
+	if got.Generation != generation {
+		t.Fatalf("ModelDev fence generation = %d, want %d independently of source generation %d", got.Generation, generation, want.SourceGeneration)
 	}
 	if got.State != biz.CloseStateClosing {
 		t.Fatalf("durable stop is only CLOSING without writer reconciliation, got %s", got.State)
