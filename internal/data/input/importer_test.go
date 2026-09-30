@@ -89,12 +89,16 @@ func TestManagedInputImportRejectsBadRemoteProofWithoutExposingReady(t *testing.
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			got, err := biz.NewInputImporter(input.New(openPool()), managedImportVerifier(server, request.Scope.StorageConnectionID)).ImportCSV(ctx, request)
-			if !errors.Is(err, biz.ErrInputVerification) || reads.Load() != 1 || got.State == biz.InputStateReady || got.Verification != nil {
+			if !errors.Is(err, biz.ErrInputVerification) || reads.Load() != 1 || got.State != biz.InputStateRejected || got.Verification != nil || got.Failure == nil || got.Failure.Code != biz.InputFailureContentRejected {
 				t.Fatalf("invalid remote proof exposed a ready input: %+v, %v", got, err)
 			}
 			stored, err := input.New(openPool()).Get(ctx, request.TenantID, request.InputVersionID)
-			if err != nil || stored.State == biz.InputStateReady || stored.Verification != nil || !reflect.DeepEqual(stored.Import, request) {
+			if err != nil || !reflect.DeepEqual(stored, got) || !reflect.DeepEqual(stored.Import, request) {
 				t.Fatalf("failed verification lost or promoted the frozen request: %+v, %v", stored, err)
+			}
+			replayed, err := biz.NewInputImporter(input.New(openPool()), managedImportVerifier(server, request.Scope.StorageConnectionID)).ImportCSV(ctx, request)
+			if !errors.Is(err, biz.ErrInputVerification) || !reflect.DeepEqual(replayed, stored) || reads.Load() != 1 {
+				t.Fatalf("replaying rejected content fetched it again or lost the first failure: %+v, %v", replayed, err)
 			}
 		})
 	}
