@@ -20,8 +20,8 @@ import (
 )
 
 var (
-	ErrInvalidBinding = errors.New("INVALID_TRAINING_RESOURCE_BINDING")
-	ErrBindingMismatch = errors.New("TRAINING_RESOURCE_BINDING_MISMATCH")
+	ErrInvalidBinding     = errors.New("INVALID_TRAINING_RESOURCE_BINDING")
+	ErrBindingMismatch    = errors.New("TRAINING_RESOURCE_BINDING_MISMATCH")
 	ErrInvalidObservation = errors.New("INVALID_TRAINING_OBSERVATION")
 )
 
@@ -63,12 +63,12 @@ func (a *Adapter) ObserveTrainJob(ctx context.Context, binding biz.TrainJobBindi
 	}
 	observation := biz.TrainJobObservation{
 		NamespaceUID: string(namespace.GetUID()),
-		TrainJobUID: string(job.GetUID()),
-		Generation: job.GetGeneration(),
-		Suspended: biz.TrainingConditionUnknown,
-		Complete: biz.TrainingConditionUnknown,
-		Failed: biz.TrainingConditionUnknown,
-		ObservedAt: time.Now().UTC(),
+		TrainJobUID:  string(job.GetUID()),
+		Generation:   job.GetGeneration(),
+		Suspended:    biz.TrainingConditionUnknown,
+		Complete:     biz.TrainingConditionUnknown,
+		Failed:       biz.TrainingConditionUnknown,
+		ObservedAt:   time.Now().UTC(),
 	}
 	if observation.Generation <= 0 {
 		return biz.TrainJobObservation{}, ErrInvalidObservation

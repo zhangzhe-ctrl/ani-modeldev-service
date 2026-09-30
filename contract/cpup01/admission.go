@@ -14,15 +14,15 @@ import (
 // intent and resolved snapshot. Both producers and consumers validate this
 // value; it contains no persistence, transport, or current-default resolution.
 type AdmissionEnvelope struct {
-	TenantID string
-	Actor string
+	TenantID    string
+	Actor       string
 	OperationID string
 	ExecutionID string
-	Intent Intent
-	IntentHash string
-	Snapshot Snapshot
-	SpecHash string
-	AcceptedAt time.Time
+	Intent      Intent
+	IntentHash  string
+	Snapshot    Snapshot
+	SpecHash    string
+	AcceptedAt  time.Time
 }
 
 // CanonicalPayloads validates identity, hashes, and intent-to-snapshot coherence
@@ -79,7 +79,9 @@ func ValidAuditActor(value string) bool {
 		return false
 	}
 	for _, character := range value {
-		if unicode.IsControl(character) { return false }
+		if unicode.IsControl(character) {
+			return false
+		}
 	}
 	return true
 }

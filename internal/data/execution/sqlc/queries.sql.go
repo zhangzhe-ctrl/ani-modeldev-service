@@ -11,6 +11,60 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const advanceCloseGeneration = `-- name: AdvanceCloseGeneration :one
+UPDATE modeldev_execution_identities
+SET close_generation = close_generation + 1
+WHERE tenant_id = $1::uuid
+  AND execution_id = $2::uuid
+RETURNING close_generation
+`
+
+type AdvanceCloseGenerationParams struct {
+	TenantID    pgtype.UUID
+	ExecutionID pgtype.UUID
+}
+
+func (q *Queries) AdvanceCloseGeneration(ctx context.Context, arg AdvanceCloseGenerationParams) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, advanceCloseGeneration, arg.TenantID, arg.ExecutionID)
+	var close_generation pgtype.Numeric
+	err := row.Scan(&close_generation)
+	return close_generation, err
+}
+
+const getCloseIntent = `-- name: GetCloseIntent :one
+SELECT tenant_id, execution_id, operation_id, spec_hash, source_kind,
+    source_generation, owner_generation, reason, requested_at, requested_actor, close_state
+FROM modeldev_close_intents
+WHERE tenant_id = $1::uuid
+  AND execution_id = $2::uuid
+ORDER BY owner_generation DESC
+LIMIT 1
+`
+
+type GetCloseIntentParams struct {
+	TenantID    pgtype.UUID
+	ExecutionID pgtype.UUID
+}
+
+func (q *Queries) GetCloseIntent(ctx context.Context, arg GetCloseIntentParams) (ModeldevCloseIntent, error) {
+	row := q.db.QueryRow(ctx, getCloseIntent, arg.TenantID, arg.ExecutionID)
+	var i ModeldevCloseIntent
+	err := row.Scan(
+		&i.TenantID,
+		&i.ExecutionID,
+		&i.OperationID,
+		&i.SpecHash,
+		&i.SourceKind,
+		&i.SourceGeneration,
+		&i.OwnerGeneration,
+		&i.Reason,
+		&i.RequestedAt,
+		&i.RequestedActor,
+		&i.CloseState,
+	)
+	return i, err
+}
+
 const getExecution = `-- name: GetExecution :one
 SELECT tenant_id, execution_id, operation_id, actor,
     intent_canonical, intent_hash, snapshot_canonical, spec_hash, accepted_at
@@ -41,6 +95,59 @@ func (q *Queries) GetExecution(ctx context.Context, arg GetExecutionParams) (Mod
 	return i, err
 }
 
+const insertCloseIntent = `-- name: InsertCloseIntent :one
+INSERT INTO modeldev_close_intents (
+    tenant_id, execution_id, operation_id, spec_hash, source_kind,
+    source_generation, owner_generation, reason, requested_at, requested_actor, close_state
+) VALUES (
+    $1::uuid, $2::uuid,
+    $3::uuid, $4, 'GOVERNANCE',
+    $5, $6, 'USER_STOP',
+    $7, $8, 'CLOSING'
+)
+RETURNING tenant_id, execution_id, operation_id, spec_hash, source_kind,
+    source_generation, owner_generation, reason, requested_at, requested_actor, close_state
+`
+
+type InsertCloseIntentParams struct {
+	TenantID         pgtype.UUID
+	ExecutionID      pgtype.UUID
+	OperationID      pgtype.UUID
+	SpecHash         string
+	SourceGeneration pgtype.Numeric
+	OwnerGeneration  pgtype.Numeric
+	RequestedAt      pgtype.Timestamptz
+	RequestedActor   string
+}
+
+func (q *Queries) InsertCloseIntent(ctx context.Context, arg InsertCloseIntentParams) (ModeldevCloseIntent, error) {
+	row := q.db.QueryRow(ctx, insertCloseIntent,
+		arg.TenantID,
+		arg.ExecutionID,
+		arg.OperationID,
+		arg.SpecHash,
+		arg.SourceGeneration,
+		arg.OwnerGeneration,
+		arg.RequestedAt,
+		arg.RequestedActor,
+	)
+	var i ModeldevCloseIntent
+	err := row.Scan(
+		&i.TenantID,
+		&i.ExecutionID,
+		&i.OperationID,
+		&i.SpecHash,
+		&i.SourceKind,
+		&i.SourceGeneration,
+		&i.OwnerGeneration,
+		&i.Reason,
+		&i.RequestedAt,
+		&i.RequestedActor,
+		&i.CloseState,
+	)
+	return i, err
+}
+
 const insertExecution = `-- name: InsertExecution :one
 INSERT INTO modeldev_executions (
     tenant_id, execution_id, operation_id, actor,
@@ -51,6 +158,7 @@ INSERT INTO modeldev_executions (
     $5, $6,
     $7, $8, $9
 )
+ON CONFLICT DO NOTHING
 RETURNING tenant_id, execution_id, operation_id, actor,
     intent_canonical, intent_hash, snapshot_canonical, spec_hash, accepted_at
 `
@@ -90,6 +198,58 @@ func (q *Queries) InsertExecution(ctx context.Context, arg InsertExecutionParams
 		&i.SnapshotCanonical,
 		&i.SpecHash,
 		&i.AcceptedAt,
+	)
+	return i, err
+}
+
+const insertExecutionIdentity = `-- name: InsertExecutionIdentity :exec
+INSERT INTO modeldev_execution_identities (tenant_id, execution_id, operation_id, spec_hash)
+VALUES (
+    $1::uuid, $2::uuid,
+    $3::uuid, $4
+)
+ON CONFLICT DO NOTHING
+`
+
+type InsertExecutionIdentityParams struct {
+	TenantID    pgtype.UUID
+	ExecutionID pgtype.UUID
+	OperationID pgtype.UUID
+	SpecHash    string
+}
+
+func (q *Queries) InsertExecutionIdentity(ctx context.Context, arg InsertExecutionIdentityParams) error {
+	_, err := q.db.Exec(ctx, insertExecutionIdentity,
+		arg.TenantID,
+		arg.ExecutionID,
+		arg.OperationID,
+		arg.SpecHash,
+	)
+	return err
+}
+
+const lockExecutionIdentity = `-- name: LockExecutionIdentity :one
+SELECT tenant_id, execution_id, operation_id, spec_hash, close_generation
+FROM modeldev_execution_identities
+WHERE tenant_id = $1::uuid
+  AND execution_id = $2::uuid
+FOR UPDATE
+`
+
+type LockExecutionIdentityParams struct {
+	TenantID    pgtype.UUID
+	ExecutionID pgtype.UUID
+}
+
+func (q *Queries) LockExecutionIdentity(ctx context.Context, arg LockExecutionIdentityParams) (ModeldevExecutionIdentity, error) {
+	row := q.db.QueryRow(ctx, lockExecutionIdentity, arg.TenantID, arg.ExecutionID)
+	var i ModeldevExecutionIdentity
+	err := row.Scan(
+		&i.TenantID,
+		&i.ExecutionID,
+		&i.OperationID,
+		&i.SpecHash,
+		&i.CloseGeneration,
 	)
 	return i, err
 }

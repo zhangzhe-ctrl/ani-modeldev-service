@@ -8,6 +8,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ModeldevCloseIntent struct {
+	TenantID         pgtype.UUID
+	ExecutionID      pgtype.UUID
+	OperationID      pgtype.UUID
+	SpecHash         string
+	SourceKind       string
+	SourceGeneration pgtype.Numeric
+	OwnerGeneration  pgtype.Numeric
+	Reason           string
+	RequestedAt      pgtype.Timestamptz
+	RequestedActor   string
+	CloseState       string
+}
+
 type ModeldevExecution struct {
 	TenantID          pgtype.UUID
 	ExecutionID       pgtype.UUID
@@ -18,4 +32,12 @@ type ModeldevExecution struct {
 	SnapshotCanonical []byte
 	SpecHash          string
 	AcceptedAt        pgtype.Timestamptz
+}
+
+type ModeldevExecutionIdentity struct {
+	TenantID        pgtype.UUID
+	ExecutionID     pgtype.UUID
+	OperationID     pgtype.UUID
+	SpecHash        string
+	CloseGeneration pgtype.Numeric
 }
