@@ -70,6 +70,9 @@ func TestVerifyCSVRejectsShapesTheRegisteredTrainerCannotConsume(t *testing.T) {
 		{"blank first row", "\r\n" + valid},
 		{"blank trailing row", valid + "\r\n"},
 		{"hexadecimal feature", strings.Replace(valid, "0.25", "0x1p-2", 1)},
+		// CPython csv.reader defaults to 128 Ki characters per field. This
+		// otherwise valid decimal remains below the full 32 MiB input budget.
+		{"feature exceeds registered Python field limit", strings.Replace(valid, "0.25", strings.Repeat(" ", 128*1024)+"0.25", 1)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
