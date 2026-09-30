@@ -16,8 +16,8 @@ import (
 )
 
 var (
-	ErrNoCompatibleRelease        = errors.New("NO_COMPATIBLE_RELEASE")
-	ErrAdmissionInputNotReady      = errors.New("INPUT_NOT_READY")
+	ErrNoCompatibleRelease          = errors.New("NO_COMPATIBLE_RELEASE")
+	ErrAdmissionInputNotReady       = errors.New("INPUT_NOT_READY")
 	ErrAdmissionEnvironmentNotReady = errors.New("ENVIRONMENT_NOT_READY")
 )
 
@@ -155,7 +155,7 @@ func (resolver *AdmissionResolver) Resolve(ctx context.Context, request Admissio
 		Release: cpup01.ReleaseSnapshot{
 			ReleaseID: release.ReleaseID, ReleaseDigest: request.Release.ReleaseDigest, PresetID: release.PresetID,
 			AcceptedBindingGeneration: request.Release.BindingGeneration,
-			PipelineID: release.PipelineID, PipelineVersionID: release.PipelineVersionID,
+			PipelineID:                release.PipelineID, PipelineVersionID: release.PipelineVersionID,
 			PipelineIRSHA256: release.PipelineIRSHA256, Runtime: release.Runtime,
 		},
 		Input: cpup01.InputRef{

@@ -156,7 +156,7 @@ func TestResolveAdmissionFreezesSelectedReleaseAndReadyInput(t *testing.T) {
 
 type retainedReleaseReader struct {
 	delegate biz.AdmissionReleaseReader
-	last cpup01.ReleaseDocument
+	last     cpup01.ReleaseDocument
 }
 
 func (reader *retainedReleaseReader) ReadRelease(ctx context.Context, id, digest string) (cpup01.ReleaseDocument, error) {
@@ -167,7 +167,7 @@ func (reader *retainedReleaseReader) ReadRelease(ctx context.Context, id, digest
 
 type retainedInputReader struct {
 	delegate biz.AdmissionInputReader
-	last biz.InputVersion
+	last     biz.InputVersion
 }
 
 func (reader *retainedInputReader) Get(ctx context.Context, tenant, id string) (biz.InputVersion, error) {
