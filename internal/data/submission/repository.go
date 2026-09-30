@@ -135,7 +135,7 @@ func (repository *Repository) Reserve(ctx context.Context, request biz.PipelineD
 		return biz.PipelineDispatchReservation{}, biz.ErrPersistence
 	}
 	return biz.PipelineDispatchReservation{
-		Dispatch: dispatch,
+		Dispatch:   dispatch,
 		SendPermit: &biz.PipelineSendPermit{TenantID: plan.TenantID, ExecutionID: plan.ExecutionID, AttemptID: dispatch.AttemptID, PlanHash: planHash},
 	}, nil
 }
