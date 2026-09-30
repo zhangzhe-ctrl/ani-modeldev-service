@@ -29,3 +29,18 @@ func TestFreezeImportExactRequestReplayAfterReconnectReturnsOriginalVersion(t *t
 		t.Fatalf("replay changed durable input facts: %+v, %v", stored, err)
 	}
 }
+
+func TestFreezeImportPreservesTheOwnerCredentialReference(t *testing.T) {
+	openPool := postgres.Prepare(t)
+	command := importFixture()
+	command.Scope.CredentialReference = "managed-secret:cpu-input-reader"
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := input.New(openPool()).FreezeImport(ctx, command); err != nil {
+		t.Fatalf("persist the owner-selected scope: %v", err)
+	}
+	stored, err := input.New(openPool()).Get(ctx, command.TenantID, command.InputVersionID)
+	if err != nil || !reflect.DeepEqual(stored.Import, command) {
+		t.Fatalf("durable scope silently lost owner facts: %+v, %v", stored.Import.Scope, err)
+	}
+}
