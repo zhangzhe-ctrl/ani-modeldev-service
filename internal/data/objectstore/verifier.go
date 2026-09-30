@@ -40,7 +40,7 @@ func (v *Verifier) Verify(ctx context.Context, scope cpup01.StorageScope, object
 	if v == nil || v.client == nil || v.connectionID == "" || scope.StorageConnectionID != v.connectionID || object.StorageConnectionID != v.connectionID || object.Bucket != scope.Bucket || !bucketPattern.MatchString(scope.Bucket) || !validKey(scope.ApprovedPrefix) || !validKey(object.Key) || !strings.HasPrefix(object.Key, scope.ApprovedPrefix+"/") {
 		return biz.VerifiedObject{}, biz.ErrObjectVerification
 	}
-	if object.VersionID == nil || object.ImmutableCopy != nil || !validText(*object.VersionID) || strings.EqualFold(*object.VersionID, "null") || object.SizeBytes <= 0 || len(object.SHA256) != 64 || strings.ToLower(object.SHA256) != object.SHA256 {
+	if v.maxObjectBytes <= 0 || object.VersionID == nil || object.ImmutableCopy != nil || !validText(*object.VersionID) || strings.EqualFold(*object.VersionID, "null") || object.SizeBytes <= 0 || object.SizeBytes > v.maxObjectBytes || len(object.SHA256) != 64 || strings.ToLower(object.SHA256) != object.SHA256 {
 		return biz.VerifiedObject{}, biz.ErrObjectVerification
 	}
 	if _, err := hex.DecodeString(object.SHA256); err != nil {
