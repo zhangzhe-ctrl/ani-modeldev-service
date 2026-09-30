@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -41,6 +42,18 @@ func TestCollectHashesActualRegisteredBytesWithoutTrustingCandidate(t *testing.T
 	if !reflect.DeepEqual(got.Files, want) {
 		t.Fatalf("actual byte inventory mismatch: got=%+v want=%+v", got.Files, want)
 	}
+	var manifest struct {
+		ExecutionID string `json:"execution_id"`
+		ExecutionSpecHash string `json:"execution_spec_hash"`
+		StorageState string `json:"storage_state"`
+		Files []biz.CollectedFile `json:"files"`
+	}
+	if err := json.Unmarshal(got.Manifest, &manifest); err != nil { t.Fatalf("collector must return a usable manifest: %v", err) }
+	if manifest.ExecutionID != execution.ExecutionID || manifest.ExecutionSpecHash != execution.SpecHash || manifest.StorageState != "WORKSPACE_ONLY" || !reflect.DeepEqual(manifest.Files, want) {
+		t.Fatal("collector manifest did not bind the bytes it actually read")
+	}
+	manifestDigest := sha256.Sum256(got.Manifest)
+	if got.ManifestSHA256 != hex.EncodeToString(manifestDigest[:]) { t.Fatal("collector manifest SHA mismatch") }
 }
 
 func TestCollectRejectsMissingUnsafeOrUnboundedOutput(t *testing.T) {
