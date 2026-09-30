@@ -72,6 +72,49 @@ func (q *Queries) GetPipelineDispatch(ctx context.Context, arg GetPipelineDispat
 	return i, err
 }
 
+const insertConfirmedPipelineRun = `-- name: InsertConfirmedPipelineRun :execrows
+INSERT INTO modeldev_pipeline_confirmed_runs (
+    tenant_id, execution_id, attempt_id, plan_hash, run_id, first_observed_at
+)
+SELECT tenant_id, execution_id, attempt_id, plan_hash,
+    $1::uuid, $2::timestamptz
+FROM modeldev_pipeline_dispatches
+WHERE tenant_id = $3::uuid
+  AND execution_id = $4::uuid
+  AND attempt_id = $5::uuid
+  AND plan_hash = $6::text
+  AND state IN ('SUBMITTING', 'SUBMISSION_UNCERTAIN', 'SUBMISSION_CONFIRMED')
+  AND $2::timestamptz >= reserved_at
+ON CONFLICT (tenant_id, execution_id, attempt_id, run_id) DO NOTHING
+`
+
+type InsertConfirmedPipelineRunParams struct {
+	RunID       pgtype.UUID
+	ObservedAt  pgtype.Timestamptz
+	TenantID    pgtype.UUID
+	ExecutionID pgtype.UUID
+	AttemptID   pgtype.UUID
+	PlanHash    string
+}
+
+// The caller has matched the original permit and complete frozen plan under
+// the identity lock. A late observation survives close/deadline. Replaying the
+// same Run never refreshes its first time; another Run is retained separately.
+func (q *Queries) InsertConfirmedPipelineRun(ctx context.Context, arg InsertConfirmedPipelineRunParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertConfirmedPipelineRun,
+		arg.RunID,
+		arg.ObservedAt,
+		arg.TenantID,
+		arg.ExecutionID,
+		arg.AttemptID,
+		arg.PlanHash,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const insertPipelineDispatch = `-- name: InsertPipelineDispatch :one
 INSERT INTO modeldev_pipeline_dispatches (
     tenant_id, execution_id, operation_id, spec_hash, attempt_id,
@@ -132,6 +175,59 @@ func (q *Queries) InsertPipelineDispatch(ctx context.Context, arg InsertPipeline
 	return i, err
 }
 
+const listConfirmedPipelineRuns = `-- name: ListConfirmedPipelineRuns :many
+SELECT tenant_id, execution_id, attempt_id, plan_hash, run_id, first_observed_at
+FROM modeldev_pipeline_confirmed_runs
+WHERE tenant_id = $1::uuid
+  AND execution_id = $2::uuid
+  AND attempt_id = $3::uuid
+  AND plan_hash = $4::text
+ORDER BY run_id
+`
+
+type ListConfirmedPipelineRunsParams struct {
+	TenantID    pgtype.UUID
+	ExecutionID pgtype.UUID
+	AttemptID   pgtype.UUID
+	PlanHash    string
+}
+
+// These immutable observations belong to one exact reservation, not to an
+// authoritative Run binding. Ordering gives stable output, never priority.
+// Readers combining this list with dispatch state must use one consistent
+// snapshot; writers hold the shared execution identity lock.
+func (q *Queries) ListConfirmedPipelineRuns(ctx context.Context, arg ListConfirmedPipelineRunsParams) ([]ModeldevPipelineConfirmedRun, error) {
+	rows, err := q.db.Query(ctx, listConfirmedPipelineRuns,
+		arg.TenantID,
+		arg.ExecutionID,
+		arg.AttemptID,
+		arg.PlanHash,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ModeldevPipelineConfirmedRun
+	for rows.Next() {
+		var i ModeldevPipelineConfirmedRun
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.ExecutionID,
+			&i.AttemptID,
+			&i.PlanHash,
+			&i.RunID,
+			&i.FirstObservedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockExecutionIdentity = `-- name: LockExecutionIdentity :one
 SELECT tenant_id, execution_id, operation_id, spec_hash,
     close_generation = 0 AS creation_open
@@ -163,6 +259,59 @@ func (q *Queries) LockExecutionIdentity(ctx context.Context, arg LockExecutionId
 		&i.OperationID,
 		&i.SpecHash,
 		&i.CreationOpen,
+	)
+	return i, err
+}
+
+const markSubmissionConfirmed = `-- name: MarkSubmissionConfirmed :one
+UPDATE modeldev_pipeline_dispatches AS dispatch
+SET state = 'SUBMISSION_CONFIRMED'
+WHERE dispatch.tenant_id = $1::uuid
+  AND dispatch.execution_id = $2::uuid
+  AND dispatch.attempt_id = $3::uuid
+  AND dispatch.plan_hash = $4::text
+  AND dispatch.state IN ('SUBMITTING', 'SUBMISSION_UNCERTAIN')
+  AND EXISTS (
+      SELECT 1
+      FROM modeldev_pipeline_confirmed_runs AS observed
+      WHERE observed.tenant_id = dispatch.tenant_id
+        AND observed.execution_id = dispatch.execution_id
+        AND observed.attempt_id = dispatch.attempt_id
+        AND observed.plan_hash = dispatch.plan_hash
+  )
+RETURNING dispatch.tenant_id, dispatch.execution_id, dispatch.operation_id,
+    dispatch.spec_hash, dispatch.attempt_id, dispatch.plan_canonical,
+    dispatch.plan_hash, dispatch.state, dispatch.reserved_at, dispatch.uncertain_at
+`
+
+type MarkSubmissionConfirmedParams struct {
+	TenantID    pgtype.UUID
+	ExecutionID pgtype.UUID
+	AttemptID   pgtype.UUID
+	PlanHash    string
+}
+
+// In the same transaction as the retained handle, mark the original attempt's
+// first confirmation without erasing an earlier uncertainty observation.
+func (q *Queries) MarkSubmissionConfirmed(ctx context.Context, arg MarkSubmissionConfirmedParams) (ModeldevPipelineDispatch, error) {
+	row := q.db.QueryRow(ctx, markSubmissionConfirmed,
+		arg.TenantID,
+		arg.ExecutionID,
+		arg.AttemptID,
+		arg.PlanHash,
+	)
+	var i ModeldevPipelineDispatch
+	err := row.Scan(
+		&i.TenantID,
+		&i.ExecutionID,
+		&i.OperationID,
+		&i.SpecHash,
+		&i.AttemptID,
+		&i.PlanCanonical,
+		&i.PlanHash,
+		&i.State,
+		&i.ReservedAt,
+		&i.UncertainAt,
 	)
 	return i, err
 }

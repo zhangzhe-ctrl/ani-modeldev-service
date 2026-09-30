@@ -42,6 +42,15 @@ type ModeldevExecutionIdentity struct {
 	CloseGeneration pgtype.Numeric
 }
 
+type ModeldevPipelineConfirmedRun struct {
+	TenantID        pgtype.UUID
+	ExecutionID     pgtype.UUID
+	AttemptID       pgtype.UUID
+	PlanHash        string
+	RunID           pgtype.UUID
+	FirstObservedAt pgtype.Timestamptz
+}
+
 type ModeldevPipelineDispatch struct {
 	TenantID      pgtype.UUID
 	ExecutionID   pgtype.UUID
