@@ -153,6 +153,36 @@ func TestGetHidesOtherTenantExecutionAndReturnsOwnAdmission(t *testing.T) {
 	}
 }
 
+func TestGetRejectsMalformedUUIDSeparatorsWithoutReturningAdmission(t *testing.T) {
+	openRuntimePool := preparePostgreSQL(t)
+	repository := execution.New(openRuntimePool())
+	command := validAdmission(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := repository.Accept(ctx, command); err != nil {
+		t.Fatalf("Accept before malformed identity lookup: %v", err)
+	}
+	cases := []struct {
+		name      string
+		tenant    string
+		execution string
+	}{
+		{"tenant separators", strings.ReplaceAll(command.TenantID, "-", "X"), command.ExecutionID},
+		{"execution separators", command.TenantID, strings.ReplaceAll(command.ExecutionID, "-", "X")},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got, err := repository.Get(ctx, testCase.tenant, testCase.execution)
+			assertEmptyFailure(t, got, err, biz.ErrInvalidAdmission)
+		})
+	}
+	got, err := repository.Get(ctx, command.TenantID, command.ExecutionID)
+	if err != nil {
+		t.Fatalf("Get with the original valid identities: %v", err)
+	}
+	assertOriginalAdmission(t, got, command)
+}
+
 func TestAcceptInvalidAdmissionDoesNotReserveInbox(t *testing.T) {
 	cases := []struct {
 		name   string
