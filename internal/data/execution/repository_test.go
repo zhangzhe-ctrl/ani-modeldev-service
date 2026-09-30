@@ -62,6 +62,62 @@ func TestAcceptPersistsCompleteAdmissionAcrossNewConnections(t *testing.T) {
 	}
 }
 
+func TestAcceptDuplicateAfterReconnectReturnsOriginalAdmission(t *testing.T) {
+	openRuntimePool := preparePostgreSQL(t)
+	writerPool := openRuntimePool()
+	command := validAdmission(t)
+	// Governance owns actor identity. Its authenticated user IDs need not be
+	// UUIDs, and the receiver must retain this immutable audit identity.
+	command.Actor = "governance:user:42"
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := execution.New(writerPool).Accept(ctx, command); err != nil {
+		t.Fatalf("initial Accept rejected valid trusted admission: %v", err)
+	}
+	writerPool.Close()
+
+	retryPool := openRuntimePool()
+	retryRepository := execution.New(retryPool)
+	retryContext, retryCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer retryCancel()
+	replayed, err := retryRepository.Accept(retryContext, command)
+	if err != nil {
+		t.Fatalf("duplicate Accept after reconnect must return the original admission: %v", err)
+	}
+	assertOriginalAdmission(t, replayed, command)
+	persisted, err := retryRepository.Get(retryContext, command.TenantID, command.ExecutionID)
+	if err != nil {
+		t.Fatalf("Get after duplicate Accept: %v", err)
+	}
+	assertOriginalAdmission(t, persisted, command)
+}
+
+func assertOriginalAdmission(t *testing.T, got biz.Execution, want biz.Admission) {
+	t.Helper()
+	if got.TenantID != want.TenantID || got.Actor != want.Actor || got.OperationID != want.OperationID || got.ExecutionID != want.ExecutionID {
+		t.Fatal("duplicate delivery changed the original admission identity")
+	}
+	if got.IntentHash != want.IntentHash || got.SpecHash != want.SpecHash || !got.AcceptedAt.Equal(want.AcceptedAt) {
+		t.Fatal("duplicate delivery changed the original hashes or accepted_at")
+	}
+	expectedIntent, _, err := cpup01.CanonicalIntent(want.Intent)
+	if err != nil {
+		t.Fatalf("invalid expected intent: %v", err)
+	}
+	actualIntent, _, err := cpup01.CanonicalIntent(got.Intent)
+	if err != nil || string(actualIntent) != string(expectedIntent) {
+		t.Fatalf("duplicate delivery changed the complete original intent: %v", err)
+	}
+	expectedSnapshot, err := want.Snapshot.Canonical()
+	if err != nil {
+		t.Fatalf("invalid expected snapshot: %v", err)
+	}
+	actualSnapshot, err := got.Snapshot.Canonical()
+	if err != nil || string(actualSnapshot) != string(expectedSnapshot) {
+		t.Fatalf("duplicate delivery changed the complete original snapshot: %v", err)
+	}
+}
+
 func validAdmission(t *testing.T) biz.Admission {
 	t.Helper()
 	snapshot := conformance.SnapshotV1()
