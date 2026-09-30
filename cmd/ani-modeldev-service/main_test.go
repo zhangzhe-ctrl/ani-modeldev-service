@@ -101,7 +101,7 @@ func TestMainProcessHandlesSignalAndClosesListeners(t *testing.T) {
 		}
 	})
 
-	waitForHTTP(t, "http://"+adminAddress+"/readyz")
+	waitForHTTP(t, "http://"+adminAddress+"/healthz")
 	assertProductionGRPCHealth(t, grpcAddress)
 	if err := process.Process.Signal(os.Interrupt); err != nil {
 		t.Fatalf("send interrupt: %v", err)

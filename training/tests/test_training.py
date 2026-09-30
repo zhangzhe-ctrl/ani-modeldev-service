@@ -16,9 +16,10 @@ TRAINING_ROOT = Path(__file__).resolve().parents[1]
 
 
 class FixedCSVTrainingTest(unittest.TestCase):
-    def run_python(self, *arguments, timeout=120):
+    def run_python(self, *arguments, timeout=120, environment_overrides=None):
         environment = os.environ.copy()
         environment.update({"CUDA_VISIBLE_DEVICES": "", "WORLD_SIZE": "1"})
+        environment.update(environment_overrides or {})
         return subprocess.run(
             [sys.executable, "-I", *map(str, arguments)],
             text=True,
@@ -108,6 +109,129 @@ class FixedCSVTrainingTest(unittest.TestCase):
             reloaded = self.run_python(Path(__file__).with_name("reload_checkpoint.py"), output)
             self.assertEqual(reloaded.returncode, 0, reloaded.stderr)
             self.assertEqual(json.loads(reloaded.stdout), {"shape": [4, 2], "device": "cpu"})
+
+    def test_invalid_input_is_rejected_before_training_and_preserves_paths(self):
+        dependency = self.run_python(
+            "-c", "import torch; assert torch.version.cuda is None, 'CPU wheel required'"
+        )
+        self.assertEqual(
+            dependency.returncode, 0,
+            f"ENVIRONMENT_NOT_READY (not a behavior RED)\n{dependency.stderr}",
+        )
+        cases = (
+            "wrong_sha256", "wrong_size", "negative_size",
+            "missing_row", "extra_row", "missing_feature", "extra_feature",
+            "duplicate_feature", "invalid_label", "fractional_label",
+            "nan_feature", "inf_feature", "negative_inf_feature",
+            "world_size_two", "world_size_zero", "world_size_invalid",
+            "symlink_data", "symlink_output", "nonempty_output",
+        )
+        with tempfile.TemporaryDirectory(prefix="cpu03-rejected-input-") as temporary:
+            root = Path(temporary)
+            fixture_path = root / "fixture.csv"
+            generated = self.run_python(TRAINING_ROOT / "make_data.py", "--output", fixture_path)
+            self.assertEqual(generated.returncode, 0, generated.stderr)
+            with fixture_path.open(newline="", encoding="utf-8") as stream:
+                fixed_rows = list(csv.reader(stream))
+            for case in cases:
+                with self.subTest(case=case):
+                    case_root = root / case
+                    case_root.mkdir()
+                    data = case_root / "selected-input.csv"
+                    output = case_root / "execution-output"
+                    rows = [row.copy() for row in fixed_rows]
+                    if case == "missing_row":
+                        rows.pop()
+                    elif case == "extra_row":
+                        rows.append(rows[-1].copy())
+                    elif case == "missing_feature":
+                        for row in rows:
+                            row.pop(15)
+                    elif case == "extra_feature":
+                        rows[0].insert(16, "x16")
+                        for row in rows[1:]:
+                            row.insert(16, "0.0")
+                    elif case == "duplicate_feature":
+                        rows[0][15] = "x14"
+                    elif case == "invalid_label":
+                        rows[1][-1] = "2"
+                    elif case == "fractional_label":
+                        rows[1][-1] = "0.5"
+                    elif case in ("nan_feature", "inf_feature", "negative_inf_feature"):
+                        rows[1][0] = {
+                            "nan_feature": "NaN",
+                            "inf_feature": "Inf",
+                            "negative_inf_feature": "-Inf",
+                        }[case]
+                    with data.open("x", newline="", encoding="utf-8") as stream:
+                        csv.writer(stream).writerows(rows)
+                    selected_bytes = data.read_bytes()
+                    expected_sha256 = hashlib.sha256(selected_bytes).hexdigest()
+                    expected_size = len(selected_bytes)
+                    if case == "wrong_sha256":
+                        expected_sha256 = "0" * 64
+                    elif case == "wrong_size":
+                        expected_size += 1
+                    elif case == "negative_size":
+                        expected_size = -1
+                    if case == "symlink_data":
+                        target = case_root / "protected-input.csv"
+                        data.rename(target)
+                        data.symlink_to(target)
+
+                    protected_output = None
+                    if case == "symlink_output":
+                        protected_output = case_root / "protected-output"
+                        protected_output.mkdir()
+                        output.symlink_to(protected_output, target_is_directory=True)
+                    elif case == "nonempty_output":
+                        output.mkdir()
+                        protected_output = output
+                        (output / "sentinel.txt").write_bytes(b"existing execution bytes\n")
+                    world_size = {
+                        "world_size_two": "2",
+                        "world_size_zero": "0",
+                        "world_size_invalid": "not-an-integer",
+                    }.get(case, "1")
+                    rejected = self.run_python(
+                        TRAINING_ROOT / "train_mlp.py",
+                        "--data", data,
+                        "--output", output,
+                        "--expected-input-sha256", expected_sha256,
+                        "--expected-input-bytes", expected_size,
+                        environment_overrides={"WORLD_SIZE": world_size},
+                    )
+                    self.assertNotEqual(
+                        rejected.returncode, 0,
+                        f"{case} must be rejected before computation\n"
+                        f"{rejected.stdout}\n{rejected.stderr}",
+                    )
+                    events = []
+                    for line in rejected.stdout.splitlines():
+                        try:
+                            events.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            continue
+                    self.assertFalse(
+                        any(isinstance(event, dict) and event.get("name") == "train.loss" for event in events),
+                        "rejection must not emit a completed optimization step",
+                    )
+                    self.assertEqual(data.read_bytes(), selected_bytes, "input bytes must be preserved")
+                    self.assertEqual(data.is_symlink(), case == "symlink_data")
+                    if protected_output is None:
+                        self.assertFalse(output.exists(), "rejection must not create an output directory")
+                        self.assertFalse(output.is_symlink())
+                    else:
+                        self.assertEqual(
+                            {path.name for path in protected_output.iterdir()},
+                            {"sentinel.txt"} if case == "nonempty_output" else set(),
+                            "existing output must not acquire training artifacts",
+                        )
+                        if case == "nonempty_output":
+                            self.assertEqual(
+                                (protected_output / "sentinel.txt").read_bytes(), b"existing execution bytes\n",
+                            )
+                        self.assertEqual(output.is_symlink(), case == "symlink_output")
 
 
 if __name__ == "__main__":

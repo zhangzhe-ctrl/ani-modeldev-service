@@ -12,10 +12,13 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	modeldev "github.com/zhangzhe-ctrl/ani-modeldev-service/api/ani/modeldev/v1"
 	conf "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/conf/v1"
 )
 
@@ -38,9 +41,11 @@ func TestBuildAppRunsProductionComposition(t *testing.T) {
 
 	runResult := make(chan error, 1)
 	go func() { runResult <- app.Run() }()
-	waitForHTTP(t, "http://"+adminAddress+"/readyz")
+	waitForHTTP(t, "http://"+adminAddress+"/healthz")
 	assertProductionAdmin(t, adminAddress)
 	assertProductionGRPCHealth(t, grpcAddress)
+	assertProductionBusinessRPCUnimplemented(t, grpcAddress)
+	assertProductionNotReadyWithoutBusinessAdapters(t, adminAddress)
 
 	if err := app.Stop(); err != nil {
 		t.Fatalf("Stop() error = %v", err)
@@ -135,5 +140,49 @@ func assertProductionGRPCHealth(t *testing.T, address string) {
 	}
 	if response.Status != grpc_health_v1.HealthCheckResponse_SERVING {
 		t.Fatalf("production gRPC health = %s", response.Status)
+	}
+}
+
+func assertProductionBusinessRPCUnimplemented(t *testing.T, address string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	connection, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Errorf("dial production business gRPC: %v", err)
+		return
+	}
+	defer connection.Close()
+	_, err = modeldev.NewModelDevQueryServiceClient(connection).ListPresets(ctx, &modeldev.ListPresetsRequest{})
+	if status.Code(err) != codes.Unimplemented {
+		t.Errorf("business RPC without an implementation = %v, want Unimplemented", err)
+	}
+}
+
+func assertProductionNotReadyWithoutBusinessAdapters(t *testing.T, address string) {
+	t.Helper()
+	client := &http.Client{Timeout: time.Second}
+	deadline := time.Now().Add(100 * time.Millisecond)
+	for {
+		response, err := client.Get("http://" + address + "/readyz")
+		if err != nil {
+			t.Errorf("GET /readyz after healthy startup: %v", err)
+			return
+		}
+		body, err := io.ReadAll(response.Body)
+		response.Body.Close()
+		if err != nil {
+			t.Errorf("read /readyz: %v", err)
+			return
+		}
+		if response.StatusCode != http.StatusServiceUnavailable || !strings.Contains(string(body), `"reason":"NOT_READY"`) {
+			t.Errorf("GET /readyz without business adapters = %d %q, want 503 NOT_READY", response.StatusCode, body)
+			return
+		}
+		if !time.Now().Before(deadline) {
+			return
+		}
+		// A listening process must not become business-ready as startup finishes.
+		time.Sleep(10 * time.Millisecond)
 	}
 }

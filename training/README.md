@@ -18,9 +18,10 @@ python -m unittest discover -s training/tests -p 'test_training.py' -v
 The first RED was observed on Fedora at source commit
 `452fff617856bb4d1a3ccdb029e24cbf71aae093`: one failing behavior test, exit 1,
 `CPU03_NOT_IMPLEMENTED`, after the real CPU PyTorch preflight succeeded. The
-first implementation now performs the fixed training loop; its GREEN still
-requires committing this source and running that commit on Fedora. A missing
-PyTorch dependency is `ENVIRONMENT_NOT_READY`, not a behavior RED.
+first implementation passed the same test on Fedora at
+`b69667f242898ecef10cfe9481a954c91d6218e9`: one test, exit 0, including the
+independent checkpoint reload. A missing PyTorch dependency is
+`ENVIRONMENT_NOT_READY`, not a behavior RED.
 
 The command requires `--data`, `--output`, `--expected-input-sha256`, and
 `--expected-input-bytes`. This partial implementation accepts the expected
@@ -39,8 +40,16 @@ built workload image digest. Fixture CSVs, wheels, and model output stay out of
 Git. PyTorch's optional NumPy integration reports a warning because this workload
 uses tensors directly and does not install NumPy.
 
-After the first RED/GREEN cycle, add separate behavior cycles for incorrect input
-digest/size, nonempty output refusal, malformed CSV, and controlled real-compute
-failure/stop recipes. The initial subprocess reload is CPU03 module evidence;
-the independent BFF/S3 verifier belongs to CPU08/CPU09 and must not mount the
-original training PVC.
+The next test is one parameterized admission behavior: reject mismatched input
+identity, malformed fixed CSV (shape, labels, NaN/Inf), non-singleton WORLD_SIZE,
+symlink input/output, and nonempty output before emitting optimization metrics or
+creating output artifacts. This test has not run yet. Its RED must be recorded
+on a new fixed commit before adding the corresponding checks.
+
+After that cycle, cover the contract's explicit canonical `--learning-rate`
+argument in (0, 0.1], and the separate controlled real-compute failure/stop recipes.
+Epochs and batch size remain fixed at 3 and 64. The current first slice still uses
+the baseline learning rate 0.01; it cannot silently serve a Release specifying a
+different value. The initial subprocess reload is CPU03 module evidence; the
+independent BFF/S3 verifier belongs to CPU08/CPU09 and must not mount the original
+training PVC.

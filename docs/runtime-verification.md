@@ -20,6 +20,18 @@ prove only the generic local runtime. They do not prove a database, broker,
 provider, external telemetry backend, container, Kubernetes deployment, or
 business contract.
 
+For CPU-P01, run these commands on Fedora against a fixed source commit. The
+workstation is used only to edit, review, and transfer source and results. The
+production composition currently has no persistent execution repository or real
+business adapters. Its process health may return HTTP 200 and gRPC health may
+report SERVING, but `/readyz` must remain HTTP 503 until the required business
+dependencies are actually wired and verified. A generated business RPC contract
+does not make that RPC available: unimplemented operations must fail explicitly.
+The production-composition test observes this boundary through real HTTP and
+gRPC listeners while retaining logging and graceful-stop checks. Dependency
+readiness belongs with the real application composition added in CPU04; there is
+no configuration switch that declares absent business capabilities ready.
+
 For vulnerability and secret scans, a reproducible CycloneDX JSON runtime SBOM,
 and notice/license-inventory consistency checks (with `jq` available):
 
