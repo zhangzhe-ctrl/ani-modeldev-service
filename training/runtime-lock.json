@@ -13,5 +13,7 @@
   ],
   "requirements_lock": "requirements.lock",
   "wheel_hashes": "wheelhouse.sha256",
+  "system_package_hashes": "system-packages.sha256",
+  "openssl_package_version": "3.5.7-1~deb13u3",
   "scope": "CPU03 module and workload image materials; no target-cluster verification"
 }

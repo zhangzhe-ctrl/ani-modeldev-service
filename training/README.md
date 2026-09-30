@@ -108,7 +108,8 @@ out, use:
 
 ```sh
 bash training/build-image.sh FULL_SOURCE_SHA \
-  /home/chabking/workspace/cpu-p01-20260930-01/cpu03/wheelhouse \
+  /home/chabking/workspace/cpu-p01-20260930-01/cpu03/materials-remediation-01/wheelhouse \
+  /home/chabking/workspace/cpu-p01-20260930-01/cpu03/openssl-materials-02 \
   /home/chabking/workspace/cpu-p01-20260930-01/cpu03/build-NEW_ATTEMPT
 python3 training/tests/image_smoke.py "$(cat /home/chabking/workspace/cpu-p01-20260930-01/cpu03/build-NEW_ATTEMPT/image.id)" \
   /home/chabking/workspace/cpu-p01-20260930-01/cpu03/smoke-NEW_ATTEMPT
@@ -180,8 +181,29 @@ the other nine locked wheels are unchanged. Builds remain offline and run as
 UID 10001. No package database, scanner finding or standard library is removed
 to obtain a passing scan.
 
-The candidate requires a fresh build, six module tests, image smoke, SBOM and
-Grype scan before any acceptance. Python's official advisory confirms that
+At source `9fd93e91fa7812c3f21f001c683a84fccb107acc`, the rebuilt image
+`sha256:ac905b7e6c52c81d3c7b7e327d69139b2e8f653ab6ea626f0276b968e86e72a8`
+passed all six module tests in 64.507 seconds and real image smoke, including
+SIGTERM exit 143. SBOM generation passed. With the same validated database,
+Grype still failed with exit 2: 200 matches, zero Critical and 59 High. These
+findings remain visible; the successful runtime tests do not clear that gate.
+
+The residual High matches comprise 48 `wont-fix`, ten `not-fixed`, and one
+Python finding with a fix listed only in a newer Python series. Debian's current
+security tracker reports an available OpenSSL 3.5.7-1~deb13u3 update, newer than
+the base image's u2 package and not yet reflected as fixed by this scanner
+database. Three exact Debian security packages (libssl3t64, openssl and
+openssl-provider-legacy) have now been downloaded on Fedora using the base
+image's Debian archive keyring and APT's signed repository checks. Their actual
+bytes match the signed index's SHA256 values; `system-packages.sha256` locks
+those bytes. The image build consumes these local packages offline using dpkg,
+retains the package database and records installed versions. This follow-up
+candidate has not been built or verified yet. The first package-preparation
+attempt failed because capability-restricted root could not write APT's existing
+directories; a fresh attempt used task-owned list/cache paths without adding
+capabilities or disabling repository checks.
+
+Python's official advisory confirms that
 CVE-2026-82049 affects the 3.13 line; a published 3.13.15 base does not resolve
 that remaining High issue. It remains an explicit unresolved finding, without
 an ignore rule or a claim of a clean scan. See

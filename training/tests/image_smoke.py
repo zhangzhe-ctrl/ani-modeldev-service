@@ -64,6 +64,13 @@ def main():
         "assert torch.__version__=='2.10.0+cpu'; assert torch.version.cuda is None; "
         "print(json.dumps({'uid':os.getuid(),'python':platform.python_version(),'torch':torch.__version__,'cuda':torch.version.cuda}))"
     ], "runtime")
+    system_packages = command(common + ["--rm", "--entrypoint", "/usr/bin/dpkg-query", image_id,
+        "-W", "-f=${Package}\t${Version}\n", "libssl3t64", "openssl", "openssl-provider-legacy"
+    ], "system-packages").stdout.splitlines()
+    require(set(system_packages) == {
+        "libssl3t64\t3.5.7-1~deb13u3", "openssl\t3.5.7-1~deb13u3",
+        "openssl-provider-legacy\t3.5.7-1~deb13u3",
+    }, "image does not contain the locked OpenSSL security packages")
 
     selected = run_dir / "selected"
     selected.mkdir()

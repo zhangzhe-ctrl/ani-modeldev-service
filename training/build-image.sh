@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Fedora only. Build from immutable Git source and previously locked local wheels.
 set -euo pipefail
-if [[ $# != 3 ]]; then
-    printf 'usage: bash training/build-image.sh FULL_SOURCE_SHA WHEELHOUSE NEW_RUN_DIRECTORY\n' >&2
+if [[ $# != 4 ]]; then
+    printf 'usage: bash training/build-image.sh FULL_SOURCE_SHA WHEELHOUSE SYSTEM_PACKAGES NEW_RUN_DIRECTORY\n' >&2
     exit 2
 fi
 source_sha=$1
 wheelhouse=$(realpath -e -- "$2")
-run_dir=$3
+system_packages=$(realpath -e -- "$3")
+run_dir=$4
 [[ $source_sha =~ ^[0-9a-f]{40}$ ]]
 [[ $run_dir == /* && ! -e $run_dir && ! -L $run_dir ]]
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
@@ -38,6 +39,19 @@ done < "$run_dir/context/training/wheelhouse.sha256"
     cd -- "$run_dir/context/wheelhouse"
     sha256sum --check ../training/wheelhouse.sha256
 ) > "$run_dir/wheels-verified.txt"
+mkdir -- "$run_dir/context/system-packages"
+package_count=0
+while read -r digest filename; do
+    [[ $digest =~ ^[0-9a-f]{64}$ && $filename =~ ^[A-Za-z0-9_.+~-]+\.deb$ ]]
+    [[ -f "$system_packages/$filename" && ! -L "$system_packages/$filename" ]]
+    cp -- "$system_packages/$filename" "$run_dir/context/system-packages/$filename"
+    package_count=$((package_count + 1))
+done < "$run_dir/context/training/system-packages.sha256"
+[[ $package_count -eq 3 ]]
+(
+    cd -- "$run_dir/context/system-packages"
+    sha256sum --check ../training/system-packages.sha256
+) > "$run_dir/system-packages-verified.txt"
 sha256sum "$run_dir/source.tar" > "$run_dir/source-archive.sha256"
 image_tag="localhost/ani-cpu03:${source_sha:0:12}"
 command=(podman build --pull=never --network none --http-proxy=false --platform linux/amd64
