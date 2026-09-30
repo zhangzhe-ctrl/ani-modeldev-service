@@ -12,23 +12,23 @@
         "hashes": [
           {
             "alg": "MD5",
-            "content": "679eea1206c9bda8acc2d77f847e4b23"
+            "content": "006b4568e9ddaba70c37d1472aafcf62"
           },
           {
             "alg": "SHA-1",
-            "content": "823ae33d4a717682c19b805db8dc31d6a3374ffb"
+            "content": "50e4be634b73cd25b8beb9f1c6c6bc86fce5e0f1"
           },
           {
             "alg": "SHA-256",
-            "content": "3181355a326487ed8d155d2e3f2662a71df54e9987960314878c1d152d71f28d"
+            "content": "2238adac4b5e36926d388461e72ef1ae8caaf4ac11c221ac5fab4e76d7a29861"
           },
           {
             "alg": "SHA-384",
-            "content": "f5c60d02bf54c0e43cd54735d34024aa5731e65885b072f725ee752234fa8662758549cfa984fe2f06fdc0b95e214f0f"
+            "content": "e59914e5ac784513fb6a1ee9ea3a4fe33d783fdbeacefeeec75425eba770e2536165d0c16c7b6d30bbbd102ab1887741"
           },
           {
             "alg": "SHA-512",
-            "content": "1f747902280a4a7eab020424d40474380b343ef294d3f14e1f60d7c247b05b127e6507170de8adcb83e3e7c09633e793b5bb27bbe22f2a710e26de00c7621976"
+            "content": "d9176bf0c6900b8f597058748051c18906f6f07d60eec1fcec0d440a95a3566e266a26e7c32e2a0899e05c1a213ff579408dcb075ab90391ff62951ae75c35bc"
           }
         ],
         "externalReferences": [
@@ -44,11 +44,11 @@
       }
     ],
     "component": {
-      "bom-ref": "pkg:golang/github.com/zhangzhe-ctrl/ani-modeldev-service@v0.0.0-20000101000000-6df61e660971?type=module",
+      "bom-ref": "pkg:golang/github.com/zhangzhe-ctrl/ani-modeldev-service@v0.0.0-20000101000000-57edce02957d?type=module",
       "type": "application",
       "name": "github.com/zhangzhe-ctrl/ani-modeldev-service",
-      "version": "v0.0.0-20000101000000-6df61e660971",
-      "purl": "pkg:golang/github.com/zhangzhe-ctrl/ani-modeldev-service@v0.0.0-20000101000000-6df61e660971?goarch=amd64\u0026goos=linux\u0026type=module",
+      "version": "v0.0.0-20000101000000-57edce02957d",
+      "purl": "pkg:golang/github.com/zhangzhe-ctrl/ani-modeldev-service@v0.0.0-20000101000000-57edce02957d?goarch=amd64\u0026goos=linux\u0026type=module",
       "externalReferences": [
         {
           "url": "https://github.com/zhangzhe-ctrl/ani-modeldev-service",
@@ -1903,7 +1903,7 @@
   ],
   "dependencies": [
     {
-      "ref": "pkg:golang/github.com/zhangzhe-ctrl/ani-modeldev-service@v0.0.0-20000101000000-6df61e660971?type=module",
+      "ref": "pkg:golang/github.com/zhangzhe-ctrl/ani-modeldev-service@v0.0.0-20000101000000-57edce02957d?type=module",
       "dependsOn": [
         "pkg:golang/github.com/aws/aws-sdk-go-v2@v1.47.1?type=module",
         "pkg:golang/github.com/aws/aws-sdk-go-v2/service/s3@v1.113.4?type=module",
@@ -1918,6 +1918,7 @@
         "pkg:golang/go.opentelemetry.io/otel/sdk@v1.44.0?type=module",
         "pkg:golang/go.opentelemetry.io/otel/sdk/metric@v1.44.0?type=module",
         "pkg:golang/go.uber.org/automaxprocs@v1.6.0?type=module",
+        "pkg:golang/golang.org/x/sys@v0.47.0?type=module",
         "pkg:golang/google.golang.org/grpc@v1.83.2?type=module",
         "pkg:golang/google.golang.org/protobuf@v1.36.11?type=module",
         "pkg:golang/k8s.io/apimachinery@v0.34.1?type=module",
