@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 
@@ -210,10 +211,11 @@ func preparePostgreSQL(t *testing.T) func() *pgxpool.Pool {
 			t.Errorf("CPU04_DB_CLEANUP: isolated schema cleanup failed")
 		}
 	})
-	migration, err := os.ReadFile(filepath.Join("..", "..", "..", "migrations", "0001_execution.up.sql"))
-	if err != nil {
-		t.Fatal("CPU04_DB_PREFLIGHT: versioned execution migration missing; behavior NOT_RUN")
+	migrations, err := filepath.Glob(filepath.Join("..", "..", "..", "migrations", "*.up.sql"))
+	if err != nil || len(migrations) == 0 {
+		t.Fatal("CPU04_DB_PREFLIGHT: versioned execution migrations missing; behavior NOT_RUN")
 	}
+	sort.Strings(migrations)
 	transaction, err := adminPool.Begin(ctx)
 	if err != nil {
 		t.Fatal("CPU04_DB_PREFLIGHT: migration transaction failed; behavior NOT_RUN")
@@ -222,8 +224,14 @@ func preparePostgreSQL(t *testing.T) func() *pgxpool.Pool {
 	if _, err := transaction.Exec(ctx, "SET LOCAL search_path TO "+schemaSQL); err != nil {
 		t.Fatal("CPU04_DB_PREFLIGHT: migration schema binding failed; behavior NOT_RUN")
 	}
-	if _, err := transaction.Exec(ctx, string(migration)); err != nil {
-		t.Fatal("CPU04_DB_PREFLIGHT: versioned migration failed; behavior NOT_RUN")
+	for _, migrationPath := range migrations {
+		migration, err := os.ReadFile(migrationPath)
+		if err != nil {
+			t.Fatalf("CPU04_DB_PREFLIGHT: cannot read migration %s; behavior NOT_RUN", filepath.Base(migrationPath))
+		}
+		if _, err := transaction.Exec(ctx, string(migration)); err != nil {
+			t.Fatalf("CPU04_DB_PREFLIGHT: migration %s failed; behavior NOT_RUN", filepath.Base(migrationPath))
+		}
 	}
 	if err := transaction.Commit(ctx); err != nil {
 		t.Fatal("CPU04_DB_PREFLIGHT: migration commit failed; behavior NOT_RUN")

@@ -7,8 +7,11 @@
 返回 NOT_IMPLEMENTED / exit 1。首个正向持久受理在固定 `bc46d60` 取得 GREEN。
 重复投递测试在固定 `e716e4e` 取得有效 RED：preflight PASS 后重复 Accept 返回
 PERSISTENCE_UNAVAILABLE / exit 1。固定 `7e2a045` 的两项 repository 测试随后
-GREEN / exit 0（含受限 PG preflight），gofmt 无差异。当前新增冲突/隔离测试
-候选等待 RED；未接业务装配，不标整个 CPU04 CODE_READY。
+GREEN / exit 0（含受限 PG preflight），gofmt 无差异。冲突/隔离候选 `7f0fb10`
+已取得真实 RED / exit 1：同租户及并发异参缺少稳定冲突错误，跨租户复用 ID
+错误地产生新记录。六 pool 原命令竞争、跨租户隐藏 Get、16 类非法受理以及
+原正向/重投均 PASS。当前修复候选待固定提交 GREEN；未接业务装配，不标整个
+CPU04 CODE_READY。
 
 ## 持久事实与最小边界
 
@@ -22,20 +25,21 @@ ACK 表；只有整行提交后 `Accept` 才能返回成功。`Get(tenant_id, ex
 经显式租户过滤读取同一事实；没有查询当前 Release、重新解析默认值或在内存
 中代替数据库的路径。本阶段只有 Accept/Get 两个 port 方法，不预建其他 adapter。
 
-`migrations/0001_execution.up.sql` 是 schema 维护点。
+`migrations/*.up.sql` 是按版本顺序应用的 schema 维护点，保留既有迁移历史。
 `internal/data/execution/queries.sql` 是应用 SQL 维护点，通过 `sqlc.yaml`
 生成 pgx/v5 查询到 `internal/data/execution/sqlc`。生成只在 Fedora 执行，
 生成源回传审阅后提交，禁止手改生成物或在生产 Go 中拼接 SQL。
 
-每行带 `tenant_id`；主键 `(tenant_id, execution_id)`，唯一键
-`(tenant_id, operation_id)`，使租户内 operation/execution 一对一。
+每行带 `tenant_id`；0001 的主键 `(tenant_id, execution_id)`、唯一键
+`(tenant_id, operation_id)` 保留。0002 增加 operation_id、execution_id 各自的
+全局唯一约束，使原 operation/execution 身份不能在另一租户再次受理。
 当前只建一张表，没有跨表引用；后续表必须带 tenant_id 并使用保租户复合外键。
 RLS 显式禁用，隔离依赖 tenant-scoped SQL 和真正受限 runtime role，不能用
 superuser/BYPASSRLS 角色证明隔离。
 
-源合同要求 operation_id 与 execution_id 各自全局唯一；当前迁移尚只有上述
-租户复合约束，全局唯一及跨租户复用 ID 的拒绝行为留待下一冲突切片先 RED
-再扩迁移，不能将当前约束视为完整覆盖。
+测试在独占 schema 中顺序应用全部版本化 up 迁移；sqlc 配置同样绑定 0001 与
+0002，不能只让测试或生成器看到其中一部分。如果已有数据违反新增全局约束，
+迁移必须失败并保留现场；禁止删除或改写不可变受理事实来强行迁移。
 
 intent 和 snapshot 保存规范 UTF-8 字节及各自摘要，避免 JSONB 重排或数字
 转换改变合同字节。实现阶段必须重新规范化/计算两个摘要并比对来件，核对
@@ -48,8 +52,10 @@ accepted_at 的关系；不能直接信任摘要字符串。原意图的缺省�
 数据库负向切片验收，首个正向向量本身不证明全部拒绝规则。
 
 业务错误必须稳定，不暴露 SQL、DSN、另一租户记录或原始驱动异常。当前实现
-用 INVALID_ARGUMENT、NOT_FOUND、PERSISTENCE_UNAVAILABLE 表示本切片错误；
-冲突投递的独立稳定错误由下一条真实 RED/GREEN 切片补齐。数据库读取
+用 INVALID_ARGUMENT、NOT_FOUND、ADMISSION_CONFLICT、PERSISTENCE_UNAVAILABLE
+表示本切片错误。唯一冲突后当前 tenant/execution 不存在或完整事实不一致，
+返回同一 ADMISSION_CONFLICT，不能越租户读取赢家或返回其身份。其他数据库
+错误仍为 PERSISTENCE_UNAVAILABLE，不伪装成业务冲突。数据库读取
 重新规范化并核对字节/摘要，不能把损坏的持久事实当作有效受理。
 停止墓碑、关闭意图、资源历史、输入/目录导入和 publication 尚未实现。
 
@@ -89,8 +95,8 @@ Fedora 执行者从受保护文件载入 `CPU_P01_TEST_DATABASE_URL` 和
 
 下一候选通过真实 repository 接口覆盖完整事实冲突、跨租户复用全局身份、
 六独立 pool 同命令竞争、异参唯一赢家、跨租户隐藏读取及非法受理不占 inbox。
-冲突 API 先声明稳定 ADMISSION_CONFLICT，当前实现尚未采用，迁移仍未增加
-全局唯一约束。应在 Fedora 记录实际 RED；现有校验直接通过的用例记作回归
+固定 `7f0fb10` 的失败与既有回归 PASS 分别保留；当前实现采用稳定冲突错误和
+0002 全局约束，尚待新固定提交的 GREEN。现有校验直接通过的用例记作回归
 PASS，不制造失败。测试只通过 Accept/Get 断言业务事实，不直接查业务表。
 
 并发、同键异参、跨租户负向、停止墓碑和恢复门闩是后续独立 RED/GREEN 切片；

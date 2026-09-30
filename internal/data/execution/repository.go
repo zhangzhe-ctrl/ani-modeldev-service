@@ -69,8 +69,16 @@ func (r *Repository) Accept(ctx context.Context, admission biz.Admission) (biz.E
 		row, err = queries.GetExecution(ctx, executionsql.GetExecutionParams{
 			TenantID: tenantID, ExecutionID: executionID,
 		})
-		if err != nil || !sameAdmission(row, command) {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// The conflicting identity belongs to another execution or tenant.
+			// Do not query outside the trusted scope or disclose that record.
+			return biz.Execution{}, biz.ErrAdmissionConflict
+		}
+		if err != nil {
 			return biz.Execution{}, biz.ErrPersistence
+		}
+		if !sameAdmission(row, command) {
+			return biz.Execution{}, biz.ErrAdmissionConflict
 		}
 	}
 	return executionFromRow(row)
