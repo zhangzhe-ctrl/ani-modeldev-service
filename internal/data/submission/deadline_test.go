@@ -93,7 +93,7 @@ func TestReservationWaitingOnIdentityUsesDatabaseTimeAfterLock(t *testing.T) {
 	}
 	type result struct {
 		reservation biz.PipelineDispatchReservation
-		err error
+		err         error
 	}
 	completed := make(chan result, 1)
 	go func() {

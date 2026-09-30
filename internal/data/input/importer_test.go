@@ -166,7 +166,9 @@ func TestManagedInputImportRetriesSourceFailureAgainstTheSameFrozenObject(t *tes
 	if !errors.Is(err, biz.ErrInputSourceUnavailable) || err.Error() != "INPUT_SOURCE_UNAVAILABLE" || failed.State != biz.InputStateValidating || failed.Failure == nil || failed.Failure.Code != biz.InputFailureSourceUnavailable || failed.Verification != nil || reads.Load() != 1 {
 		t.Fatalf("temporary source error rejected content or was not saved: %+v, %v", failed, err)
 	}
-	if failed.Failure.ValidateFor(request) != nil || !reflect.DeepEqual(failed.Import, request) { t.Fatal("source failure lost original request or finite observation") }
+	if failed.Failure.ValidateFor(request) != nil || !reflect.DeepEqual(failed.Import, request) {
+		t.Fatal("source failure lost original request or finite observation")
+	}
 	writer.Close()
 	reader := input.New(openPool())
 	requireStoredInputVersion(t, ctx, reader, failed)
@@ -191,19 +193,26 @@ func TestManagedInputImportCancellationRetainsFrozenRequestWithoutContentRejecti
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	type result struct { version biz.InputVersion; err error }
+	type result struct {
+		version biz.InputVersion
+		err     error
+	}
 	finished := make(chan result, 1)
 	importer := biz.NewInputImporter(input.New(openPool()), managedImportVerifier(server, request.Scope.StorageConnectionID))
 	go func() { got, err := importer.ImportCSV(ctx, request); finished <- result{got, err} }()
 	select {
 	case <-started:
-	case <-ctx.Done(): t.Fatal("source read did not begin")
+	case <-ctx.Done():
+		t.Fatal("source read did not begin")
 	}
 	cancel()
 	select {
 	case got := <-finished:
-		if !errors.Is(got.err, context.Canceled) || got.version.State != biz.InputStateValidating || got.version.Failure != nil || got.version.Verification != nil { t.Fatalf("canceled read fabricated a validation failure: %+v, %v", got.version, got.err) }
-	case <-time.After(5*time.Second): t.Fatal("canceled import did not finish")
+		if !errors.Is(got.err, context.Canceled) || got.version.State != biz.InputStateValidating || got.version.Failure != nil || got.version.Verification != nil {
+			t.Fatalf("canceled read fabricated a validation failure: %+v, %v", got.version, got.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("canceled import did not finish")
 	}
 	readContext, stop := context.WithTimeout(context.Background(), 5*time.Second)
 	defer stop()

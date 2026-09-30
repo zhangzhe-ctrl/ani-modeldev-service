@@ -2,8 +2,8 @@
 
 Phase A 已在固定提交 `b8b1bc3` 取得真实 PostgreSQL 行为 RED：现有 Admission
 持久化成功后，预约 stub 返回 `PERSISTENCE_UNAVAILABLE`，未发出期望的唯一许可。
-SQL 0007 及独立 sqlc 输出已固定；当前 repository 实现候选尚待固定提交后的
-Fedora GREEN，不包含发送循环或生产接线。
+SQL 0007 及独立 sqlc 输出已固定；repository 在 `e18e6d7` 的同一行为取得
+Fedora GREEN，`2a7ec3e` 全套预约与限定 race 回归通过。不包含发送循环或生产接线。
 
 首个行为限定为：先经现有 execution repository 真正持久受理 Admission；
 两个独立连接竞争同一预约，恰好一次返回 SendPermit；返回时第三个连接必须
@@ -24,7 +24,7 @@ Experiment、managed SA、Pipeline/Version、display name 和原 deadline。
 并不覆盖 PipelineRoot。配置引用和 hash 的形状合法，也不证明 owner 配置存在、
 不可变或获授权。当前 owner 资料仅为模块 fixture，真实绑定仍未交接。
 
-PG 实现候选在共享 execution identity 锁中与完整已存 Admission 比较，
+PG 实现在共享 execution identity 锁中与完整已存 Admission 比较，
 检查 close fence 和数据库当前时间下的原 deadline，持久写入 SUBMITTING 后
 成功 COMMIT 才返回 SendPermit。提交结果不明也不发许可。Get 和 Reserve
 重放均不能从持久行重建发送许可；既有预约不能被当前 owner 默认值改写。
@@ -32,6 +32,11 @@ PG 实现候选在共享 execution identity 锁中与完整已存 Admission 比�
 hash 和原 Admission 派生字段。完整原件或计划不一致返回 ADMISSION_CONFLICT；
 缺失返回 NOT_FOUND；首次预约因 close 或 deadline 拒绝返回 PIPELINE_DISPATCH_BLOCKED。
 已存在的同件预约在 close 或 deadline 后仍返回原事实，但不返回许可。
+
+回归包括 close-first、close-only tombstone 与迟到 Admission、完整原件和 owner
+配置变更拒绝、租户边界及 UUID 别名。deadline 测试通过 PostgreSQL 锁等待和
+数据库时钟观测，证明等待 identity 锁期间到期后拒绝首次预约；轮询间隔不作为
+排序依据。这些证据只覆盖持久预约，不证明后续 KFP HTTP 调用已获准或已完成。
 
 ## 当前不成立的能力
 

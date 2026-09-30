@@ -74,7 +74,7 @@ func TestReservedDispatchAfterCloseReplaysOnlyOriginalFact(t *testing.T) {
 
 func TestReservationRejectsDifferentCompleteAdmissionBeforeAndAfterFirstPermit(t *testing.T) {
 	cases := []struct {
-		name string
+		name   string
 		mutate func(*biz.Admission)
 	}{
 		{"operation", func(a *biz.Admission) { a.OperationID = "cccccccc-dddd-4eee-8fff-aaaaaaaaaaaa" }},
@@ -122,12 +122,14 @@ func TestReservationRejectsDifferentCompleteAdmissionBeforeAndAfterFirstPermit(t
 
 func TestReservationCannotReplaceFrozenOwnerConfiguration(t *testing.T) {
 	cases := []struct {
-		name string
+		name   string
 		mutate func(*biz.PipelineOwnerConfiguration)
 	}{
 		{"reference", func(owner *biz.PipelineOwnerConfiguration) { owner.Reference = "other-owner" }},
 		{"revision", func(owner *biz.PipelineOwnerConfiguration) { owner.RevisionSHA256 = strings.Repeat("b", 64) }},
-		{"root", func(owner *biz.PipelineOwnerConfiguration) { owner.PipelineRoot = "s3://other-kfp-artifacts/managed-root" }},
+		{"root", func(owner *biz.PipelineOwnerConfiguration) {
+			owner.PipelineRoot = "s3://other-kfp-artifacts/managed-root"
+		}},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
