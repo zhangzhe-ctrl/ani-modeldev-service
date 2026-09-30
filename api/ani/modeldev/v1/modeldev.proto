@@ -20,6 +20,13 @@ service ModelDevQueryService {
   rpc AuthorizeArtifactDownload(AuthorizeArtifactDownloadRequest) returns (AuthorizeArtifactDownloadResponse);
 }
 
+// Only authenticated Governance may resolve a candidate after current actor
+// authorization and an original-key miss. This service does not accept an
+// execution, allocate command IDs or choose Governance's current Release.
+service ModelDevAdmissionService {
+  rpc ResolveAdmission(ResolveAdmissionRequest) returns (ResolveAdmissionResponse);
+}
+
 // Only the authenticated Governance delivery identity may call this service.
 // ACK is emitted after the command or close tombstone is durably committed.
 service ModelDevCommandService {
@@ -402,6 +409,30 @@ message ExecutionSnapshot {
   StorageScope publication_scope = 10;
   ani.training.v1.OutputContract output_contract = 11;
   google.protobuf.Timestamp deadline_at = 12;
+}
+
+// One explicit Governance binding observation, never a request to resolve the
+// latest or default Release. The owner preserves this generation in the result.
+message AdmissionReleaseSelection {
+  string release_id = 1;
+  string release_digest = 2;
+  uint64 binding_generation = 3;
+}
+
+message ResolveAdmissionRequest {
+  UserIntent intent = 1;
+  AdmissionReleaseSelection release = 2;
+  // Governance fixes this once. Require a valid, nonzero, microsecond-precise
+  // value; resolution and retries cannot extend the resulting deadline.
+  google.protobuf.Timestamp accepted_at = 3;
+}
+
+// Unpersisted candidate only. Governance must independently check this snapshot
+// and hash, then commit its idempotency and binding-generation checks before ACK.
+// Tenant/actor come from authenticated metadata; callers cannot supply facts.
+message ResolveAdmissionResponse {
+  ExecutionSnapshot snapshot = 1;
+  string execution_spec_hash = 2;
 }
 
 message AcceptExecutionRequest {

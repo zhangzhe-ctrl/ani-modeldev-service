@@ -4,10 +4,18 @@ These are candidate typed contracts for the existing BFF/Governance and the
 ModelDev owner. Their existence does not assert that a handler, authorization
 chain, database, KFP/Trainer adapter, or live endpoint has been implemented.
 
-`ani/modeldev/v1/modeldev.proto` separates three authenticated surfaces:
+`ani/modeldev/v1/modeldev.proto` separates four authenticated surfaces:
 
 - `ModelDevQueryService` serves authorized BFF reads and download authorization.
   Current permissions apply to every request, including the original actor.
+- `ModelDevAdmissionService` resolves an unpersisted snapshot candidate for
+  authenticated Governance after current authorization and an original-key miss.
+  The request carries the original intent, explicit Release ID/digest/binding
+  generation and one fixed AcceptedAt. Tenant and actor come only from trusted
+  metadata; the request cannot supply environment facts, paths or command IDs.
+  Governance rechecks the returned snapshot/hash and commits its original-key
+  and binding-generation checks before acknowledging acceptance. Defining this
+  RPC does not register it or make the production environment ready.
 - `ModelDevCommandService` durably receives Governance commands and close
   intents. It acknowledges only committed inbox records or close tombstones.
 - `ModelDevStepService` authenticates managed KFP steps, verifies actual
