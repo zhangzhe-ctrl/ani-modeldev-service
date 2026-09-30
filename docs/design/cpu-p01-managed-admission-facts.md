@@ -27,11 +27,16 @@ publication_scope、runtime、workspace、input_file_path、output_directory_pat
 每文件最多 64 KiB、JSON 嵌套最多 16 层。打开时不跟随最后一级符号链接，不阻塞于
 FIFO；从同一文件描述符核对普通文件、单链接、长度和读取前后的变更时间。这里只
 限制受信配置给定的文件，不接受用户文件路径，也不声称排除了所有父目录符号链接。
+部署材料必须提供直接 regular readonly/subPath 文件；常规挂载中最后一级仍是符号
+链接的路径不受支持，不能用测试普通文件成功宣称该挂载方式已经可用。
 
 解码候选拒绝未知/重复字段、字段大小写别名、null、尾随值、非法 UTF-8/替换字符、
-摘要错配及重复 tenant/Release key。file owner 核对文档版本、固定索引身份和 evidence
-引用形状；实际 Runtime/workspace/输入范围等兼容及完整快照 shape 继续由既有 resolver
-和 cpup01 校验，避免另造一套业务规则。语法加载成功不等于其事实已通过业务组合。
+摘要错配及重复 tenant/Release key。file owner 的合同还要求全部必要字段存在且符合
+typed 文件形状：不能缺失 environment/runtime/workspace/存储 scope/路径，也不能
+丢掉它们的必要嵌套身份、摘要和映射字段。`9ac4651` 实现尚未完成这一 presence 检查，
+不能通过把 Load 描述为 syntax-only 来缩减合同。该缺口由下一组实际文件 RED 覆盖。
+实际 Runtime/workspace/输入范围等业务兼容及完整快照 shape 继续由既有 resolver
+和 cpup01 校验；presence 检查不另造业务规则，也不生成假 Snapshot 进行校验。
 全部文件成功后才返回只读索引，读取时复制唯一可变的 Runtime target-jobs 切片。
 这些拒绝行为尚需后续真实负向 RED/回归，不能以首正向测试代表全部边界已验证。
 
@@ -68,5 +73,16 @@ PG 和 managed-facts 两项 preflight PASS，唯一产品失败为上述 Load st
 独立收尾脚本在不重跑测试、不修改源树的条件下补齐记录和 manifest。此格式结果不是
 产品 RED，也不是格式 PASS。
 
-当前已按该 RED 写最小 Load/read/ResolveManaged 实现候选，等待 root 固定新 SHA 和
-Fedora GREEN/最终格式回传。严格负向边界、生产配置与 RPC/Governance 消费均 NOT_RUN。
+固定 `9ac465173372815ae9ad6ae53d03ffdf7773efb6` 在 Fedora 取得首 GREEN（0.110s）及
+resolution/catalogue/input 完整回归（1.361s/0.204s/3.996s），均 exit0、无 SKIP。
+admissionfacts 由真实集成测试实际调用，其包没有独立测试文件。测试后的两个文件
+纯格式差异已由 root 审阅固定为 `d8a073ff05618011102c2e2eba482c7290f2399e`，
+随下一边界固定 SHA 一并复验；不把旧源码结果冒称格式新 SHA 已实际运行。
+
+下一组 `managed_facts_boundaries_test.go` 全部使用真实文件，变体在测试运行时按新
+字节重新 pin。明确预期 RED 是缺少必要事实字段被 Load 接受；schema/key/evidence
+已有拒绝、严格 JSON/UTF、真实字节改变、空白等价、重复文件 key、文件类型/64 KiB/
+64 来源上限、tenant/Release 选择、取消及独立副本是回归，不能伪称全部都修复自 RED。
+文件限额用 65 个各自唯一 key 的实际文件，避免被重复 key 拒绝误代来源数校验。
+FIFO 等失败有测试侧时间上限，所有拒绝必须返回 nil reader 和有限错误，不回显路径。
+生产配置与 RPC/Governance 消费仍 NOT_RUN；这些文件测试不证明真实 ENV 可用。
