@@ -15,7 +15,7 @@ WHERE tenant_id = sqlc.arg(tenant_id)::uuid
 
 -- name: GetPipelineDispatch :one
 SELECT tenant_id, execution_id, operation_id, spec_hash, attempt_id,
-    plan_canonical, plan_hash, state, reserved_at, uncertain_at
+    plan_canonical, plan_hash, state, reserved_at, uncertain_at, not_sent_at
 FROM modeldev_pipeline_dispatches
 WHERE tenant_id = sqlc.arg(tenant_id)::uuid
   AND execution_id = sqlc.arg(execution_id)::uuid;
@@ -51,7 +51,7 @@ WHERE tenant_id = sqlc.arg(tenant_id)::uuid
   AND close_generation = 0
   AND clock_timestamp() < sqlc.arg(deadline_at)::timestamptz
 RETURNING tenant_id, execution_id, operation_id, spec_hash, attempt_id,
-    plan_canonical, plan_hash, state, reserved_at, uncertain_at;
+    plan_canonical, plan_hash, state, reserved_at, uncertain_at, not_sent_at;
 
 -- These immutable observations belong to one exact reservation, not to an
 -- authoritative Run binding. Ordering gives stable output, never priority.
@@ -80,12 +80,12 @@ WHERE tenant_id = sqlc.arg(tenant_id)::uuid
   AND execution_id = sqlc.arg(execution_id)::uuid
   AND attempt_id = sqlc.arg(attempt_id)::uuid
   AND plan_hash = sqlc.arg(plan_hash)::text
-  AND state IN ('SUBMITTING', 'SUBMISSION_UNCERTAIN', 'SUBMISSION_CONFIRMED')
+  AND state IN ('SUBMITTING', 'SUBMISSION_NOT_SENT', 'SUBMISSION_UNCERTAIN', 'SUBMISSION_CONFIRMED')
   AND sqlc.arg(observed_at)::timestamptz >= reserved_at
 ON CONFLICT (tenant_id, execution_id, attempt_id, run_id) DO NOTHING;
 
 -- In the same transaction as the retained handle, mark the original attempt's
--- first confirmation without erasing an earlier uncertainty observation.
+-- first confirmation without erasing earlier no-send/uncertainty observations.
 -- name: MarkSubmissionConfirmed :one
 UPDATE modeldev_pipeline_dispatches AS dispatch
 SET state = 'SUBMISSION_CONFIRMED'
@@ -93,7 +93,7 @@ WHERE dispatch.tenant_id = sqlc.arg(tenant_id)::uuid
   AND dispatch.execution_id = sqlc.arg(execution_id)::uuid
   AND dispatch.attempt_id = sqlc.arg(attempt_id)::uuid
   AND dispatch.plan_hash = sqlc.arg(plan_hash)::text
-  AND dispatch.state IN ('SUBMITTING', 'SUBMISSION_UNCERTAIN')
+  AND dispatch.state IN ('SUBMITTING', 'SUBMISSION_NOT_SENT', 'SUBMISSION_UNCERTAIN')
   AND EXISTS (
       SELECT 1
       FROM modeldev_pipeline_confirmed_runs AS observed
@@ -104,7 +104,7 @@ WHERE dispatch.tenant_id = sqlc.arg(tenant_id)::uuid
   )
 RETURNING dispatch.tenant_id, dispatch.execution_id, dispatch.operation_id,
     dispatch.spec_hash, dispatch.attempt_id, dispatch.plan_canonical,
-    dispatch.plan_hash, dispatch.state, dispatch.reserved_at, dispatch.uncertain_at;
+    dispatch.plan_hash, dispatch.state, dispatch.reserved_at, dispatch.uncertain_at, dispatch.not_sent_at;
 
 -- The caller holds the shared identity lock and has matched the original
 -- attempt and frozen plan. Close/deadline do not discard late observations.
@@ -116,8 +116,25 @@ WHERE tenant_id = sqlc.arg(tenant_id)::uuid
   AND execution_id = sqlc.arg(execution_id)::uuid
   AND attempt_id = sqlc.arg(attempt_id)::uuid
   AND plan_hash = sqlc.arg(plan_hash)::text
-  AND state = 'SUBMITTING'
+  AND state IN ('SUBMITTING', 'SUBMISSION_NOT_SENT')
   AND uncertain_at IS NULL
   AND sqlc.arg(observed_at)::timestamptz >= reserved_at
 RETURNING tenant_id, execution_id, operation_id, spec_hash, attempt_id,
-    plan_canonical, plan_hash, state, reserved_at, uncertain_at;
+    plan_canonical, plan_hash, state, reserved_at, uncertain_at, not_sent_at;
+
+-- Keep the first local no-send observation even when a stronger observation
+-- arrived first. Existing uncertainty/confirmation and all Run handles remain.
+-- The caller holds the original identity lock and has matched the frozen plan.
+-- name: MarkSubmissionNotSent :one
+UPDATE modeldev_pipeline_dispatches
+SET not_sent_at = sqlc.arg(observed_at)::timestamptz,
+    state = CASE WHEN state = 'SUBMITTING' THEN 'SUBMISSION_NOT_SENT' ELSE state END
+WHERE tenant_id = sqlc.arg(tenant_id)::uuid
+  AND execution_id = sqlc.arg(execution_id)::uuid
+  AND attempt_id = sqlc.arg(attempt_id)::uuid
+  AND plan_hash = sqlc.arg(plan_hash)::text
+  AND state IN ('SUBMITTING', 'SUBMISSION_NOT_SENT', 'SUBMISSION_UNCERTAIN', 'SUBMISSION_CONFIRMED')
+  AND not_sent_at IS NULL
+  AND sqlc.arg(observed_at)::timestamptz >= reserved_at
+RETURNING tenant_id, execution_id, operation_id, spec_hash, attempt_id,
+    plan_canonical, plan_hash, state, reserved_at, uncertain_at, not_sent_at;

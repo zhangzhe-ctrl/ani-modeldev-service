@@ -10,7 +10,7 @@ import (
 var (
 	ErrInvalidPipelineSubmitter    = errors.New("INVALID_PIPELINE_SUBMITTER_CONFIGURATION")
 	ErrPipelineSubmissionUncertain = errors.New("PIPELINE_SUBMISSION_UNCERTAIN")
-	ErrPipelineSubmissionNotSent = errors.New("PIPELINE_SUBMISSION_NOT_SENT")
+	ErrPipelineSubmissionNotSent   = errors.New("PIPELINE_SUBMISSION_NOT_SENT")
 )
 
 // PipelineSubmitResult separates the last acknowledged durable dispatch from
