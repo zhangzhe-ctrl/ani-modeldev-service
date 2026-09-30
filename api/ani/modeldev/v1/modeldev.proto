@@ -1,0 +1,640 @@
+syntax = "proto3";
+
+package ani.modeldev.v1;
+
+import "ani/training/v1/training.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/zhangzhe-ctrl/ani-modeldev-service/api/ani/modeldev/v1;modeldevv1";
+
+// BFF-facing internal RPCs. Each call requires current actor authorization;
+// the actor saved at admission is audit data, not permanent access permission.
+service ModelDevQueryService {
+  rpc ListPresets(ListPresetsRequest) returns (ListPresetsResponse);
+  rpc GetInputVersion(GetInputVersionRequest) returns (GetInputVersionResponse);
+  rpc ListInputVersions(ListInputVersionsRequest) returns (ListInputVersionsResponse);
+  rpc GetExecution(GetExecutionRequest) returns (GetExecutionResponse);
+  rpc ListExecutions(ListExecutionsRequest) returns (ListExecutionsResponse);
+  rpc GetExecutionLogs(GetExecutionLogsRequest) returns (GetExecutionLogsResponse);
+  rpc ListExecutionArtifacts(ListExecutionArtifactsRequest) returns (ListExecutionArtifactsResponse);
+  rpc AuthorizeArtifactDownload(AuthorizeArtifactDownloadRequest) returns (AuthorizeArtifactDownloadResponse);
+}
+
+// Only the authenticated Governance delivery identity may call this service.
+// ACK is emitted after the command or close tombstone is durably committed.
+service ModelDevCommandService {
+  rpc AcceptExecution(AcceptExecutionRequest) returns (AcceptExecutionResponse);
+  rpc ApplyCloseIntent(ApplyCloseIntentRequest) returns (ApplyCloseIntentResponse);
+}
+
+// Only authenticated managed KFP steps may call these capabilities. Claimed
+// associations in requests must be verified against actual Run/Workflow/Pod
+// identity; labels or caller-supplied IDs alone never authorize a callback.
+service ModelDevStepService {
+  rpc BeginExecution(BeginExecutionRequest) returns (BeginExecutionResponse);
+  rpc GetExecutionConfiguration(GetExecutionConfigurationRequest) returns (GetExecutionConfigurationResponse);
+  rpc EnsureTraining(EnsureTrainingRequest) returns (EnsureTrainingResponse);
+  rpc GetTrainingStatus(GetTrainingStatusRequest) returns (GetTrainingStatusResponse);
+  rpc ReportStepResult(ReportStepResultRequest) returns (ReportStepResultResponse);
+  rpc RequestExecutionClose(RequestExecutionCloseRequest) returns (RequestExecutionCloseResponse);
+}
+
+enum ComputeState {
+  COMPUTE_STATE_UNSPECIFIED = 0;
+  COMPUTE_STATE_ACCEPTED = 1;
+  COMPUTE_STATE_SUBMITTING = 2;
+  COMPUTE_STATE_SUBMISSION_UNCERTAIN = 3;
+  COMPUTE_STATE_QUEUED = 4;
+  COMPUTE_STATE_PREPARING = 5;
+  COMPUTE_STATE_TRAINING = 6;
+  COMPUTE_STATE_SUCCEEDED = 7;
+  COMPUTE_STATE_FAILED = 8;
+  COMPUTE_STATE_CANCELED = 9;
+}
+
+enum DeliveryState {
+  DELIVERY_STATE_UNSPECIFIED = 0;
+  DELIVERY_STATE_PENDING = 1;
+  DELIVERY_STATE_PUBLISHING = 2;
+  DELIVERY_STATE_PUBLISHED = 3;
+  DELIVERY_STATE_FAILED = 4;
+}
+
+enum ResourceState {
+  RESOURCE_STATE_UNSPECIFIED = 0;
+  RESOURCE_STATE_NOT_APPLICABLE = 1;
+}
+
+enum CloseState {
+  CLOSE_STATE_UNSPECIFIED = 0;
+  CLOSE_STATE_OPEN = 1;
+  CLOSE_STATE_CLOSING = 2;
+  CLOSE_STATE_CLOSED = 3;
+  CLOSE_STATE_NEEDS_REVIEW = 4;
+}
+
+enum CloseReason {
+  CLOSE_REASON_UNSPECIFIED = 0;
+  CLOSE_REASON_USER_STOP = 1;
+  CLOSE_REASON_DEADLINE = 2;
+  CLOSE_REASON_NATURAL_TERMINAL = 3;
+  CLOSE_REASON_STEP_FAILED = 4;
+}
+
+enum InputState {
+  INPUT_STATE_UNSPECIFIED = 0;
+  INPUT_STATE_FIXING = 1;
+  INPUT_STATE_VALIDATING = 2;
+  INPUT_STATE_READY = 3;
+  INPUT_STATE_FAILED = 4;
+}
+
+enum PipelineStep {
+  PIPELINE_STEP_UNSPECIFIED = 0;
+  PIPELINE_STEP_PREPARE = 1;
+  PIPELINE_STEP_TRAIN_WAIT = 2;
+  PIPELINE_STEP_COLLECT = 3;
+  PIPELINE_STEP_PUBLISH = 4;
+  PIPELINE_STEP_CLOSE = 5;
+}
+
+enum ExternalCreateState {
+  EXTERNAL_CREATE_STATE_UNSPECIFIED = 0;
+  EXTERNAL_CREATE_STATE_INTENT_RECORDED = 1;
+  EXTERNAL_CREATE_STATE_IN_FLIGHT = 2;
+  EXTERNAL_CREATE_STATE_UNCERTAIN = 3;
+  EXTERNAL_CREATE_STATE_CONFIRMED = 4;
+  EXTERNAL_CREATE_STATE_REJECTED_WITHOUT_SIDE_EFFECT = 5;
+}
+
+enum ParameterType {
+  PARAMETER_TYPE_UNSPECIFIED = 0;
+  PARAMETER_TYPE_STRING = 1;
+  PARAMETER_TYPE_INTEGER = 2;
+  PARAMETER_TYPE_BOOLEAN = 3;
+  PARAMETER_TYPE_DECIMAL = 4;
+}
+
+// Stable domain reasons mapped to the repository's ordinary gRPC error model.
+enum ErrorReason {
+  ERROR_REASON_UNSPECIFIED = 0;
+  ERROR_REASON_INVALID_ARGUMENT = 1;
+  ERROR_REASON_UNAUTHENTICATED = 2;
+  ERROR_REASON_FORBIDDEN = 3;
+  ERROR_REASON_RESOURCE_NOT_FOUND = 4;
+  ERROR_REASON_IDEMPOTENCY_CONFLICT = 5;
+  ERROR_REASON_ENVIRONMENT_NOT_READY = 6;
+  ERROR_REASON_NO_COMPATIBLE_RELEASE = 7;
+  ERROR_REASON_UPSTREAM_UNAVAILABLE = 8;
+  ERROR_REASON_SUBMISSIONS_PAUSED = 9;
+  ERROR_REASON_CAPABILITY_NOT_ENABLED = 10;
+  ERROR_REASON_MANUAL_REVIEW_REQUIRED = 11;
+  ERROR_REASON_EXECUTION_CLOSING = 12;
+  ERROR_REASON_ARTIFACT_NOT_PUBLISHED = 13;
+  ERROR_REASON_AUTHORITY_MISMATCH = 14;
+  ERROR_REASON_COMMAND_CONFLICT = 15;
+  ERROR_REASON_TRAINING_FAILED = 16;
+  ERROR_REASON_REQUIRED_OUTPUT_MISSING = 17;
+  ERROR_REASON_INTEGRITY_MISMATCH = 18;
+  ERROR_REASON_UPSTREAM_RESULT_UNCERTAIN = 19;
+  ERROR_REASON_DEADLINE_EXCEEDED = 20;
+  ERROR_REASON_INPUT_TOO_LARGE = 21;
+  ERROR_REASON_INPUT_NOT_READY = 22;
+}
+
+message FieldViolation {
+  string field = 1;
+  string reason = 2;
+}
+
+// RPC failures use standard gRPC status details, never successful envelopes.
+// Query views may also carry this type as a historical failure diagnostic.
+// safe_message excludes credentials, storage secrets, and hidden object facts.
+message ErrorDetail {
+  ErrorReason reason = 1;
+  string safe_message = 2;
+  repeated FieldViolation violations = 3;
+  string correlation_id = 4;
+}
+
+// Shared typed intent, not a new HTTP facade. Governance owns CreateExecution
+// and StopExecution at the existing BFF. Its strict JSON adapter keeps the
+// external general_parameters array and maps original JSON field presence to
+// this message; direct proto-JSON translation is not the external API contract.
+// Tenant, actor, action, and idempotency key belong to the trusted admission
+// scope and do not participate in the canonical intent object.
+message UserIntent {
+  string name = 1;
+  ani.training.v1.ExecutionKind kind = 2;
+  string preset_id = 3;
+  string dataset_version_id = 4;
+  optional string image_version_id = 5;
+  // Sort by name for intent hashing; reject duplicate names and missing values.
+  // CPU-P01 accepts epochs INTEGER=3, batch_size INTEGER=64, and
+  // learning_rate DECIMAL in (0, 0.1]. Missing entries retain intent presence
+  // differences from explicit defaults; only snapshot resolution adds defaults.
+  ParameterSelection general_parameters = 6;
+  // Presence participates in intent hashing. Explicit empty is invalid.
+  optional string source_execution_id = 7;
+}
+
+// An absent message means omitted general_parameters. A present message with
+// zero values means the explicit JSON array []; these have different hashes.
+message ParameterSelection {
+  repeated ani.training.v1.Parameter values = 1;
+}
+
+message ExecutionStates {
+  ComputeState compute_state = 1;
+  DeliveryState delivery_state = 2;
+  ResourceState resource_state = 3;
+  CloseState close_state = 4;
+}
+
+message PageRequest {
+  uint32 page_size = 1;
+  string page_token = 2;
+}
+
+message ParameterRule {
+  string name = 1;
+  ParameterType type = 2;
+  bool required = 3;
+  ani.training.v1.Parameter default_value = 4;
+  repeated ani.training.v1.Parameter allowed_values = 5;
+  ani.training.v1.Parameter minimum = 6;
+  ani.training.v1.Parameter maximum = 7;
+}
+
+message PresetView {
+  string preset_id = 1;
+  string name = 2;
+  ani.training.v1.ExecutionKind kind = 3;
+  // Resolved from Governance's authority; never a second ModelDev default.
+  string active_release_id = 4;
+  repeated string image_version_ids = 5;
+  repeated ParameterRule parameter_rules = 6;
+}
+
+message ListPresetsRequest {
+  PageRequest page = 1;
+}
+
+message ListPresetsResponse {
+  repeated PresetView presets = 1;
+  string next_page_token = 2;
+}
+
+// Public metadata omits backend object keys and credentials.
+message InputVersionView {
+  string input_version_id = 1;
+  InputState state = 2;
+  string format = 3;
+  int64 size_bytes = 4;
+  string sha256 = 5;
+  uint32 row_count = 6;
+  uint32 feature_count = 7;
+  google.protobuf.Timestamp created_at = 8;
+  ErrorDetail failure = 9;
+}
+
+message GetInputVersionRequest {
+  string input_version_id = 1;
+}
+
+message GetInputVersionResponse {
+  InputVersionView input_version = 1;
+}
+
+message ListInputVersionsRequest {
+  PageRequest page = 1;
+  optional InputState state = 2;
+}
+
+message ListInputVersionsResponse {
+  repeated InputVersionView input_versions = 1;
+  string next_page_token = 2;
+}
+
+message ExecutionView {
+  ani.training.v1.ExecutionIdentity identity = 1;
+  string name = 2;
+  ani.training.v1.ExecutionKind kind = 3;
+  string preset_id = 4;
+  string release_id = 5;
+  string input_version_id = 6;
+  string image_version_id = 7;
+  ExecutionStates states = 8;
+  PipelineStep current_step = 9;
+  bool stop_requested = 10;
+  uint64 close_generation = 11;
+  google.protobuf.Timestamp accepted_at = 12;
+  google.protobuf.Timestamp deadline_at = 13;
+  google.protobuf.Timestamp observed_at = 14;
+  ErrorDetail failure = 15;
+  repeated ani.training.v1.Metric metrics = 16;
+  optional string source_execution_id = 17;
+}
+
+message GetExecutionRequest {
+  string execution_id = 1;
+}
+
+message GetExecutionResponse {
+  ExecutionView execution = 1;
+}
+
+message ListExecutionsRequest {
+  PageRequest page = 1;
+  optional ComputeState compute_state = 2;
+  optional DeliveryState delivery_state = 3;
+  optional CloseState close_state = 4;
+}
+
+message ListExecutionsResponse {
+  repeated ExecutionView executions = 1;
+  string next_page_token = 2;
+}
+
+message GetExecutionLogsRequest {
+  string execution_id = 1;
+  // Only an owner-issued log ID for this execution; never an arbitrary Pod.
+  optional string log_id = 2;
+  uint32 tail_lines = 3;
+  uint32 max_bytes = 4;
+}
+
+message LogLine {
+  google.protobuf.Timestamp timestamp = 1;
+  string text = 2;
+}
+
+message GetExecutionLogsResponse {
+  ani.training.v1.LogRef source = 1;
+  repeated LogLine lines = 2;
+  bool truncated = 3;
+  google.protobuf.Timestamp observed_at = 4;
+}
+
+message ArtifactView {
+  string artifact_id = 1;
+  string execution_id = 2;
+  string filename = 3;
+  ani.training.v1.FileRole role = 4;
+  int64 size_bytes = 5;
+  string sha256 = 6;
+  DeliveryState delivery_state = 7;
+  google.protobuf.Timestamp verified_at = 8;
+}
+
+message ListExecutionArtifactsRequest {
+  string execution_id = 1;
+  PageRequest page = 2;
+}
+
+message ListExecutionArtifactsResponse {
+  repeated ArtifactView artifacts = 1;
+  string next_page_token = 2;
+}
+
+message AuthorizeArtifactDownloadRequest {
+  string artifact_id = 1;
+}
+
+message AuthorizeArtifactDownloadResponse {
+  ArtifactView artifact = 1;
+  // Short-lived secret: redact from logs and never persist in a snapshot.
+  string download_url = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+// Approved identity references contain no certificate, token, or private key.
+message RuntimeIdentityRefs {
+  string modeldev_control_identity_ref = 1;
+  string kfp_step_service_account = 2;
+  string trainer_service_account = 3;
+  string verifier_service_account = 4;
+  string tenant_proxy_identity = 5;
+}
+
+message EnvironmentBindingSnapshot {
+  string binding_id = 1;
+  string binding_digest = 2;
+  string cluster_id = 3;
+  string namespace_name = 4;
+  string namespace_uid = 5;
+  string kfp_connection_ref = 6;
+  string experiment_id = 7;
+  RuntimeIdentityRefs identities = 8;
+}
+
+message StorageScope {
+  string storage_connection_id = 1;
+  string bucket = 2;
+  string approved_prefix = 3;
+  string credential_reference = 4;
+}
+
+message ReleaseSnapshot {
+  string release_id = 1;
+  string release_digest = 2;
+  string preset_id = 3;
+  uint64 accepted_binding_generation = 4;
+  string pipeline_id = 5;
+  string pipeline_version_id = 6;
+  string pipeline_ir_sha256 = 7;
+  ani.training.v1.RuntimeRef runtime = 8;
+}
+
+// Immutable after Governance admission. Runtime IDs generated afterwards
+// (Run, Workflow, Pod, PVC, TrainJob, JobSet) are deliberately absent.
+// Hash canonicalization is a versioned business contract, not proto wire bytes.
+message ExecutionSnapshot {
+  string schema_version = 1;
+  ani.training.v1.ExecutionKind kind = 2;
+  ani.training.v1.DeliveryMode delivery_mode = 3;
+  ReleaseSnapshot release = 4;
+  ani.training.v1.InputRef input = 5;
+  ani.training.v1.ProgramRef program = 6;
+  ani.training.v1.CPUResources resources = 7;
+  EnvironmentBindingSnapshot environment = 8;
+  ani.training.v1.WorkspaceContract workspace = 9;
+  StorageScope publication_scope = 10;
+  ani.training.v1.OutputContract output_contract = 11;
+  google.protobuf.Timestamp deadline_at = 12;
+}
+
+message AcceptExecutionRequest {
+  ani.training.v1.ExecutionIdentity identity = 1;
+  // These trusted delivery claims must match the authenticated Governance
+  // delegation. They are not fields in the user-facing CreateExecution body.
+  // resource_tenant_id is a UUID; admitted_actor_id is a trusted audit string
+  // governance:user:<id> or governance:access-key:<id>, not a UUID.
+  string resource_tenant_id = 2;
+  string admitted_actor_id = 3;
+  string intent_hash = 4;
+  ExecutionSnapshot snapshot = 5;
+  google.protobuf.Timestamp accepted_at = 6;
+  UserIntent intent = 7;
+}
+
+message AcceptExecutionResponse {
+  ani.training.v1.ExecutionIdentity identity = 1;
+  bool replayed = 2;
+  ExecutionStates states = 3;
+  uint64 revision = 4;
+}
+
+message ApplyCloseIntentRequest {
+  ani.training.v1.ExecutionIdentity identity = 1;
+  string resource_tenant_id = 2;
+  uint64 close_generation = 3;
+  CloseReason reason = 4;
+  google.protobuf.Timestamp requested_at = 5;
+  // Trusted Governance audit identity; current authorization is checked before
+  // Governance persists this intent, independently of the original actor.
+  string requested_actor_id = 6;
+}
+
+message ApplyCloseIntentResponse {
+  ani.training.v1.ExecutionIdentity identity = 1;
+  uint64 close_generation = 2;
+  CloseState close_state = 3;
+  bool replayed = 4;
+  // True also permits a durable tombstone before AcceptExecution arrives.
+  bool durably_recorded = 5;
+}
+
+message RunAssociation {
+  string kfp_run_id = 1;
+  string namespace_name = 2;
+  string namespace_uid = 3;
+  string workflow_name = 4;
+  string workflow_uid = 5;
+  string pod_name = 6;
+  string pod_uid = 7;
+}
+
+message StepContext {
+  ani.training.v1.ExecutionIdentity identity = 1;
+  RunAssociation association = 2;
+  PipelineStep step = 3;
+}
+
+message AuthorityBinding {
+  string kfp_run_id = 1;
+  string namespace_uid = 2;
+  string workflow_uid = 3;
+  google.protobuf.Timestamp bound_at = 4;
+}
+
+message BeginExecutionRequest {
+  StepContext context = 1;
+}
+
+message BeginExecutionResponse {
+  AuthorityBinding authority = 1;
+  ExecutionStates states = 2;
+  bool replayed = 3;
+}
+
+message GetExecutionConfigurationRequest {
+  StepContext context = 1;
+}
+
+message GetExecutionConfigurationResponse {
+  ani.training.v1.ExecutionIdentity identity = 1;
+  ExecutionSnapshot snapshot = 2;
+  AuthorityBinding authority = 3;
+  // Absent until the owner's verified prepare result binds the actual PVC UID.
+  ani.training.v1.WorkspaceRef workspace = 4;
+  ExecutionStates states = 5;
+}
+
+// Ensure accepts only execution/authority references. ModelDev derives the
+// TrainingInput and CRD from durable facts, never a caller-provided PodSpec.
+message EnsureTrainingRequest {
+  StepContext context = 1;
+}
+
+message ResourceRef {
+  string api_version = 1;
+  string kind = 2;
+  string namespace_name = 3;
+  string namespace_uid = 4;
+  string name = 5;
+  string uid = 6;
+  string owner_uid = 7;
+}
+
+message ObservedCondition {
+  string type = 1;
+  // Absent means unknown. Consumers do not choose the first true condition.
+  optional bool status = 2;
+  string reason = 3;
+  google.protobuf.Timestamp observed_at = 4;
+}
+
+message ResourceObservation {
+  ResourceRef resource = 1;
+  repeated ObservedCondition conditions = 2;
+  optional int32 exit_code = 3;
+  string node_name = 4;
+  google.protobuf.Timestamp observed_at = 5;
+  // Both present and absent API objects require independent writer assessment.
+  bool api_object_present = 6;
+}
+
+message TrainingStatus {
+  ani.training.v1.ExecutionIdentity identity = 1;
+  ExternalCreateState create_state = 2;
+  string deterministic_trainjob_name = 3;
+  string create_request_sha256 = 4;
+  ResourceRef trainjob = 5;
+  repeated ResourceObservation resource_history = 6;
+  ExecutionStates states = 7;
+  google.protobuf.Timestamp observed_at = 8;
+}
+
+message EnsureTrainingResponse {
+  TrainingStatus status = 1;
+  bool replayed = 2;
+}
+
+message GetTrainingStatusRequest {
+  StepContext context = 1;
+}
+
+message GetTrainingStatusResponse {
+  TrainingStatus status = 1;
+}
+
+message PreparedInputCandidate {
+  ani.training.v1.WorkspaceRef workspace = 1;
+  ani.training.v1.ManifestRef prepared_manifest = 2;
+  ani.training.v1.InputRef input = 3;
+}
+
+message PublishedFileCandidate {
+  ani.training.v1.FileEntry file = 1;
+  ani.training.v1.FixedObjectRef object = 2;
+}
+
+// This report is a claim to verify, not a publication receipt. The owner must
+// independently confirm the upload/launcher completion and read remote bytes.
+message PublicationCandidate {
+  string logical_publication_key = 1;
+  repeated PublishedFileCandidate files = 2;
+  ani.training.v1.FixedObjectRef manifest_object = 3;
+  ani.training.v1.FixedObjectRef bundle_object = 4;
+  string upload_task_id = 5;
+  string upload_pod_uid = 6;
+}
+
+message StepFailure {
+  ErrorDetail failure = 1;
+  repeated ani.training.v1.LogRef logs = 2;
+}
+
+message ReportStepResultRequest {
+  StepContext context = 1;
+  string report_id = 2;
+  oneof result {
+    PreparedInputCandidate prepared = 3;
+    ani.training.v1.TrainingResult training_result = 4;
+    PublicationCandidate publication = 5;
+    StepFailure failure = 6;
+  }
+}
+
+// Written only by ModelDev after service-side verification. Its existence
+// does not imply that compute has been closed or that cleanup is permitted.
+message VerifiedPublication {
+  string publication_id = 1;
+  ani.training.v1.ExecutionIdentity identity = 2;
+  string logical_publication_key = 3;
+  repeated VerifiedPublishedFile files = 4;
+  ani.training.v1.FixedObjectRef manifest_object = 5;
+  ani.training.v1.FixedObjectRef bundle_object = 6;
+  google.protobuf.Timestamp remote_verified_at = 7;
+  string verification_receipt_id = 8;
+  UploadCompletionEvidence upload_completion = 9;
+}
+
+// Stored by the owner after observing the actual uploader/launcher completion,
+// not accepted as a user or component assertion that bytes will be uploaded.
+message UploadCompletionEvidence {
+  string kfp_run_id = 1;
+  string workflow_uid = 2;
+  string task_id = 3;
+  string pod_uid = 4;
+  string uploader_container_name = 5;
+  google.protobuf.Timestamp completed_at = 6;
+  google.protobuf.Timestamp observed_at = 7;
+}
+
+message VerifiedPublishedFile {
+  string artifact_id = 1;
+  ani.training.v1.FileEntry file = 2;
+  ani.training.v1.FixedObjectRef object = 3;
+  google.protobuf.Timestamp remote_verified_at = 4;
+}
+
+message ReportStepResultResponse {
+  bool replayed = 1;
+  ExecutionStates states = 2;
+  // Present only after actual remote verification and durable publication.
+  VerifiedPublication publication = 3;
+}
+
+message RequestExecutionCloseRequest {
+  StepContext context = 1;
+  CloseReason reason = 2;
+}
+
+message RequestExecutionCloseResponse {
+  uint64 close_generation = 1;
+  CloseState close_state = 2;
+  bool replayed = 3;
+  google.protobuf.Timestamp accepted_at = 4;
+}
