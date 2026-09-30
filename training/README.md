@@ -130,7 +130,12 @@ offline, read-only except its output/tmpfs, limited to two CPUs / 2 GiB, and has
 returned ID after retaining evidence and output. The smoke deliberately tests the
 image's actual PID 1 behavior without adding an init wrapper.
 
-Build and image smoke are currently NOT_RUN. The existing CI workflow has no
+The first build at `a9b3a67d1fa9b4651add4f7c36237e36b6d1cdc8` verified all ten
+wheel hashes, then exited 125 before Dockerfile execution because Podman's build
+command requires `--pull=never` for this optional-value flag. The local script is
+corrected; a new fixed commit and build are pending. This is build-tooling failure,
+not a training behavior RED, and the image smoke is still NOT_RUN.
+The existing CI workflow has no
 image-publish job; the consumed ENV handoff is still a NOT_RUN template without a
 registry reference. Registry push therefore remains NOT_RUN until an explicit
 authorized destination is available. A local image ID is not a registry digest,

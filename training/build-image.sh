@@ -40,7 +40,7 @@ done < "$run_dir/context/training/wheelhouse.sha256"
 ) > "$run_dir/wheels-verified.txt"
 sha256sum "$run_dir/source.tar" > "$run_dir/source-archive.sha256"
 image_tag="localhost/ani-cpu03:${source_sha:0:12}"
-command=(podman build --pull never --network none --http-proxy=false --platform linux/amd64
+command=(podman build --pull=never --network none --http-proxy=false --platform linux/amd64
     --cpu-period 100000 --cpu-quota 200000 --memory 2g --memory-swap 2g
     --cap-drop all --security-opt no-new-privileges --jobs 1
     --label "org.opencontainers.image.revision=$source_sha"
