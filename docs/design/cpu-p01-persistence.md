@@ -171,7 +171,65 @@ GREEN / exit 0，格式无差异；已有实现正确的场景如实记回归 PA
 不匹配的迟到受理接管。固定 `27b1ae2` 取得有效 PG RED：前两项因 Close 缺失
 失败，四类身份/spec 拒绝仍 PASS。适配器候选复用生成的租户限定查询，在
 Accept 的身份锁事务内读取并校验关联 Close；Get 附带当前可见的同身份关闭事实。
+固定 `6cc0986` 格式无差异，全部 repository 与真实 PG race GREEN / exit 0，
+包括双 pool Admission/USER_STOP 完成后的关闭事实读取。证据前缀为
+`cpu04-late-admission-green-6cc0986`，不复用旧 GREEN 代替此源码验证。
 
 `Close == nil` 从不表示 CanCreate。Accept 将在共享身份事务内读取关联 close
 事实；Get 的两次读取不构成创建许可。真实创建许可必须后续在同一身份锁下
 检查并持久化，不能用此查询结果或此前的关闭读取进行授权。
+
+## 当前持久切片两轴自查范围
+
+比较基线 `ca2547852d1d38ebb6ee59db4d6d3d1f2e13c151`，被检查源码为
+`6cc0986ed9867715b3b421edb9d82b7a687caeba`；范围仅为 execution 领域、真实 PG
+adapter、0001–0003、sqlc 输入/输出及相应测试。本节是限定切片的自查记录，
+不替代整 CPU04 的独立两轴审查或最终 full gate。
+
+Standards：biz 仅依赖纯合同与标准库，pgx/sqlc 限于 data；生产 SQL 全部来自
+版本化查询，测试直 SQL 仅用于角色/隔离 schema/迁移/授权/清理。所有关系带
+tenant_id，显式租户过滤、全局 operation/execution 唯一和完整身份复合 FK 一起
+约束；RLS 禁用。runtime 无 superuser/BYPASSRLS，仅新增 owner generation 列
+UPDATE 权限，不能改不可变身份列。生成与格式化已在 Fedora 固定提交执行并回传。
+
+Spec：真实 PG 已证明持久后回执、新 pool 读取、完整事实幂等、异参拒绝、
+跨租户隐藏、非法受理无 inbox、停止先到、来源/owner 代际分离、关闭重放、
+并发唯一赢家及迟到受理携带关闭事实。旧 actor 仅作审计，repository 接受的是
+上层已经可信的调用上下文；当前授权入口尚未接通。
+
+限定检查未发现需要阻止此持久切片继续开发的代码缺陷。未验证范围明确保留：
+带历史行的迁移升级、进程提交中断恢复、非法 close 完整负向矩阵、跨来源关闭、
+deadline/自然关闭、持久创建许可与外部 UID 历史、实际业务装配以及 L1–L4。
+Get 是观察接口；`Close == nil` 不授权创建，CLOSING 不证明无写者。当前源码的
+完整 make verify/audit 由根任务统一执行，未以本节 repository GREEN 替代。
+
+## 下一目录读取与 Release 冻结方案（未实现）
+
+依据原 CPU04 与 v0.4 D03/D05/D13，下一步只增加受管不可变目录和 Governance
+所需的解析能力。Release 是版本化文件与内容摘要，不新增 Release 管理平台、
+审批状态机或 ModelDev 当前启用表。Governance 的 `(resource_tenant_id, preset_id)`
+绑定及 generation 是唯一当前指针；目录加载、远端读取在其受理事务外完成。
+
+最小入口建议为既有 Governance-only `ModelDevCommandService.ResolveAdmission`，
+不扩大普通 `ModelDevQueryService` 的后端引用可见性。请求携带 Governance 已选定的
+release_id/digest、binding generation、原 typed intent 和 accepted_at；tenant/actor
+由可信身份上下文取得。ModelDev 按明确版本解析，不自行选择“当前 Release”。
+binding generation 仅原样进入候选快照，仍由 Governance 提交事务复核权威值。
+
+返回一个通过公共合同校验的完整 `cpup01.Snapshot`：固定 Release/PipelineVersion、
+已登记镜像 digest/受控参数映射、READY 输入的不可变对象事实、租户环境身份、
+工作区、输出合同和由原 accepted_at/固定时限得出的 deadline。Gov 持久受理后
+使用原快照重投，不再次解析。返回中只含批准的 credential reference，不含秘密、
+有效下载 URL；这些内部引用不透传普通列表查询。
+
+目录加载的最小实际能力是按 ID/digest 读取并校验一个固定 Release；输入 READY
+事实由后续真实受管 CSV 导入和租户限定 repository 提供。不能用完整合成 Snapshot
+fixture 冒充生产目录或 READY 输入。真实 PipelineVersion/namespace UID/证据缺失时
+解析失败关闭；版本化代码和模块测试可先推进，真实导入、启用仍保留 NOT_RUN。
+
+建议 TDD 顺序：先固定不可变目录字节和摘要的唯一规范及共享向量，验证同 ID
+不同字节/摘要拒绝与旧版本保留；再通过实际目录 reader 和输入持久化边界验证
+ResolveAdmission 只解析显式 release/input/image ID、租户隐藏与未 READY 拒绝；
+最后连接 Governance 的 generation 复核及原键重放。T02 复用同一校验后导入与
+CAS 启用，T03 先固定对象再流式验字节后置 READY；二者均不直接 SQL 改状态。
+本节只冻结下一切片的边界，不新增 schema、空端口、RPC stub 或目录实现。

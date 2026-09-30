@@ -100,19 +100,26 @@ func TestVerifyObjectRejectsUnapprovedReferencesBeforeNetwork(t *testing.T) {
 }
 
 func TestVerifyRejectsInvalidOrExceededReadBudgetBeforeNetwork(t *testing.T) {
-	for _, test := range []struct{name string; limit, size int64}{
+	for _, test := range []struct {
+		name        string
+		limit, size int64
+	}{
 		{"no configured limit", 0, 4},
 		{"negative limit", -1, 4},
 		{"object exceeds owner limit", 64, 65},
-	} { t.Run(test.name, func(t *testing.T) {
-		scope, object := objectFixture("good")
-		object.SizeBytes = test.size
-		var requests atomic.Int64
-		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { requests.Add(1); w.WriteHeader(http.StatusForbidden) }))
-		defer server.Close()
-		got, err := objectstore.NewVerifier(testS3Client(server), scope.StorageConnectionID, test.limit).Verify(context.Background(), scope, object)
-		if !errors.Is(err, biz.ErrObjectVerification) || !got.VerifiedAt.IsZero() || requests.Load() != 0 { t.Fatal("read budget was not enforced before network access") }
-	}) }
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			scope, object := objectFixture("good")
+			object.SizeBytes = test.size
+			var requests atomic.Int64
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { requests.Add(1); w.WriteHeader(http.StatusForbidden) }))
+			defer server.Close()
+			got, err := objectstore.NewVerifier(testS3Client(server), scope.StorageConnectionID, test.limit).Verify(context.Background(), scope, object)
+			if !errors.Is(err, biz.ErrObjectVerification) || !got.VerifiedAt.IsZero() || requests.Load() != 0 {
+				t.Fatal("read budget was not enforced before network access")
+			}
+		})
+	}
 }
 
 func TestVerifyCancelsAnIncompleteRemoteBodyWithoutProducingReceipt(t *testing.T) {
@@ -128,18 +135,28 @@ func TestVerifyCancelsAnIncompleteRemoteBodyWithoutProducingReceipt(t *testing.T
 	defer server.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	type result struct { observed biz.VerifiedObject; err error }
+	type result struct {
+		observed biz.VerifiedObject
+		err      error
+	}
 	finished := make(chan result, 1)
 	go func() {
 		observed, err := objectstore.NewVerifier(testS3Client(server), scope.StorageConnectionID, 64).Verify(ctx, scope, object)
-		finished <- result{observed,err}
+		finished <- result{observed, err}
 	}()
-	select { case <-started: case <-time.After(5*time.Second): t.Fatal("remote read did not start") }
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("remote read did not start")
+	}
 	cancel()
 	select {
 	case got := <-finished:
-		if !errors.Is(got.err, context.Canceled) || !got.observed.VerifiedAt.IsZero() { t.Fatal("cancellation produced a receipt or lost its cause") }
-	case <-time.After(5*time.Second): t.Fatal("remote body did not stop after cancellation")
+		if !errors.Is(got.err, context.Canceled) || !got.observed.VerifiedAt.IsZero() {
+			t.Fatal("cancellation produced a receipt or lost its cause")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("remote body did not stop after cancellation")
 	}
 }
 
