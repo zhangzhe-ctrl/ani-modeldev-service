@@ -76,10 +76,18 @@ six main tests / 61 table cases include protected constructor configuration,
 preflight/credential failures, cancellation after observed receipt, CA rejection,
 null/UTF-8/depth limits and uppercase UUID normalization. These were regression
 passes against the existing implementation, not a new RED/fix cycle. Real
-provider and product entry-point wiring remain unfinished. The submitter's
-NOT_SENT persistence is the next behavior under test: its explicit repository
-stub returns a persistence error and retains that transient observation, without inventing
-UNCERTAIN, granting another permit or claiming the whole use case complete.
+provider and product entry-point wiring remain unfinished. NOT_SENT persistence
+produced two real PostgreSQL behavior REDs at `0f22956`: credentials were denied
+after the reservation committed with zero HTTP calls, and a later confirmed Run
+could not yet be retained after a no-send observation. Migration 0011 and pinned
+sqlc generation add the nullable first no-send observation; no old row is backfilled.
+Fixed `9c02b724ef427349b7f7d74f314de8c0e5391922` passed both behaviors and the full
+submittest/submission/execution/KFP suites (0.719s/22.678s/5.648s/0.250s).
+The original attempt and first observation remain durable across reconnects;
+replay grants no new permit or HTTP call. A later confirmed Run is retained even
+after close and does not erase the earlier no-send fact. This is a submission
+observation, not cancellation or a training result. Additional cancellation,
+COMMIT-failure and mixed-observation concurrency checks remain in progress.
 Existing root-rejection cases
 now target the frozen request rather than removed constructor configuration;
 their zero-credential/zero-HTTP assertions remain. The new candidate's test

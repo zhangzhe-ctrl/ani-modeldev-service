@@ -79,8 +79,11 @@ are offline and read-only except isolated output/tmpfs, limited to two CPUs /
 fixture. Success checks actual file bytes and digests and independently reloads
 the checkpoint with `weights_only=True`; fail and stop checks observe real
 optimization first. Stop cleanup targets only the returned container ID after
-retaining evidence. The unchanged six module tests are also run inside the built
-image using `python -m unittest discover -s training/tests -p 'test_training.py' -v`.
+retaining evidence. The image does not contain the test sources. To run the six
+unchanged module tests inside it, the verification runner mounts the fixed source
+read-only at `/source/training` and invokes `/opt/venv/bin/python -I -m unittest
+discover -s /source/training/tests -p test_training.py -v`, with a separate bounded
+writable temporary directory and the runner's resource limits.
 
 ## Fixed verification result
 
