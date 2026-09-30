@@ -62,6 +62,7 @@ func (r *Repository) Accept(ctx context.Context, admission biz.Admission) (biz.A
 	defer rollbackExecutionTransaction(transaction)
 	// The identity reservation and admission payload commit together. A close
 	// tombstone and Admission can never reserve this identity independently.
+	replayed := false
 	row, err := queries.InsertExecution(ctx, command)
 	if errors.Is(err, pgx.ErrNoRows) {
 		row, err = queries.GetExecution(ctx, executionsql.GetExecutionParams{
@@ -76,6 +77,7 @@ func (r *Repository) Accept(ctx context.Context, admission biz.Admission) (biz.A
 		if !sameAdmission(row, command) {
 			return biz.AcceptReceipt{}, biz.ErrAdmissionConflict
 		}
+		replayed = true
 	} else if err != nil {
 		return biz.AcceptReceipt{}, biz.ErrPersistence
 	}
@@ -86,9 +88,7 @@ func (r *Repository) Accept(ctx context.Context, admission biz.Admission) (biz.A
 	if err := transaction.Commit(ctx); err != nil {
 		return biz.AcceptReceipt{}, biz.ErrPersistence
 	}
-	// RED stub: the receipt shape is present, but the transaction's replay
-	// outcome is not yet propagated. The concurrent receipt test must fail.
-	return biz.AcceptReceipt{Execution: execution, Replayed: false}, nil
+	return biz.AcceptReceipt{Execution: execution, Replayed: replayed}, nil
 }
 
 func sameAdmission(row executionsql.ModeldevExecution, command executionsql.InsertExecutionParams) bool {
