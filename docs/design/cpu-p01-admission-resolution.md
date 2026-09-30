@@ -83,8 +83,12 @@ repository 直接实现输入读取；catalogue.Reader 只持有受信目录，�
 首 stub 在 `19a3b53` 取得有效 RED；`5b0a710` 的首行为及 resolution/catalogue/input
 模块通过；`b67befa` 的 tenant/READY 回归通过。`4c51554` 的完整边界组仅在真实 Release
 读取后取消时失败：PG adapter 遮蔽取消为 PERSISTENCE_UNAVAILABLE；其余断言通过。
-候选修复在每次依赖返回后优先检查 context，保持错误原因；修复后的固定 SHA GREEN、
-最终完整 gates 和独立两轴审查尚待记录，不能用上述历史 PASS 替代。
+修复在每次依赖返回后优先检查 context，保持错误原因。固定源码
+`479f706f9d21f539d5d7230a0ede6191dc30f11c` 在 Fedora 新 checkout 的完整
+resolution/catalogue/input 模块全部 GREEN / exit 0（1.320s / 0.187s / 4.035s），
+包含原取消失败回归；日志无 SKIP，测试前后 tracked tree 与格式检查均无差异。
+证据为本轮 `resolution-final-green-479f706/`。这是模块级真实 file/PG 验证；最终
+full verify、audit 与独立两轴审查单独记录，当前不以此模块 PASS 代替。
 
 当前没有生产 managed facts 来源，没有 Resolve RPC，也没有 Governance/BFF 调用
 装配。实际接通还需：每次当前授权 → FindAccepted 查原键 → 原键未命中才读当前启用

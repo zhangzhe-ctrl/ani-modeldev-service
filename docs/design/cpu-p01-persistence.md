@@ -261,11 +261,15 @@ identity 锁。解码核对状态/列表一致、完整 child identity、UUID、
 确认。证据见 `.scratch/cpu-p01/runs/20260930-01/cpu07/` 的
 `submission-confirmed-checkpoint.md` 与固定 SHA 的原始日志。
 
-本切片尚未故障注入 confirmed 自身的 COMMIT 失败，已有 Close 提交失败测试
-不能代替它。最小补验收应只验证一次真实 PG 延迟约束拒绝提交：空回执、原
-dispatch/句柄均未被该失败事务改写、解除后原观察可持久而无新发送许可。当前
-读取一致性由代码中的同一 RR 事务和 PG 快照语义保证，尚未做强制插入父/子查询
-之间的并发提交调度测试；没有发现需要因此增加调度框架的实现缺陷。
+固定 `de3278d` 的 confirmed COMMIT 故障测试在真实 PG PASS。隔离 schema 的
+延迟约束在 COMMIT 返回精确 SQLSTATE `23514` 和
+`injected_confirmed_run_commit_failure`；测试显式验证该故障确实来自 COMMIT。
+失败返回空回执，新连接读取原 dispatch/不明时间且没有句柄；解除注入后，原
+观察可提交、重放不刷新时间且没有新发送许可，原 Admission/close 不变。
+完整 submission/execution/commandtest 同时 PASS，覆盖共用故障 helper 的
+既有 Close 使用者，格式无差异。原始证据保存于 `confirmed-commit-de3278d/`。
+读取一致性由代码中的同一 RR 事务和 PG 快照语义保证；尚未强制在父/子查询
+之间调度并发提交，没有发现需要因此增加调度框架的实现缺陷。
 
 上述证据不包含服务进程中止、网络层丢失 COMMIT 响应、真实 KFP、租约/发送
 恢复、BeginExecution 真实关联验证、权威 Run CAS、TrainJob 许可或关闭完成。

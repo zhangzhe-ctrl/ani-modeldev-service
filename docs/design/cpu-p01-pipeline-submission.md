@@ -62,8 +62,11 @@ Run 句柄并在同一事务进入内部 SUBMISSION_CONFIRMED，成功 commit �
 固定 `3ede847` 的首个真实 PG 行为 RED 后，`ae2c657` 取得同一行为 GREEN；
 `5ad95e4` 完整 submission/execution 回归及限定 confirmed 并发 race PASS。
 Get 用同一只读 Repeatable Read 快照读取状态与全部句柄，Reserve 重放仍无
-SendPermit。这些测试只证明合成内部观察的持久化，不证明实际 KFP 响应或 Pod
-身份。confirmed COMMIT 失败故障注入候选尚未执行，不能借用 Close 的结果。
+SendPermit。固定 `de3278d` 的真实 PG 延迟约束在 confirmed 自身 COMMIT 注入
+精确故障，已验证空回执、无部分事实、解除后原观察可提交及重放无新许可；
+完整 submission/execution/commandtest 回归 PASS，格式无差异。这些测试只
+证明合成内部观察的持久化，不证明实际 KFP 响应或 Pod 身份，也不覆盖网络丢失
+COMMIT 响应或服务进程中止。
 
 ## 当前不成立的能力
 
