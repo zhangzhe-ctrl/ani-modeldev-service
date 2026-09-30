@@ -120,7 +120,16 @@ type PipelineDispatchState string
 const (
 	PipelineDispatchSubmitting PipelineDispatchState = "SUBMITTING"
 	PipelineDispatchUncertain  PipelineDispatchState = "SUBMISSION_UNCERTAIN"
+	PipelineDispatchConfirmed  PipelineDispatchState = "SUBMISSION_CONFIRMED"
 )
+
+// PipelineConfirmedRun retains a trusted internal creation-response observation.
+// It is neither independent network/Pod identity proof nor an authoritative Run.
+// RunID is interpreted within the dispatch's frozen environment, not globally.
+type PipelineConfirmedRun struct {
+	RunID           string
+	FirstObservedAt time.Time
+}
 
 type PipelineDispatch struct {
 	AttemptID  string
@@ -131,6 +140,9 @@ type PipelineDispatch struct {
 	// UncertainAt is the first durably accepted uncertainty observation. It is
 	// nil while SUBMITTING; replay cannot refresh it or grant another send.
 	UncertainAt *time.Time
+	// ConfirmedRuns retains every distinct observed Run for this attempt, sorted
+	// by canonical RunID. Position grants no priority or training permission.
+	ConfirmedRuns []PipelineConfirmedRun
 }
 
 // PipelineSendPermit is returned only by the transaction which creates and
@@ -148,10 +160,25 @@ type PipelineDispatchReservation struct {
 	SendPermit *PipelineSendPermit
 }
 
+// PipelineConfirmationReceipt acknowledges a committed observation.
+// ConflictingRuns reports more than one distinct retained Run for the attempt;
+// these are saved facts, not an error rollback or permission to adopt a Run.
+type PipelineConfirmationReceipt struct {
+	Dispatch        PipelineDispatch
+	ConflictingRuns bool
+}
+
 type PipelineDispatchRepository interface {
 	Reserve(context.Context, PipelineDispatchRequest) (PipelineDispatchReservation, error)
 	Get(context.Context, string, string) (PipelineDispatch, error)
 	// MarkSubmissionUncertain records only the original attempt's outcome;
 	// it is permitted after close and never grants permission to send again.
+	// A late uncertain observation cannot downgrade a confirmed dispatch.
 	MarkSubmissionUncertain(context.Context, PipelineSendPermit, time.Time) (PipelineDispatch, error)
+	// RecordSubmissionConfirmed accepts only a CONFIRMED internal observation
+	// matching the original attempt/plan. It retains late handles after close,
+	// without establishing authority, reopening execution or granting a send.
+	// The observation time must be nonzero, within UTC years 1..9999, exact to
+	// microseconds and not before reservation; replay preserves the first time.
+	RecordSubmissionConfirmed(context.Context, PipelineSendPermit, PipelineSubmissionObservation, time.Time) (PipelineConfirmationReceipt, error)
 }
