@@ -23,10 +23,11 @@ import (
 type Verifier struct {
 	client       *s3.Client
 	connectionID string
+	maxObjectBytes int64
 }
 
-func NewVerifier(client *s3.Client, connectionID string) *Verifier {
-	return &Verifier{client: client, connectionID: connectionID}
+func NewVerifier(client *s3.Client, connectionID string, maxObjectBytes int64) *Verifier {
+	return &Verifier{client: client, connectionID: connectionID, maxObjectBytes: maxObjectBytes}
 }
 
 // Verify reads an exact object version under the owner's approved storage scope.

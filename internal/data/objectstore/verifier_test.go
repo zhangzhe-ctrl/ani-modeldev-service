@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -36,7 +37,7 @@ func TestVerifyObjectReadsActualVersionedBytesNotETag(t *testing.T) {
 	}))
 	defer server.Close()
 	client := testS3Client(server)
-	got, err := objectstore.NewVerifier(client, scope.StorageConnectionID).Verify(context.Background(), scope, object)
+	got, err := objectstore.NewVerifier(client, scope.StorageConnectionID, 64).Verify(context.Background(), scope, object)
 	if err != nil {
 		t.Fatalf("verify actual object bytes: %v", err)
 	}
@@ -61,7 +62,7 @@ func TestVerifyObjectRejectsWrongBytesAndVersion(t *testing.T) {
 				_, _ = io.WriteString(w, test.body)
 			}))
 			defer server.Close()
-			got, err := objectstore.NewVerifier(testS3Client(server), scope.StorageConnectionID).Verify(context.Background(), scope, object)
+			got, err := objectstore.NewVerifier(testS3Client(server), scope.StorageConnectionID, 64).Verify(context.Background(), scope, object)
 			if !errors.Is(err, biz.ErrObjectVerification) || !got.VerifiedAt.IsZero() {
 				t.Fatal("invalid object produced verification observation")
 			}
@@ -90,11 +91,55 @@ func TestVerifyObjectRejectsUnapprovedReferencesBeforeNetwork(t *testing.T) {
 			var requests atomic.Int64
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { requests.Add(1); w.WriteHeader(http.StatusForbidden) }))
 			defer server.Close()
-			got, err := objectstore.NewVerifier(testS3Client(server), scope.StorageConnectionID).Verify(context.Background(), scope, object)
+			got, err := objectstore.NewVerifier(testS3Client(server), scope.StorageConnectionID, 64).Verify(context.Background(), scope, object)
 			if !errors.Is(err, biz.ErrObjectVerification) || !got.VerifiedAt.IsZero() || requests.Load() != 0 {
 				t.Fatal("unapproved reference reached object store")
 			}
 		})
+	}
+}
+
+func TestVerifyRejectsInvalidOrExceededReadBudgetBeforeNetwork(t *testing.T) {
+	for _, test := range []struct{name string; limit, size int64}{
+		{"no configured limit", 0, 4},
+		{"negative limit", -1, 4},
+		{"object exceeds owner limit", 64, 65},
+	} { t.Run(test.name, func(t *testing.T) {
+		scope, object := objectFixture("good")
+		object.SizeBytes = test.size
+		var requests atomic.Int64
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { requests.Add(1); w.WriteHeader(http.StatusForbidden) }))
+		defer server.Close()
+		got, err := objectstore.NewVerifier(testS3Client(server), scope.StorageConnectionID, test.limit).Verify(context.Background(), scope, object)
+		if !errors.Is(err, biz.ErrObjectVerification) || !got.VerifiedAt.IsZero() || requests.Load() != 0 { t.Fatal("read budget was not enforced before network access") }
+	}) }
+}
+
+func TestVerifyCancelsAnIncompleteRemoteBodyWithoutProducingReceipt(t *testing.T) {
+	scope, object := objectFixture("good")
+	started := make(chan struct{})
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-amz-version-id", "version-1")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		close(started)
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	type result struct { observed biz.VerifiedObject; err error }
+	finished := make(chan result, 1)
+	go func() {
+		observed, err := objectstore.NewVerifier(testS3Client(server), scope.StorageConnectionID, 64).Verify(ctx, scope, object)
+		finished <- result{observed,err}
+	}()
+	select { case <-started: case <-time.After(5*time.Second): t.Fatal("remote read did not start") }
+	cancel()
+	select {
+	case got := <-finished:
+		if !errors.Is(got.err, context.Canceled) || !got.observed.VerifiedAt.IsZero() { t.Fatal("cancellation produced a receipt or lost its cause") }
+	case <-time.After(5*time.Second): t.Fatal("remote body did not stop after cancellation")
 	}
 }
 
