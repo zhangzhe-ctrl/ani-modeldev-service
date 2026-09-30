@@ -1,19 +1,21 @@
 {
   "schema": "ani.cpu03.python-materials.v1",
-  "python_version": "3.13.15",
+  "python_version": "3.14.7",
+  "python_abi": "cpython-314-x86_64-linux-gnu",
   "torch_version": "2.10.0+cpu",
   "cuda_version": null,
   "architecture": "x86_64",
-  "base_image": "docker.io/library/python@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b",
-  "base_image_id": "sha256:b2bb53ac7b6fbe78a48c95b7c15130ea21de1674fc683fbc93158b0c23826823",
-  "base_image_tag_at_resolution": "3.13.15-slim-trixie",
+  "base_image": "cgr.dev/chainguard/python@sha256:125969103add9ace8bdbad31acbb07d2e5740e065312688534f0c666a181b987",
+  "base_image_id": "sha256:4f4155d95644ebdfc0566b16efcfd3ee43589e49359090f268c56c332474db7e",
+  "base_image_tag_at_resolution": "latest",
+  "base_image_resolved_at": "2026-09-30T14:18:44Z",
+  "base_image_stages": ["dependencies", "runtime"],
   "source_indexes": [
     "https://download.pytorch.org/whl/cpu",
     "https://pypi.org/simple"
   ],
   "requirements_lock": "requirements.lock",
   "wheel_hashes": "wheelhouse.sha256",
-  "system_package_hashes": "system-packages.sha256",
-  "openssl_package_version": "3.5.7-1~deb13u3",
+  "runtime_packages_lock": "runtime-packages.lock.json",
   "scope": "CPU03 module and workload image materials; no target-cluster verification"
 }

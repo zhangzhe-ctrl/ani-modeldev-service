@@ -34,16 +34,27 @@ are implemented and checked. The first slice fixes three epochs, batch
 size 64, and CPU MLP 16→32→2. `result.json` is a workload output candidate, not
 proof of S3 publication or business success.
 
-`runtime-lock.json` records the Python 3.13.15 slim-trixie base image identity
-resolved and inspected on Fedora, with PyTorch 2.10.0+cpu still fixed. `requirements.lock` pins
-the resolved ten dependency wheels by version and SHA256; `wheelhouse.sha256`
-records the filenames. The original Python 3.13.11/setuptools 78.1.0 lock was
-resolved and tested on Fedora. The security remediation replaces only the base
-image and setuptools wheel (80.10.2); its rebuilt-image verification is pending.
-All ten current wheel hashes were checked on Fedora. These files do not establish a
-built workload image digest. Fixture CSVs, wheels, and model output stay out of
-Git. PyTorch's optional NumPy integration reports a warning because this workload
-uses tensors directly and does not install NumPy.
+`runtime-lock.json` fixes the linux/amd64 Chainguard Python image at
+`sha256:125969103add9ace8bdbad31acbb07d2e5740e065312688534f0c666a181b987`,
+resolved on 2026-09-30. Both stages use this digest; builds never resolve the
+discovery tag `latest`. It contains Python 3.14.7 with the ordinary cp314 ABI.
+PyTorch remains 2.10.0+cpu, and all ten dependency versions remain unchanged.
+Only the Torch and MarkupSafe wheel files change from cp313 to cp314.
+`requirements.lock` pins versions and SHA256; `wheelhouse.sha256` records filenames.
+`runtime-packages.lock.json` records all 31 actual APK package names/versions,
+including the legacy OpenSSL provider. The package database is retained.
+
+On Fedora, this exact base ran as UID/GID 10001 and PID 1, created its own venv,
+installed all ten verified wheels offline, passed `pip check`, and performed a
+CPU Torch forward operation in a read-only, network-disabled container. Its real
+APK database matched the published package set, and Syft catalogued all 31 APK
+packages. Torch loads its wheel's bundled libgomp and the image's libstdc++;
+no host library or compiler image is needed. These are material qualification
+results. The new workload build, all six MLP tests, complete image smoke, and
+unfiltered Grype `--fail-on high` are still pending for this source candidate.
+Signature trust-chain verification also remains unverified. Fixture CSVs,
+wheels, and model output stay out of Git. PyTorch's optional NumPy integration
+reports a warning because this workload uses tensors directly without NumPy.
 
 The next test is one parameterized admission behavior: reject mismatched input
 identity, malformed fixed CSV (shape, labels, NaN/Inf), non-singleton WORLD_SIZE,
@@ -96,9 +107,10 @@ training PVC.
 
 ## Offline image build and smoke
 
-`Dockerfile` fixes the actual Python base digest in both stages, installs the ten
-hash-pinned CPU wheels during the build without network access, and copies the
-resulting environment into a runtime image. Its default user is `10001:10001`;
+`Dockerfile` fixes the same Python runtime digest in both stages. The base has no
+shell; exec-form Python commands create the venv and install the ten hash-pinned
+CPU wheels during the build without network access. The final stage copies that
+environment and retains the original APK package database. Its default user is `10001:10001`;
 the entrypoint is the workload itself, with JSON metrics on stdout. It contains
 no selected dataset, checkpoint, or registry credentials. Its entrypoint performs
 no package installation or dependency download.
@@ -108,8 +120,7 @@ out, use:
 
 ```sh
 bash training/build-image.sh FULL_SOURCE_SHA \
-  /home/chabking/workspace/cpu-p01-20260930-01/cpu03/materials-remediation-01/wheelhouse \
-  /home/chabking/workspace/cpu-p01-20260930-01/cpu03/openssl-materials-02 \
+  /home/chabking/workspace/cpu-p01-20260930-01/cpu03/qualification-1259691-04/wheelhouse \
   /home/chabking/workspace/cpu-p01-20260930-01/cpu03/build-NEW_ATTEMPT
 python3 training/tests/image_smoke.py "$(cat /home/chabking/workspace/cpu-p01-20260930-01/cpu03/build-NEW_ATTEMPT/image.id)" \
   /home/chabking/workspace/cpu-p01-20260930-01/cpu03/smoke-NEW_ATTEMPT
@@ -120,6 +131,10 @@ revision, archives that immutable Git tree, and copies only wheels named in the
 lock before verifying their hashes. The build has no network or proxy forwarding,
 uses at most two CPUs / 2 GiB, and records the command, source, exits and local image
 identity. It neither downloads dependencies nor pushes an image.
+The caller must select the task-owned Podman storage containing the exact base
+digest, using its existing storage configuration. No system-package installer or
+additional Debian archive is used by this candidate; package identity is checked
+against the complete APK lock by the image smoke.
 
 The image smoke runs the real packaged entrypoint under its declared nonroot
 user. It generates the selected fixture in a separate bounded Fedora container,
@@ -172,7 +187,7 @@ exit 2: 387 matches, including 16 Critical and 120 High. This is a real image
 scan FAIL; module/image behavior PASS does not override it. Earlier database
 download failures are retained separately from that completed scan.
 
-The remediation candidate uses the official Python 3.13.15 slim-trixie image at
+The earlier remediation candidate used the official Python 3.13.15 slim-trixie image at
 `sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b`,
 retaining CPython 3.13 and the existing CPU Torch wheel. The Fedora base probe
 reports Python 3.13.15, OpenSSL 3.5.7 and SQLite 3.46.1. Setuptools 80.10.2's
@@ -196,7 +211,7 @@ database. Three exact Debian security packages (libssl3t64, openssl and
 openssl-provider-legacy) have now been downloaded on Fedora using the base
 image's Debian archive keyring and APT's signed repository checks. Their actual
 bytes match the signed index's SHA256 values; `system-packages.sha256` locks
-those bytes. The image build consumes these local packages offline using dpkg,
+those bytes in that historical source. That image build consumed the local packages offline using dpkg,
 retains the package database and records installed versions. At fixed source
 `472c0805e58be773e30593c7c33529be5c62becc`, the new offline build produced
 `sha256:1431bc9bd89a71b1a90651d2899e6ecae57e5b92c5545d154c2747069ee4e1b3`.

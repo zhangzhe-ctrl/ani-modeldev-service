@@ -59,18 +59,37 @@ def main():
         "--read-only", "--tmpfs", "/tmp:rw,size=128m", "--userns", "keep-id:uid=10001,gid=10001",
     ]
     command(common + ["--rm", "--entrypoint", "/opt/venv/bin/python", image_id, "-I", "-c",
-        "import json,os,platform,torch; "
-        "assert os.getuid()==10001; assert platform.python_version()=='3.13.15'; "
+        "import json,os,platform,sys,sysconfig,torch; "
+        "assert os.getuid()==10001 and os.getgid()==10001 and os.getpid()==1; "
+        "assert platform.python_version()=='3.14.7'; "
+        "assert sys.prefix=='/opt/venv' and sys.base_prefix=='/usr'; "
+        "assert sysconfig.get_config_var('SOABI')=='cpython-314-x86_64-linux-gnu'; "
+        "assert not sysconfig.get_config_var('Py_GIL_DISABLED'); "
         "assert torch.__version__=='2.10.0+cpu'; assert torch.version.cuda is None; "
         "print(json.dumps({'uid':os.getuid(),'python':platform.python_version(),'torch':torch.__version__,'cuda':torch.version.cuda}))"
     ], "runtime")
-    system_packages = command(common + ["--rm", "--entrypoint", "/usr/bin/dpkg-query", image_id,
-        "-W", "-f=${Package}\t${Version}\n", "libssl3t64", "openssl", "openssl-provider-legacy"
-    ], "system-packages").stdout.splitlines()
-    require(set(system_packages) == {
-        "libssl3t64\t3.5.7-1~deb13u3", "openssl\t3.5.7-1~deb13u3",
-        "openssl-provider-legacy\t3.5.7-1~deb13u3",
-    }, "image does not contain the locked OpenSSL security packages")
+    package_probe = r"""import json
+from pathlib import Path
+packages = {}
+for stanza in Path('/lib/apk/db/installed').read_text().split('\n\n'):
+    fields = dict(line.split(':', 1) for line in stanza.splitlines() if ':' in line)
+    if 'P' in fields:
+        assert fields['P'] not in packages
+        packages[fields['P']] = fields['V']
+print(json.dumps(packages, sort_keys=True))
+"""
+    system_packages = json.loads(command(common + ["--rm", "--entrypoint", "/usr/bin/python", image_id,
+        "-I", "-c", package_probe], "system-packages").stdout)
+    package_lock = json.loads((source_root / "training/runtime-packages.lock.json").read_text())
+    require(system_packages == package_lock["packages"], "complete runtime APK package set differs from lock")
+    command(common + ["--rm", "--entrypoint", "/opt/venv/bin/python", image_id,
+        "-I", "-m", "pip", "check"], "dependencies")
+    command(common + ["--rm", "--entrypoint", "/opt/venv/bin/python", image_id, "-I", "-c",
+        "import setuptools,filelock,fsspec,jinja2,markupsafe,mpmath,networkx,sympy,typing_extensions; "
+        "assert str(markupsafe.escape('<cpu03>'))=='&lt;cpu03&gt;'; "
+        "assert jinja2.Template('{{ value }}').render(value='cpu03')=='cpu03'; "
+        "print('All locked dependency modules imported; MarkupSafe and Jinja2 executed.')"
+    ], "dependency-imports")
 
     selected = run_dir / "selected"
     selected.mkdir()
