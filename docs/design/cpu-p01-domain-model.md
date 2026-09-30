@@ -56,7 +56,9 @@ image_version_id、general_parameters、source_execution_id；schema 恒为
 
 `execution_spec_hash` 使用独立 schema `ani.modeldev.execution-spec.v1`，对完整固定
 配置的规范字节计算 SHA256；不含自身 hash、运行状态、短期凭据、签名 URL、观察时间
-和后生 UID。精确字段及共享测试向量随 CPU01 后续行为切片补齐；当前尚未 CODE_READY。
+和后生 UID。精确字段、规范顺序和边界见 [冻结快照合同](cpu-p01-snapshot.md)，
+实现位于 `contract/cpup01/snapshot.go`。独立的提供方规范向量及消费方共享 fixture
+随源码固定版本交付；快照模块通过不表示整个 CPU01 已完成。
 
 compute_state、delivery_state、resource_state、close_state 相互独立。
 CPU 的 resource_state 恒 NOT_APPLICABLE，不是关闭证明。训练成功后发布失败保持

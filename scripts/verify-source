@@ -18,9 +18,11 @@ sha256_file() {
   die "sha256sum or shasum is required"
 }
 
-[[ $# -eq 1 ]] || die "usage: scripts/verify-source <buf>"
+[[ $# -eq 2 ]] || die "usage: scripts/verify-source <buf> <sqlc>"
 buf_path=$1
+sqlc_path=$2
 [[ -x $buf_path ]] || die "buf is not executable: $buf_path"
+[[ -x $sqlc_path ]] || die "sqlc is not executable: $sqlc_path"
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 repository_root=$(cd "$script_dir/.." && pwd -P)
@@ -63,6 +65,8 @@ write_manifest "$temporary_root/before"
 (cd "$repository_root" && "$buf_path" build)
 (cd "$repository_root" && "$buf_path" generate --template buf.gen.yaml)
 (cd "$repository_root" && "$buf_path" generate --template buf.api.gen.yaml)
+(cd "$repository_root" && "$sqlc_path" generate)
+(cd "$repository_root" && python3 scripts/generate-contract-vectors.py)
 (cd "$repository_root" && go generate ./...)
 write_manifest "$temporary_root/after"
 if ! cmp --silent "$temporary_root/before" "$temporary_root/after"; then

@@ -7,23 +7,34 @@ BUF := $(TOOLS_DIR)/buf
 GOVULNCHECK := $(TOOLS_DIR)/govulncheck
 CYCLONEDX_GOMOD := $(TOOLS_DIR)/cyclonedx-gomod
 GITLEAKS := $(TOOLS_DIR)/gitleaks
+SQLC := $(TOOLS_DIR)/sqlc
 
 BUF_VERSION := v1.60.0
 GOVULNCHECK_VERSION := v1.7.0
 CYCLONEDX_GOMOD_VERSION := v1.12.0
 GITLEAKS_VERSION := v8.30.1
+SQLC_VERSION := v1.31.1
 BUF_MODULE := github.com/bufbuild/buf@$(BUF_VERSION)
 GOVULNCHECK_MODULE := golang.org/x/vuln@$(GOVULNCHECK_VERSION)
 CYCLONEDX_GOMOD_MODULE := github.com/CycloneDX/cyclonedx-gomod@$(CYCLONEDX_GOMOD_VERSION)
 GITLEAKS_MODULE := github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION)
+SQLC_MODULE := github.com/sqlc-dev/sqlc@$(SQLC_VERSION)
 
 SERVICE_NAME ?= ani-modeldev-service
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.Name=$(SERVICE_NAME) -X main.Version=$(VERSION)
 
-.PHONY: tools check-buf supply-chain-tools check-govulncheck check-cyclonedx check-gitleaks config api generate build test verify vuln secrets sbom supply-chain-verify audit clean help
+.PHONY: tools check-buf check-sqlc supply-chain-tools check-govulncheck check-cyclonedx check-gitleaks config api sql vectors generate build test verify vuln secrets sbom supply-chain-verify audit clean help
 
-tools: check-buf
+tools: check-buf check-sqlc
+
+$(SQLC):
+	mkdir -p $(TOOLS_DIR)
+	GOBIN=$(TOOLS_DIR) $(GO) install github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION)
+
+check-sqlc: $(SQLC)
+	test "$$($(SQLC) version)" = "$(SQLC_VERSION)"
+	test "$$(go version -m $(SQLC) | awk '$$1 == "mod" {print $$2 "@" $$3; exit}')" = "$(SQLC_MODULE)"
 
 $(BUF):
 	mkdir -p $(TOOLS_DIR)
@@ -68,7 +79,13 @@ api: $(BUF)
 	$(BUF) build
 	$(BUF) generate --template buf.api.gen.yaml
 
-generate: config api
+sql: check-sqlc
+	$(SQLC) generate
+
+vectors:
+	python3 scripts/generate-contract-vectors.py
+
+generate: config api sql vectors
 	$(GO) generate ./...
 	find . -type f -name '*.go' -not -path './.git/*' -not -path './.tools/*' -print0 | xargs -0 --no-run-if-empty gofmt -w
 
@@ -79,8 +96,8 @@ build:
 test:
 	$(GO) test -count=1 ./...
 
-verify: check-buf
-	./scripts/verify-source $(BUF)
+verify: check-buf check-sqlc
+	./scripts/verify-source $(BUF) $(SQLC)
 	$(GO) mod tidy -diff
 	$(GO) test -count=1 ./...
 	$(GO) vet ./...
@@ -106,9 +123,9 @@ clean:
 	rm -rf bin .tools .work .tmp
 
 help:
-	@echo "make tools    install pinned config generator"
-	@echo "make generate regenerate typed config"
-	@echo "make verify   run deterministic local quality gates"
+	@echo "make tools    install pinned source generators"
+	@echo "make generate regenerate config, API, SQL and contract vectors on Fedora"
+	@echo "make verify   run deterministic quality gates on Fedora"
 	@echo "make vuln     scan the current dependency graph"
 	@echo "make secrets  scan all Git history with pinned Gitleaks"
 	@echo "make sbom     write a CycloneDX SBOM"
