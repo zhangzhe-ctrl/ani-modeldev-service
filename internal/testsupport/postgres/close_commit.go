@@ -20,7 +20,7 @@ func RejectCloseCommit(t testing.TB, runtimePool *pgxpool.Pool) func() {
 	return rejectInsertCommit(t, runtimePool, "modeldev_close_intents", "reject_close_commit", "injected_close_commit_failure")
 }
 
-// Only the two fixed exported fixtures choose these object and error names.
+// Only the fixed exported fixtures choose these object and error names.
 // This private helper shares isolation/connection/cleanup guards, not an
 // externally configurable fault-injection interface.
 func rejectInsertCommit(t testing.TB, runtimePool *pgxpool.Pool, tableName, functionName, errorMarker string) func() {
