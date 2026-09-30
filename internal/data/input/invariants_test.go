@@ -146,6 +146,8 @@ func TestFreezeImportInvalidRequestsNeitherCreateAnInputNorReserveItsIdentifiers
 		{"missing bucket", func(c *biz.InputImport) { c.Scope.Bucket = ""; c.Object.Bucket = "" }},
 		{"missing approved prefix", func(c *biz.InputImport) { c.Scope.ApprovedPrefix = "" }},
 		{"prefix traversal", func(c *biz.InputImport) { c.Scope.ApprovedPrefix = "tenant/../input" }},
+		{"parent prefix", func(c *biz.InputImport) { c.Scope.ApprovedPrefix = ".."; c.Object.Key = "../data.csv" }},
+		{"leading parent prefix", func(c *biz.InputImport) { c.Scope.ApprovedPrefix = "../input"; c.Object.Key = "../input/data.csv" }},
 		{"key traversal", func(c *biz.InputImport) { c.Object.Key = "tenant/input/../data.csv" }},
 		{"prefix lookalike", func(c *biz.InputImport) { c.Object.Key = "tenant/input-other/data.csv" }},
 		{"credential reference control character", func(c *biz.InputImport) { c.Scope.CredentialReference = "managed-secret:reader\n" }},

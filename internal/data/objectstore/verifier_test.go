@@ -70,6 +70,27 @@ func TestVerifyObjectRejectsWrongBytesAndVersion(t *testing.T) {
 	}
 }
 
+func TestVerifyObjectRejectsLeadingParentScopeBeforeNetwork(t *testing.T) {
+	for _, prefix := range []string{"..", "../input"} {
+		t.Run(prefix, func(t *testing.T) {
+			scope, object := objectFixture("good")
+			scope.ApprovedPrefix = prefix
+			object.Key = prefix + "/data.csv"
+			var requests atomic.Int64
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				requests.Add(1)
+				w.Header().Set("x-amz-version-id", *object.VersionID)
+				_, _ = io.WriteString(w, "good")
+			}))
+			defer server.Close()
+			got, err := objectstore.NewVerifier(testS3Client(server), scope.StorageConnectionID, 64).Verify(context.Background(), scope, object)
+			if !errors.Is(err, biz.ErrObjectVerification) || !got.VerifiedAt.IsZero() || requests.Load() != 0 {
+				t.Fatal("parent-relative scope reached the object store or produced verification")
+			}
+		})
+	}
+}
+
 func TestVerifyObjectRejectsUnapprovedReferencesBeforeNetwork(t *testing.T) {
 	for _, test := range []struct {
 		name   string
