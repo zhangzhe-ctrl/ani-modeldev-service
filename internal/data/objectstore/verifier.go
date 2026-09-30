@@ -34,6 +34,12 @@ func NewVerifier(client *s3.Client, connectionID string, maxObjectBytes int64) *
 // The first slice requires a real VersionID; mutable unversioned keys are not
 // sufficient to turn a point-in-time read into an immutable artifact reference.
 func (v *Verifier) Verify(ctx context.Context, scope cpup01.StorageScope, object cpup01.FixedObjectRef) (biz.VerifiedObject, error) {
+	return v.verify(ctx, scope, object, nil)
+}
+
+// inspect, when present, must consume the complete bounded stream and may
+// reject its structure. Both paths verify the same actual length and digest.
+func (v *Verifier) verify(ctx context.Context, scope cpup01.StorageScope, object cpup01.FixedObjectRef, inspect func(io.Reader) error) (biz.VerifiedObject, error) {
 	if err := ctx.Err(); err != nil {
 		return biz.VerifiedObject{}, err
 	}
@@ -62,7 +68,12 @@ func (v *Verifier) Verify(ctx context.Context, scope cpup01.StorageScope, object
 		return biz.VerifiedObject{}, biz.ErrObjectVerification
 	}
 	digest := sha256.New()
-	size, err := io.Copy(digest, io.LimitReader(response.Body, object.SizeBytes))
+	measured := &measuredReader{reader: io.TeeReader(io.LimitReader(response.Body, object.SizeBytes), digest)}
+	if inspect == nil {
+		_, err = io.Copy(io.Discard, measured)
+	} else {
+		err = inspect(measured)
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return biz.VerifiedObject{}, ctx.Err()
@@ -74,11 +85,22 @@ func (v *Verifier) Verify(ctx context.Context, scope cpup01.StorageScope, object
 	if err := ctx.Err(); err != nil {
 		return biz.VerifiedObject{}, err
 	}
-	if size != object.SizeBytes || n != 0 || extraErr != io.EOF || hex.EncodeToString(digest.Sum(nil)) != object.SHA256 {
+	if measured.size != object.SizeBytes || n != 0 || extraErr != io.EOF || hex.EncodeToString(digest.Sum(nil)) != object.SHA256 {
 		return biz.VerifiedObject{}, biz.ErrObjectVerification
 	}
 	object.VersionID = &version
 	return biz.VerifiedObject{Object: object, VerifiedAt: time.Now().UTC()}, nil
+}
+
+type measuredReader struct {
+	reader io.Reader
+	size int64
+}
+
+func (r *measuredReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	r.size += int64(n)
+	return n, err
 }
 
 var bucketPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`)
