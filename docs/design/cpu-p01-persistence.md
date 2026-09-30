@@ -161,5 +161,15 @@ GOVERNANCE 来源序号查原 receipt；完整身份、spec、原因和审计事
 下一组 close 不变量候选通过公开 repository 接口覆盖：同来源序号的审计/身份
 冲突及失败不消费 owner 代际，跨租户读取隐藏和 UUID 拒绝，六 pool 同件竞争、
 异参唯一赢家，以及后续来源受理后旧来源重放不覆盖最新 owner 围栏。
-这些场景等待固定候选验证；已有实现正确的场景如实记回归 PASS，不制造 RED。
-迟到 Admission 携带关闭事实和创建许可消费仍是后续独立行为。
+这些场景在固定 `3a3b452` 全部 repository 及 admission/close 并发 race
+GREEN / exit 0，格式无差异；已有实现正确的场景如实记回归 PASS。
+
+下一切片新增 `Execution.Close *CloseRecord`，仅携带查询到的持久关闭事实。
+首测试要求 stop 先到后 matching Accept、重投及新连接 Get 都携带原 CLOSING，
+保持完整不可变 Admission；双 pool 竞争显式等待 Accept/ApplyCloseIntent 均完成
+后再读，不靠 sleep 推测先后。原墓碑的 tenant/operation/execution/spec 不能被
+不匹配的迟到受理接管。这些测试及字段声明等待固定 RED，适配器尚未填充字段。
+
+`Close == nil` 从不表示 CanCreate。Accept 将在共享身份事务内读取关联 close
+事实；Get 的两次读取不构成创建许可。真实创建许可必须后续在同一身份锁下
+检查并持久化，不能用此查询结果或此前的关闭读取进行授权。

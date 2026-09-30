@@ -56,6 +56,9 @@ func validAuditActor(value string) bool {
 // observations are separate facts and must not rewrite this admission.
 type Execution struct {
 	Admission
+	// Close is an observed durable fact, never a creation permit. A nil value
+	// does not authorize work; a creator must check the shared identity lock.
+	Close *CloseRecord
 }
 
 type CloseReason string
