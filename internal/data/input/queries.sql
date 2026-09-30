@@ -16,3 +16,22 @@ RETURNING *;
 SELECT * FROM modeldev_input_versions
 WHERE tenant_id = sqlc.arg(tenant_id)::uuid
   AND input_version_id = sqlc.arg(input_version_id)::uuid;
+
+-- name: LockInputVersion :one
+SELECT * FROM modeldev_input_versions
+WHERE tenant_id = sqlc.arg(tenant_id)::uuid
+  AND input_version_id = sqlc.arg(input_version_id)::uuid
+FOR UPDATE;
+
+-- name: RecordVerifiedCSV :one
+UPDATE modeldev_input_versions
+SET state = 'READY',
+    verified_at = sqlc.arg(verified_at),
+    verified_schema_version = sqlc.arg(verified_schema_version),
+    verified_row_count = sqlc.arg(verified_row_count),
+    verified_feature_count = sqlc.arg(verified_feature_count)
+WHERE tenant_id = sqlc.arg(tenant_id)::uuid
+  AND input_version_id = sqlc.arg(input_version_id)::uuid
+  AND request_id = sqlc.arg(request_id)::uuid
+  AND state = 'VALIDATING'
+RETURNING *;

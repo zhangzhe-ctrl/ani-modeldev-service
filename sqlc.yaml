@@ -15,6 +15,7 @@ sql:
     schema:
       - "migrations/0004_input_import.up.sql"
       - "migrations/0005_input_scope_credential_reference.up.sql"
+      - "migrations/0006_input_verification.up.sql"
     queries: "internal/data/input/queries.sql"
     gen:
       go:
