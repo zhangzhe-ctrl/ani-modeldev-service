@@ -3,11 +3,35 @@
 package admissionfacts
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"io"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"syscall"
+	"unicode/utf8"
 
+	"github.com/google/uuid"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
+)
+
+const (
+	schemaVersion = "ani.modeldev.managed-admission-facts.v1"
+	maxFiles = 64
+	maxFileBytes = 64 * 1024
+	maxJSONDepth = 16
+)
+
+var (
+	ErrInvalidFacts = errors.New("INVALID_MANAGED_ADMISSION_FACTS")
+	ErrFactsUnavailable = errors.New("MANAGED_ADMISSION_FACTS_UNAVAILABLE")
 )
 
 // FileSource comes only from trusted startup configuration. SHA256 identifies
@@ -43,14 +67,190 @@ type evidenceReference struct {
 
 // Reader owns immutable loaded facts, indexed by tenant and explicit Release.
 // It does not maintain a current Release pointer or perform environment probes.
-type Reader struct{}
+type Reader struct {
+	documents map[documentKey]document
+}
+
+type documentKey struct {
+	tenantID string
+	releaseID string
+	releaseDigest string
+}
 
 var _ biz.AdmissionFactsReader = (*Reader)(nil)
 
 func Load(ctx context.Context, sources []FileSource) (*Reader, error) {
-	return nil, errors.New("managed admission facts loading not implemented")
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if len(sources) == 0 || len(sources) > maxFiles {
+		return nil, ErrInvalidFacts
+	}
+	documents := make(map[documentKey]document, len(sources))
+	for _, source := range sources {
+		value, err := readDocument(ctx, source)
+		if err != nil {
+			return nil, err
+		}
+		key := documentKey{value.ResourceTenantID, value.ReleaseID, value.ReleaseDigest}
+		if _, exists := documents[key]; exists {
+			return nil, ErrInvalidFacts
+		}
+		documents[key] = value
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return &Reader{documents: documents}, nil
 }
 
 func (reader *Reader) ReadAdmissionFacts(ctx context.Context, tenantID, releaseID, releaseDigest string) (biz.TenantAdmissionFacts, error) {
-	return biz.TenantAdmissionFacts{}, errors.New("managed admission facts reading not implemented")
+	if err := ctx.Err(); err != nil {
+		return biz.TenantAdmissionFacts{}, err
+	}
+	tenantID, releaseID = strings.ToLower(tenantID), strings.ToLower(releaseID)
+	if !canonicalID(tenantID) || !canonicalID(releaseID) || !validDigest(releaseDigest) {
+		return biz.TenantAdmissionFacts{}, biz.ErrInvalidAdmission
+	}
+	if reader == nil {
+		return biz.TenantAdmissionFacts{}, biz.ErrAdmissionEnvironmentNotReady
+	}
+	value, found := reader.documents[documentKey{tenantID, releaseID, releaseDigest}]
+	if !found {
+		return biz.TenantAdmissionFacts{}, biz.ErrAdmissionEnvironmentNotReady
+	}
+	runtime := value.Runtime
+	runtime.TargetJobs = slices.Clone(runtime.TargetJobs)
+	return biz.TenantAdmissionFacts{
+		TenantID: value.ResourceTenantID, Environment: value.Environment,
+		InputScope: value.InputScope, PublicationScope: value.PublicationScope,
+		Runtime: runtime, Workspace: value.Workspace,
+		InputFilePath: value.InputFilePath, OutputDirectoryPath: value.OutputDirectoryPath,
+	}, nil
+}
+
+func readDocument(ctx context.Context, source FileSource) (document, error) {
+	if err := ctx.Err(); err != nil {
+		return document{}, err
+	}
+	if !filepath.IsAbs(source.Path) || filepath.Clean(source.Path) != source.Path || strings.ContainsRune(source.Path, 0) || !validDigest(source.SHA256) {
+		return document{}, ErrInvalidFacts
+	}
+	// The pathname is supplied only by trusted startup configuration. Avoid
+	// blocking on special files and do not follow a final-component symlink.
+	fd, err := syscall.Open(source.Path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return document{}, ErrFactsUnavailable
+	}
+	file := os.NewFile(uintptr(fd), source.Path)
+	defer file.Close()
+	var before syscall.Stat_t
+	if syscall.Fstat(fd, &before) != nil || before.Mode&syscall.S_IFMT != syscall.S_IFREG || before.Nlink != 1 || before.Size <= 0 || before.Size > maxFileBytes {
+		return document{}, ErrInvalidFacts
+	}
+	raw, err := io.ReadAll(io.LimitReader(file, maxFileBytes+1))
+	if err := ctx.Err(); err != nil {
+		return document{}, err
+	}
+	if err != nil {
+		return document{}, ErrFactsUnavailable
+	}
+	var after syscall.Stat_t
+	if syscall.Fstat(fd, &after) != nil || int64(len(raw)) != before.Size || after.Size != before.Size || after.Nlink != 1 || after.Mtim != before.Mtim || after.Ctim != before.Ctim {
+		return document{}, ErrInvalidFacts
+	}
+	digest := sha256.Sum256(raw)
+	if hex.EncodeToString(digest[:]) != source.SHA256 || !utf8.Valid(raw) {
+		return document{}, ErrInvalidFacts
+	}
+	// The token pass rejects duplicate keys, nulls and excessive nesting before
+	// the typed decoder enforces the private field set and value types.
+	tokens := json.NewDecoder(bytes.NewReader(raw))
+	tokens.UseNumber()
+	if validJSONValue(tokens, 0) != nil {
+		return document{}, ErrInvalidFacts
+	}
+	if _, err := tokens.Token(); err != io.EOF {
+		return document{}, ErrInvalidFacts
+	}
+	var value document
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&value) != nil || value.SchemaVersion != schemaVersion ||
+		!canonicalID(value.ResourceTenantID) || !canonicalID(value.ReleaseID) || !validDigest(value.ReleaseDigest) ||
+		!validEvidence(value.EnvironmentEvidence) || !validEvidence(value.ApplicationEvidence) {
+		return document{}, ErrInvalidFacts
+	}
+	if err := ctx.Err(); err != nil {
+		return document{}, err
+	}
+	// Compatibility and the complete Snapshot shape remain in the existing biz
+	// resolver/shared contract. Loading this document never asserts ENV proof.
+	return value, nil
+}
+
+func canonicalID(value string) bool {
+	id, err := uuid.Parse(value)
+	return err == nil && id != uuid.Nil && id.String() == value
+}
+
+func validDigest(value string) bool {
+	return len(value) == 64 && strings.Trim(value, "0123456789abcdef") == ""
+}
+
+func validEvidence(value evidenceReference) bool {
+	if len(value.Reference) == 0 || len(value.Reference) > 512 || strings.Contains(value.Reference, "://") || !validDigest(value.SHA256) {
+		return false
+	}
+	for _, char := range value.Reference {
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || strings.ContainsRune("._:/-", char) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validJSONValue(decoder *json.Decoder, depth int) error {
+	if depth > maxJSONDepth {
+		return ErrInvalidFacts
+	}
+	token, err := decoder.Token()
+	if err != nil || token == nil {
+		return ErrInvalidFacts
+	}
+	if value, ok := token.(string); ok && strings.ContainsRune(value, utf8.RuneError) {
+		// encoding/json otherwise silently replaces invalid UTF-16 escapes.
+		return ErrInvalidFacts
+	}
+	switch token {
+	case json.Delim('{'):
+		keys := make(map[string]bool)
+		for decoder.More() {
+			token, err := decoder.Token()
+			key, ok := token.(string)
+			if err != nil || !ok || keys[key] || key != strings.ToLower(key) || strings.ContainsRune(key, utf8.RuneError) {
+				return ErrInvalidFacts
+			}
+			keys[key] = true
+			if err := validJSONValue(decoder, depth+1); err != nil {
+				return err
+			}
+		}
+		if token, err := decoder.Token(); err != nil || token != json.Delim('}') {
+			return ErrInvalidFacts
+		}
+	case json.Delim('['):
+		for decoder.More() {
+			if err := validJSONValue(decoder, depth+1); err != nil {
+				return err
+			}
+		}
+		if token, err := decoder.Token(); err != nil || token != json.Delim(']') {
+			return ErrInvalidFacts
+		}
+	case json.Delim('}'), json.Delim(']'):
+		return ErrInvalidFacts
+	}
+	return nil
 }

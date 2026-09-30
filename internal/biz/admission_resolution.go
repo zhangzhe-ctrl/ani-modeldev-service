@@ -96,7 +96,20 @@ func NewManagedAdmissionResolver(releases AdmissionReleaseReader, inputs Admissi
 }
 
 func (resolver *AdmissionResolver) ResolveManaged(ctx context.Context, request AdmissionResolutionRequest) (AdmissionResolution, error) {
-	return AdmissionResolution{}, errors.New("managed admission resolution not implemented")
+	if err := ctx.Err(); err != nil {
+		return AdmissionResolution{}, err
+	}
+	if resolver == nil || resolver.facts == nil {
+		return AdmissionResolution{}, ErrAdmissionEnvironmentNotReady
+	}
+	facts, err := resolver.facts.ReadAdmissionFacts(ctx, request.TenantID, request.Release.ReleaseID, request.Release.ReleaseDigest)
+	if err := ctx.Err(); err != nil {
+		return AdmissionResolution{}, err
+	}
+	if err != nil {
+		return AdmissionResolution{}, err
+	}
+	return resolver.Resolve(ctx, request, facts)
 }
 
 func (resolver *AdmissionResolver) Resolve(ctx context.Context, request AdmissionResolutionRequest, facts TenantAdmissionFacts) (AdmissionResolution, error) {
