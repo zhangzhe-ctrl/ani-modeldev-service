@@ -35,13 +35,12 @@ var bearerTokenPattern = regexp.MustCompile(`^[A-Za-z0-9._~+/-]+=*$`)
 
 const maxCreateRunResponseBytes = 1 << 20
 
-// Config is supplied by the owner, never by a browser request. No endpoint or
-// artifact-root default is available. PipelineRoot is distinct from publication
-// storage; freezing it into the execution contract is a prerequisite to wiring.
+// Config is supplied by the owner, never by a browser request. It describes the
+// managed connection only; artifact root and all business values come from the
+// original frozen dispatch plan, never from current client defaults.
 type Config struct {
 	ConnectionRef string
 	Endpoint      string
-	PipelineRoot  string
 	RootCAs       *x509.CertPool
 	Timeout       time.Duration
 }
@@ -60,7 +59,6 @@ type TokenProvider interface {
 type Client struct {
 	connectionRef string
 	endpoint      string
-	pipelineRoot  string
 	tokens        TokenProvider
 	http          *http.Client
 }
@@ -71,9 +69,6 @@ func New(config Config, tokens TokenProvider) (*Client, error) {
 		return nil, ErrInvalidConfig
 	}
 	if endpoint.Path != "" && endpoint.Path != "/" && path.Clean(endpoint.Path) != strings.TrimSuffix(endpoint.Path, "/") {
-		return nil, ErrInvalidConfig
-	}
-	if !biz.ValidPipelineRoot(config.PipelineRoot) {
 		return nil, ErrInvalidConfig
 	}
 	if config.ConnectionRef == "" || strings.TrimSpace(config.ConnectionRef) != config.ConnectionRef || config.RootCAs == nil || config.Timeout <= 0 || config.Timeout > time.Minute || tokens == nil {
@@ -95,7 +90,6 @@ func New(config Config, tokens TokenProvider) (*Client, error) {
 	return &Client{
 		connectionRef: config.ConnectionRef,
 		endpoint:      endpoint.String(),
-		pipelineRoot:  config.PipelineRoot,
 		tokens:        tokens,
 		http: &http.Client{
 			Transport:     transport,
@@ -105,29 +99,30 @@ func New(config Config, tokens TokenProvider) (*Client, error) {
 	}, nil
 }
 
-func (client *Client) CreateRun(ctx context.Context, admission biz.Admission) (biz.PipelineSubmissionObservation, error) {
+func (client *Client) CreateRun(ctx context.Context, input biz.PipelineCreateRequest) (biz.PipelineSubmissionObservation, error) {
 	notSent := biz.PipelineSubmissionObservation{State: biz.PipelineSubmissionNotSent}
 	if client == nil || client.http == nil || client.tokens == nil || ctx == nil || ctx.Err() != nil {
 		return notSent, ErrNotSent
 	}
-	if _, _, err := admission.CanonicalPayloads(); err != nil || admission.Snapshot.Environment.KFPConnectionRef != client.connectionRef {
+	if input.Validate() != nil || input.Plan.Environment.KFPConnectionRef != client.connectionRef {
 		return notSent, ErrNotSent
 	}
-	environment := admission.Snapshot.Environment
-	token, err := client.tokens.BearerToken(ctx, admission.TenantID, environment)
+	plan := input.Plan
+	environment := plan.Environment
+	token, err := client.tokens.BearerToken(ctx, plan.TenantID, environment)
 	if err != nil || len(token) > 16384 || !bearerTokenPattern.MatchString(token) || ctx.Err() != nil {
 		return notSent, ErrNotSent
 	}
 	requestBody, err := json.Marshal(createRunBody{
 		ExperimentID: strings.ToLower(environment.ExperimentID),
-		DisplayName:  "md-" + strings.ToLower(admission.ExecutionID),
+		DisplayName:  plan.DisplayName,
 		PipelineVersionReference: pipelineVersionReference{
-			PipelineID:        strings.ToLower(admission.Snapshot.Release.PipelineID),
-			PipelineVersionID: strings.ToLower(admission.Snapshot.Release.PipelineVersionID),
+			PipelineID:        strings.ToLower(plan.PipelineID),
+			PipelineVersionID: strings.ToLower(plan.PipelineVersionID),
 		},
 		RuntimeConfig: runtimeConfig{
-			Parameters:   map[string]string{"execution_id": strings.ToLower(admission.ExecutionID), "spec_hash": admission.SpecHash},
-			PipelineRoot: client.pipelineRoot,
+			Parameters:   map[string]string{"execution_id": plan.ExecutionID, "spec_hash": plan.SpecHash},
+			PipelineRoot: plan.Owner.PipelineRoot,
 		},
 		ServiceAccount: environment.Identities.KFPStepServiceAccount,
 	})

@@ -15,23 +15,30 @@ The module intentionally implements only CreateRun through standard net/http;
 no KFP SDK module dependency, browser-header forwarding, or retry API is added.
 ENV still reports NOT_RUN and supplies no usable endpoint or real binding.
 
-The owner supplies an explicit HTTPS endpoint, CA trust, connection reference,
-timeout and KFP artifact root. Short-lived bearer identity is regenerated from
+The owner supplies an explicit HTTPS endpoint, CA trust, connection reference
+and timeout. The constructor has no artifact root; the sole CreateRun input is
+`PipelineCreateRequest{Admission, Plan, Permit}`. Short-lived bearer identity is regenerated from
 the trusted tenant and frozen binding through TokenProvider. The provider must
 independently enforce trusted tenant identity; its production implementation is
 not supplied here. It must not use the audit actor as enduring permission.
 Connection inputs and credentials do not come from public request parameters.
 Fixture tokens are synthetic and no credential or raw response body is logged.
 
-PipelineRoot is KFP storage, not PublicationScope. The present shared execution
-snapshot has no pipeline_root field. Before product wiring, its immutable
-resolution must become part of the frozen execution contract; fixture wire
-tests do not close this gap. PipelineVersion, Experiment and managed SA are
-read from the validated frozen admission. Only `execution_id` and `spec_hash`
+PipelineRoot is KFP storage, not PublicationScope. The shared execution snapshot
+has no pipeline_root field. The internal dispatch plan separately freezes the
+explicit owner reference, revision digest and root; the public SpecHash does not
+cover root. The adapter checks the complete admission-to-plan canonical mapping
+and permit identity/hash, then encodes PipelineVersion, Experiment, managed SA
+and root from that plan. The caller must supply the original committed
+reservation; structurally valid values are not proof of persistence or current
+authorization. Only `execution_id` and `spec_hash`
 are planned long-lived parameters. Display name is not an idempotency key.
 
-The future leased worker must commit SUBMITTING under the shared identity/close
-fence before this call. NotSent/Uncertain/Confirmed will describe the observed
+The submitting caller must commit SUBMITTING under the shared identity/close
+fence before this call. The first PG-plus-TLS submitter candidate still contains
+an explicit orchestration stub and is awaiting a fixed-source behavior RED;
+this interface migration does not establish durable sending or leased recovery.
+NotSent/Uncertain/Confirmed describe the observed
 call only; persistence and authoritative Run CAS remain separate. The candidate
 must not follow redirects or automatically repeat a POST. A sent request with
 lost, malformed, oversized or otherwise untrusted response remains uncertain;
@@ -63,4 +70,7 @@ six main tests / 61 table cases include protected constructor configuration,
 preflight/credential failures, cancellation after observed receipt, CA rejection,
 null/UTF-8/depth limits and uppercase UUID normalization. These were regression
 passes against the existing implementation, not a new RED/fix cycle. Real
-provider, persistence and product wiring remain unfinished.
+provider and product wiring remain unfinished. Existing root-rejection cases
+now target the frozen request rather than removed constructor configuration;
+their zero-credential/zero-HTTP assertions remain. The new candidate's test
+results must be recorded separately from those historical fixed-source passes.

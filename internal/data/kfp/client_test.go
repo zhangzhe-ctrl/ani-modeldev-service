@@ -86,7 +86,7 @@ func TestCreateRunResponseLostPreservesUncertaintyWithoutResending(t *testing.T)
 		return "synthetic-fixture-token", nil
 	})
 	client := fixtureClient(t, server, provider)
-	observation, err := client.CreateRun(context.Background(), admission)
+	observation, err := client.CreateRun(context.Background(), fixtureCreateRequest(t, admission))
 	if err == nil || observation.State != biz.PipelineSubmissionUncertain || observation.RunID != "" {
 		t.Errorf("lost creation response must remain uncertain with no confirmed Run: %+v, %v", observation, err)
 	}
@@ -117,6 +117,27 @@ func fixtureAdmission(t *testing.T) biz.Admission {
 		Intent:      intent, IntentHash: intentHash,
 		Snapshot: snapshot, SpecHash: conformance.SnapshotSHA256V1,
 		AcceptedAt: snapshot.DeadlineAt.Add(-time.Hour).UTC(),
+	}
+}
+
+// This synthetic permit exercises only the outbound seam. It is not evidence
+// of a committed reservation; the submitter integration test uses real PG.
+func fixtureCreateRequest(t *testing.T, admission biz.Admission) biz.PipelineCreateRequest {
+	t.Helper()
+	plan, err := (biz.PipelineDispatchRequest{
+		Admission: admission,
+		Owner: biz.PipelineOwnerConfiguration{Reference: "cpu07-fixture-owner", RevisionSHA256: strings.Repeat("a", 64), PipelineRoot: "s3://fixture-kfp-artifacts/managed-root"},
+	}).Freeze()
+	if err != nil {
+		t.Fatalf("freeze create request fixture: %v", err)
+	}
+	hash, err := plan.Digest()
+	if err != nil {
+		t.Fatalf("hash create request fixture: %v", err)
+	}
+	return biz.PipelineCreateRequest{
+		Admission: admission, Plan: plan,
+		Permit: biz.PipelineSendPermit{TenantID: plan.TenantID, ExecutionID: plan.ExecutionID, AttemptID: "66666666-7777-4888-8999-aaaaaaaaaaaa", PlanHash: hash},
 	}
 }
 
@@ -220,7 +241,7 @@ func TestCreateRunConfirmsOnlyCompleteMatchingOfficialResponse(t *testing.T) {
 			client := fixtureClient(t, server, tokenProviderFunc(func(context.Context, string, cpup01.EnvironmentBindingSnapshot) (string, error) {
 				return "synthetic-fixture-token", nil
 			}))
-			observation, err := client.CreateRun(context.Background(), fixtureAdmission(t))
+			observation, err := client.CreateRun(context.Background(), fixtureCreateRequest(t, fixtureAdmission(t)))
 			if test.confirmed {
 				expectedRunID := test.expectedRunID
 				if expectedRunID == "" {
@@ -248,7 +269,7 @@ func fixtureClient(t *testing.T, server *httptest.Server, provider kfp.TokenProv
 	certificates.AddCert(server.Certificate())
 	client, err := kfp.New(kfp.Config{
 		ConnectionRef: "kfp-managed-v1", Endpoint: server.URL,
-		PipelineRoot: "s3://fixture-kfp-artifacts/managed-root", RootCAs: certificates, Timeout: 3 * time.Second,
+		RootCAs: certificates, Timeout: 3 * time.Second,
 	}, provider)
 	if err != nil {
 		t.Fatalf("construct fixture client: %v", err)

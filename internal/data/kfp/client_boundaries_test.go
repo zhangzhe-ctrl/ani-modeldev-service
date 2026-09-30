@@ -39,15 +39,12 @@ func TestNewRequiresExplicitProtectedOwnerConfiguration(t *testing.T) {
 		{"endpoint fragment", func(c *kfp.Config) { c.Endpoint = server.URL + "#fragment" }},
 		{"endpoint traversal", func(c *kfp.Config) { c.Endpoint = server.URL + "/a/../b" }},
 		{"no explicit CA", func(c *kfp.Config) { c.RootCAs = nil }},
-		{"no root", func(c *kfp.Config) { c.PipelineRoot = "" }},
-		{"root traversal", func(c *kfp.Config) { c.PipelineRoot = "s3://fixture-kfp-artifacts/a/../b" }},
-		{"root temporary query", func(c *kfp.Config) { c.PipelineRoot = "s3://fixture-kfp-artifacts/managed-root?signature=synthetic" }},
 		{"no timeout", func(c *kfp.Config) { c.Timeout = 0 }},
 		{"unbounded timeout", func(c *kfp.Config) { c.Timeout = time.Hour }},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
-			config := kfp.Config{ConnectionRef: "kfp-managed-v1", Endpoint: server.URL, PipelineRoot: "s3://fixture-kfp-artifacts/managed-root", RootCAs: certificates, Timeout: time.Second}
+			config := kfp.Config{ConnectionRef: "kfp-managed-v1", Endpoint: server.URL, RootCAs: certificates, Timeout: time.Second}
 			test.mutate(&config)
 			client, err := kfp.New(config, provider)
 			if client != nil || !errors.Is(err, kfp.ErrInvalidConfig) {
@@ -56,7 +53,7 @@ func TestNewRequiresExplicitProtectedOwnerConfiguration(t *testing.T) {
 		})
 	}
 	t.Run("no provider", func(t *testing.T) {
-		config := kfp.Config{ConnectionRef: "kfp-managed-v1", Endpoint: server.URL, PipelineRoot: "s3://fixture-kfp-artifacts/managed-root", RootCAs: certificates, Timeout: time.Second}
+		config := kfp.Config{ConnectionRef: "kfp-managed-v1", Endpoint: server.URL, RootCAs: certificates, Timeout: time.Second}
 		if client, err := kfp.New(config, nil); client != nil || !errors.Is(err, kfp.ErrInvalidConfig) {
 			t.Fatalf("missing provider accepted: client=%v error=%v", client != nil, err)
 		}
@@ -66,7 +63,7 @@ func TestNewRequiresExplicitProtectedOwnerConfiguration(t *testing.T) {
 func TestCreateRunLocalFailuresNeverSendOrLeakCredentials(t *testing.T) {
 	cases := []struct {
 		name             string
-		mutate           func(*biz.Admission)
+		mutate           func(*biz.PipelineCreateRequest)
 		token            string
 		providerError    bool
 		cancelBefore     bool
@@ -74,11 +71,22 @@ func TestCreateRunLocalFailuresNeverSendOrLeakCredentials(t *testing.T) {
 		nilContext       bool
 		wantTokenCalls   int32
 	}{
-		{name: "invalid hash", mutate: func(a *biz.Admission) { a.SpecHash = strings.Repeat("f", 64) }},
-		{name: "other connection", mutate: func(a *biz.Admission) {
-			a.Snapshot.Environment.KFPConnectionRef = "other-kfp-v1"
-			a.SpecHash, _ = a.Snapshot.Digest()
+		{name: "invalid hash", mutate: func(r *biz.PipelineCreateRequest) { r.Admission.SpecHash = strings.Repeat("f", 64) }},
+		{name: "other connection", mutate: func(r *biz.PipelineCreateRequest) {
+			r.Admission.Snapshot.Environment.KFPConnectionRef = "other-kfp-v1"
+			r.Admission.SpecHash, _ = r.Admission.Snapshot.Digest()
+			*r = fixtureCreateRequest(t, r.Admission)
 		}},
+		// Root is now frozen input, so the original constructor rejections
+		// move here and still require zero credentials and zero HTTP calls.
+		{name: "no root", mutate: func(r *biz.PipelineCreateRequest) { r.Plan.Owner.PipelineRoot = "" }},
+		{name: "root traversal", mutate: func(r *biz.PipelineCreateRequest) { r.Plan.Owner.PipelineRoot = "s3://fixture-kfp-artifacts/a/../b" }},
+		{name: "root temporary query", mutate: func(r *biz.PipelineCreateRequest) { r.Plan.Owner.PipelineRoot = "s3://fixture-kfp-artifacts/managed-root?signature=synthetic" }},
+		{name: "plan differs from admission", mutate: func(r *biz.PipelineCreateRequest) { r.Plan.Environment.Identities.KFPStepServiceAccount = "other-step" }},
+		{name: "other permit tenant", mutate: func(r *biz.PipelineCreateRequest) { r.Permit.TenantID = "22222222-2222-4222-8222-222222222222" }},
+		{name: "other permit execution", mutate: func(r *biz.PipelineCreateRequest) { r.Permit.ExecutionID = "22222222-2222-4222-8222-222222222222" }},
+		{name: "zero permit attempt", mutate: func(r *biz.PipelineCreateRequest) { r.Permit.AttemptID = "00000000-0000-0000-0000-000000000000" }},
+		{name: "other permit hash", mutate: func(r *biz.PipelineCreateRequest) { r.Permit.PlanHash = strings.Repeat("f", 64) }},
 		{name: "already canceled", cancelBefore: true},
 		{name: "nil context", nilContext: true},
 		{name: "provider denied", providerError: true, wantTokenCalls: 1},
@@ -108,9 +116,9 @@ func TestCreateRunLocalFailuresNeverSendOrLeakCredentials(t *testing.T) {
 				return test.token, nil
 			})
 			client := fixtureClient(t, server, provider)
-			admission := fixtureAdmission(t)
+			request := fixtureCreateRequest(t, fixtureAdmission(t))
 			if test.mutate != nil {
-				test.mutate(&admission)
+				test.mutate(&request)
 			}
 			if test.cancelBefore {
 				cancel()
@@ -118,7 +126,7 @@ func TestCreateRunLocalFailuresNeverSendOrLeakCredentials(t *testing.T) {
 			if test.nilContext {
 				ctx = nil
 			}
-			observation, err := client.CreateRun(ctx, admission)
+			observation, err := client.CreateRun(ctx, request)
 			if !errors.Is(err, kfp.ErrNotSent) || observation.State != biz.PipelineSubmissionNotSent || observation.RunID != "" {
 				t.Errorf("local failure did not remain NotSent: %+v, %v", observation, err)
 			}
@@ -150,7 +158,7 @@ func TestCreateRunCancellationAfterReceiptRemainsUncertain(t *testing.T) {
 	client := fixtureClient(t, server, tokenProviderFunc(func(context.Context, string, cpup01.EnvironmentBindingSnapshot) (string, error) {
 		return "synthetic-fixture-token", nil
 	}))
-	admission := fixtureAdmission(t)
+	request := fixtureCreateRequest(t, fixtureAdmission(t))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	type result struct {
@@ -158,7 +166,7 @@ func TestCreateRunCancellationAfterReceiptRemainsUncertain(t *testing.T) {
 		err         error
 	}
 	done := make(chan result, 1)
-	go func() { observation, err := client.CreateRun(ctx, admission); done <- result{observation, err} }()
+	go func() { observation, err := client.CreateRun(ctx, request); done <- result{observation, err} }()
 	select {
 	case <-received:
 		cancel()
@@ -184,13 +192,13 @@ func TestCreateRunRejectsUntrustedTLSCertificate(t *testing.T) {
 	server.Config.ErrorLog = log.New(io.Discard, "", 0)
 	server.StartTLS()
 	t.Cleanup(server.Close)
-	client, err := kfp.New(kfp.Config{ConnectionRef: "kfp-managed-v1", Endpoint: server.URL, PipelineRoot: "s3://fixture-kfp-artifacts/managed-root", RootCAs: x509.NewCertPool(), Timeout: time.Second}, tokenProviderFunc(func(context.Context, string, cpup01.EnvironmentBindingSnapshot) (string, error) {
+	client, err := kfp.New(kfp.Config{ConnectionRef: "kfp-managed-v1", Endpoint: server.URL, RootCAs: x509.NewCertPool(), Timeout: time.Second}, tokenProviderFunc(func(context.Context, string, cpup01.EnvironmentBindingSnapshot) (string, error) {
 		return "synthetic-fixture-token", nil
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	observation, err := client.CreateRun(context.Background(), fixtureAdmission(t))
+	observation, err := client.CreateRun(context.Background(), fixtureCreateRequest(t, fixtureAdmission(t)))
 	if !errors.Is(err, kfp.ErrUncertain) || observation.State != biz.PipelineSubmissionUncertain || requests.Load() != 0 {
 		t.Fatalf("TLS peer not rejected: %+v %v requests=%d", observation, err, requests.Load())
 	}
