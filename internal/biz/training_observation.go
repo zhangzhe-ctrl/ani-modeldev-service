@@ -37,14 +37,14 @@ type TrainingConditionMetadata struct {
 // or permission to create resources. Generation belongs to the TrainJob itself;
 // each condition's reported generation is preserved separately without inference.
 type TrainJobObservation struct {
-	NamespaceUID string
-	TrainJobUID  string
-	Generation   int64
-	Suspended    TrainingConditionStatus
-	Complete     TrainingConditionStatus
-	Failed       TrainingConditionStatus
+	NamespaceUID      string
+	TrainJobUID       string
+	Generation        int64
+	Suspended         TrainingConditionStatus
+	Complete          TrainingConditionStatus
+	Failed            TrainingConditionStatus
 	SuspendedMetadata TrainingConditionMetadata
 	CompleteMetadata  TrainingConditionMetadata
 	FailedMetadata    TrainingConditionMetadata
-	ObservedAt   time.Time
+	ObservedAt        time.Time
 }
