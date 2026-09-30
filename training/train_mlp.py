@@ -7,6 +7,7 @@ and does not mark an Execution successful or publish files to object storage.
 import argparse
 import csv
 from datetime import datetime, timezone
+from decimal import Decimal
 import hashlib
 import io
 import json
@@ -24,6 +25,21 @@ def checked_path(value):
         if component.is_symlink():
             raise ValueError("symbolic links are not allowed in workload paths")
     return path
+
+
+def learning_rate(value):
+    if len(value) > 32 or not re.fullmatch(r"(0|[1-9][0-9]*)(\.[0-9]+)?", value):
+        raise ValueError("learning rate must be a non-exponent decimal with at most 32 characters")
+    decimal = Decimal(value)
+    if not 0 < decimal <= Decimal("0.1"):
+        raise ValueError("learning rate must be in (0, 0.1]")
+    canonical = format(decimal, "f").rstrip("0").rstrip(".")
+    return canonical, float(decimal)
+
+
+def check_output(path):
+    if path.exists() and (not path.is_dir() or any(path.iterdir())):
+        raise FileExistsError("refusing to overwrite a nonempty or non-directory output path")
 
 
 def load_selected_input(path, expected_sha256, expected_bytes):
@@ -72,14 +88,15 @@ def main():
     parser.add_argument("--output", required=True)
     parser.add_argument("--expected-input-sha256", required=True)
     parser.add_argument("--expected-input-bytes", required=True, type=int)
+    parser.add_argument("--learning-rate", default="0.01")
     args = parser.parse_args()
 
+    canonical_rate, optimizer_rate = learning_rate(args.learning_rate)
     if os.environ.get("WORLD_SIZE", "1") != "1":
         raise ValueError("the fixed CPU recipe requires WORLD_SIZE=1")
     data = checked_path(args.data)
     output = checked_path(args.output)
-    if output.exists():
-        raise FileExistsError("refusing to overwrite an existing output path")
+    check_output(output)
     input_bytes, input_sha256, feature_values, label_values = load_selected_input(
         data, args.expected_input_sha256, args.expected_input_bytes,
     )
@@ -91,12 +108,14 @@ def main():
 
     features = torch.tensor(feature_values, dtype=torch.float32, device="cpu")
     labels = torch.tensor(label_values, dtype=torch.long, device="cpu")
-    output.mkdir(parents=True)
+    output.mkdir(parents=True, exist_ok=True)
+    checked_path(output)
+    check_output(output)
 
     torch.set_num_threads(1)
     torch.manual_seed(42)
     model = nn.Sequential(nn.Linear(16, 32), nn.ReLU(), nn.Linear(32, 2))
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    optimizer = torch.optim.Adam(model.parameters(), lr=optimizer_rate)
     criterion = nn.CrossEntropyLoss()
     with torch.no_grad():
         initial_loss = float(criterion(model(features), labels))
@@ -144,6 +163,7 @@ def main():
         "samples": len(feature_values),
         "epochs": 3,
         "batch_size": 64,
+        "learning_rate": canonical_rate,
         "steps": step,
         "world_size": 1,
         "device": "cpu",

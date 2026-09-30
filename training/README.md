@@ -27,7 +27,8 @@ The command requires `--data`, `--output`, `--expected-input-sha256`, and
 `--expected-input-bytes`. Before importing PyTorch or creating output, the
 admission check verifies a regular file's actual size and SHA256, all 1024 rows
 and 16 finite float32 features, binary labels, single-process WORLD_SIZE, and
-paths without symlinks. Existing output paths are refused and preserved.
+paths without symlinks. Nonempty and non-directory output paths are refused and
+preserved; a real existing empty directory is accepted.
 It must not be deployed until the remaining recipe tests and live integration
 are implemented and checked. The first slice fixes three epochs, batch
 size 64, and CPU MLP 16→32→2. `result.json` is a workload output candidate, not
@@ -56,8 +57,12 @@ existing empty output directory. The valid test runs both default 0.01 and expli
 0.02, requires the effective decimal in the summary, reloads both checkpoints,
 and compares actual tensors to prove the selected rate affected training. Another
 test rejects malformed/out-of-range/non-finite rates before output creation.
-These new tests are not run; production still uses 0.01 and refuses existing
-output paths until this RED/GREEN cycle completes. Epochs and batch size remain
+At `b17b0074314c5defba4031556ecf13b58769c79b`, Fedora observed the expected RED:
+four tests in 29.814 seconds, one failure because the command rejected the valid
+`--learning-rate 0.02` argument. The implementation now parses a maximum
+32-character, non-exponent decimal in (0, 0.1], records its canonical decimal in
+the summary, passes the value to Adam, and accepts an existing empty directory.
+Its GREEN awaits a new fixed commit and Fedora run. Epochs and batch size remain
 fixed at 3 and 64. Controlled real-compute failure/stop recipes follow separately.
 The initial subprocess reload is CPU03 module evidence; the
 independent BFF/S3 verifier belongs to CPU08/CPU09 and must not mount the original
