@@ -1,0 +1,13 @@
+{
+  "schema": "ani.cpu03.python-materials.v1",
+  "python_version": "3.13.11",
+  "torch_version": "2.10.0+cpu",
+  "cuda_version": null,
+  "architecture": "x86_64",
+  "base_image": "docker.io/library/python@sha256:ac76900038d8606cc99b413d4ede77bc7152f1e42b94cf5d50d4b80a999652fe",
+  "base_image_id": "sha256:61be0e302c652e7640c09e63a1879e72642e795ca86147dd703874d873f1113a",
+  "source_index": "https://download.pytorch.org/whl/cpu",
+  "requirements_lock": "requirements.lock",
+  "wheel_hashes": "wheelhouse.sha256",
+  "scope": "CPU03 module environment; no workload image or target-cluster verification"
+}

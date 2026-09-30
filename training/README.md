@@ -15,15 +15,29 @@ Run only on Fedora, against a fixed source commit with a CPU PyTorch environment
 python -m unittest discover -s training/tests -p 'test_training.py' -v
 ```
 
-Current state: test and command seam only; `train_mlp.py` explicitly exits with
-`CPU03_NOT_IMPLEMENTED`. The expected RED is the nonzero trainer exit for a valid
-fixed CSV. A missing PyTorch dependency is `ENVIRONMENT_NOT_READY`, not that RED.
-No test has been executed for this source yet.
+The first RED was observed on Fedora at source commit
+`452fff617856bb4d1a3ccdb029e24cbf71aae093`: one failing behavior test, exit 1,
+`CPU03_NOT_IMPLEMENTED`, after the real CPU PyTorch preflight succeeded. The
+first implementation now performs the fixed training loop; its GREEN still
+requires committing this source and running that commit on Fedora. A missing
+PyTorch dependency is `ENVIRONMENT_NOT_READY`, not a behavior RED.
 
 The command requires `--data`, `--output`, `--expected-input-sha256`, and
-`--expected-input-bytes`. The first slice fixes three epochs, batch size 64,
-single-process CPU MLP 16→32→2. `result.json` is a workload output candidate,
-not proof of S3 publication or business success.
+`--expected-input-bytes`. This partial implementation accepts the expected
+identity arguments but does not yet reject a mismatch: that is the next behavior
+cycle. It must not be deployed until input validation and controlled recipe
+tests are implemented and checked. The first slice fixes three epochs, batch
+size 64, and CPU MLP 16→32→2. `result.json` is a workload output candidate, not
+proof of S3 publication or business success.
+
+`runtime-lock.json` records the actual Python 3.13.11 container image identity
+and PyTorch 2.10.0+cpu environment inspected on Fedora. `requirements.lock` pins
+the resolved ten dependency wheels by version and SHA256; `wheelhouse.sha256`
+records the filenames. A Fedora offline `pip install --dry-run --ignore-installed
+--require-hashes` resolved this lock successfully. These files do not establish a
+built workload image digest. Fixture CSVs, wheels, and model output stay out of
+Git. PyTorch's optional NumPy integration reports a warning because this workload
+uses tensors directly and does not install NumPy.
 
 After the first RED/GREEN cycle, add separate behavior cycles for incorrect input
 digest/size, nonempty output refusal, malformed CSV, and controlled real-compute
