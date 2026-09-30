@@ -5,11 +5,12 @@ clean checkout, run:
 
 ```bash
 make tools
-make verify
+python3 scripts/with-test-postgres.py make verify
 ```
 
-`make verify` checks that typed configuration regenerates without a content
-change, rejects stale formatting or module metadata, and runs `go test`,
+`make verify` checks that typed configuration, public protobuf, sqlc queries,
+and shared contract vectors regenerate without a content change, rejects stale
+formatting or module metadata, and runs `go test`,
 `go vet`, `go build`, and `go mod verify`.
 
 The runtime integration tests start real loopback gRPC and admin HTTP listeners.
@@ -19,6 +20,17 @@ trace-correlated structured logging, and graceful application stop. These tests
 prove only the generic local runtime. They do not prove a database, broker,
 provider, external telemetry backend, container, Kubernetes deployment, or
 business contract.
+
+The execution repository tests separately require real PostgreSQL. The wrapper
+starts a digest-pinned, resource-limited container, keeps its credentials in a
+private temporary location, and passes separate migration/runtime references to
+the test process. The runtime role is NOSUPERUSER/NOBYPASSRLS; each test applies
+the versioned migration in its own schema and grants only required operations.
+Afterward the wrapper checks the ownership label and removes only its exact test
+container. Fedora may instead use the already prepared task-exclusive database
+by supplying both protected `CPU_P01_TEST_DATABASE_*_URL` references and invoking
+`make verify`. Missing dependencies fail with behavior NOT_RUN, not a skipped
+security check. These real database results do not prove the target cluster.
 
 For CPU-P01, run these commands on Fedora against a fixed source commit. The
 workstation is used only to edit, review, and transfer source and results. The

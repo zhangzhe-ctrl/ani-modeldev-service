@@ -62,8 +62,23 @@ four tests in 29.814 seconds, one failure because the command rejected the valid
 `--learning-rate 0.02` argument. The implementation now parses a maximum
 32-character, non-exponent decimal in (0, 0.1], records its canonical decimal in
 the summary, passes the value to Adam, and accepts an existing empty directory.
-Its GREEN awaits a new fixed commit and Fedora run. Epochs and batch size remain
-fixed at 3 and 64. Controlled real-compute failure/stop recipes follow separately.
+At `080320ea314e8d1ce885b18a1d488daabdc574b9`, all four module tests passed on
+Fedora in 42.886 seconds, exit 0; the selected learning rate produced different
+actual checkpoint tensors. Epochs and batch size remain fixed at 3 and 64.
+
+The next tests specify internal managed recipes required by the original CPU03
+task card, execution details 5–6. The proposed `--recipe fail` completes five real
+optimizer steps, then exits with `CPU03_RECIPE_FAILURE`, retaining only metrics.
+`--recipe slow-stop` keeps the normal 48-step computation, with a fixed 0.2-second
+delay after each real step and a 30-second total budget. It reports these limits
+as an `ani.cpu03.recipe.v1` stdout event. The test observes three actual optimizer
+events before SIGTERM, requires exit within ten seconds, and rejects successful
+checkpoint/candidate files. Test polling is bounded and targets only its own
+subprocess. These tests have not run; recipe implementation is still absent.
+
+These recipe names select registered internal test commands. They are not
+ordinary user parameters, free-form command options, or a second training API.
+No caller may supply a custom failure step, sleep duration, or total-step budget.
 The initial subprocess reload is CPU03 module evidence; the
 independent BFF/S3 verifier belongs to CPU08/CPU09 and must not mount the original
 training PVC.

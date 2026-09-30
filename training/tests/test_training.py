@@ -6,9 +6,11 @@ import json
 import math
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 
@@ -322,6 +324,120 @@ class FixedCSVTrainingTest(unittest.TestCase):
                     self.assertNotIn('"train.loss"', rejected.stdout)
                     self.assertFalse(output.exists(), "invalid learning rate must not create output")
                     self.assertEqual(data.read_bytes(), input_bytes)
+
+    def test_managed_failure_recipe_optimizes_five_steps_then_fails_without_success_artifacts(self):
+        dependency = self.run_python(
+            "-c", "import torch; assert torch.version.cuda is None, 'CPU wheel required'"
+        )
+        self.assertEqual(
+            dependency.returncode, 0,
+            f"ENVIRONMENT_NOT_READY (not a behavior RED)\n{dependency.stderr}",
+        )
+        with tempfile.TemporaryDirectory(prefix="cpu03-fail-recipe-") as temporary:
+            root = Path(temporary)
+            data = root / "selected-input.csv"
+            output = root / "execution-output"
+            generated = self.run_python(TRAINING_ROOT / "make_data.py", "--output", data)
+            self.assertEqual(generated.returncode, 0, generated.stderr)
+            selected_bytes = data.read_bytes()
+            failed = self.run_python(
+                TRAINING_ROOT / "train_mlp.py", "--data", data, "--output", output,
+                "--expected-input-sha256", hashlib.sha256(selected_bytes).hexdigest(),
+                "--expected-input-bytes", len(selected_bytes), "--recipe", "fail",
+            )
+            self.assertNotEqual(failed.returncode, 0)
+            events = [json.loads(line) for line in failed.stdout.splitlines()]
+            metrics = [event for event in events if event.get("name") == "train.loss"]
+            self.assertEqual(
+                [event["step"] for event in metrics], [1, 2, 3, 4, 5],
+                f"managed failure must follow real optimization\n{failed.stderr}",
+            )
+            self.assertTrue(all(math.isfinite(event["value"]) for event in metrics))
+            self.assertIn("CPU03_RECIPE_FAILURE", failed.stderr)
+            self.assertEqual(data.read_bytes(), selected_bytes)
+            self.assertEqual(
+                {path.name for path in output.iterdir()}, {"metrics.jsonl"},
+                "failed training must retain diagnostics without a successful checkpoint/candidate",
+            )
+            persisted = [
+                json.loads(line)
+                for line in (output / "metrics.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual(persisted, metrics)
+
+    def test_managed_slow_recipe_stops_after_observed_optimization_without_success_artifacts(self):
+        dependency = self.run_python(
+            "-c", "import torch; assert torch.version.cuda is None, 'CPU wheel required'"
+        )
+        self.assertEqual(
+            dependency.returncode, 0,
+            f"ENVIRONMENT_NOT_READY (not a behavior RED)\n{dependency.stderr}",
+        )
+        with tempfile.TemporaryDirectory(prefix="cpu03-stop-recipe-") as temporary:
+            root = Path(temporary)
+            data = root / "selected-input.csv"
+            output = root / "execution-output"
+            stdout_path, stderr_path = root / "stdout.log", root / "stderr.log"
+            generated = self.run_python(TRAINING_ROOT / "make_data.py", "--output", data)
+            self.assertEqual(generated.returncode, 0, generated.stderr)
+            selected_bytes = data.read_bytes()
+            command = [
+                sys.executable, "-I", str(TRAINING_ROOT / "train_mlp.py"),
+                "--data", str(data), "--output", str(output),
+                "--expected-input-sha256", hashlib.sha256(selected_bytes).hexdigest(),
+                "--expected-input-bytes", str(len(selected_bytes)), "--recipe", "slow-stop",
+            ]
+            environment = os.environ.copy()
+            environment.update({"CUDA_VISIBLE_DEVICES": "", "WORLD_SIZE": "1"})
+            events, observed_metrics = [], []
+            with stdout_path.open("w", encoding="utf-8") as stdout, stderr_path.open("w", encoding="utf-8") as stderr:
+                process = subprocess.Popen(command, stdout=stdout, stderr=stderr, env=environment)
+                try:
+                    observe_deadline = time.monotonic() + 45
+                    with stdout_path.open(encoding="utf-8") as reader:
+                        while len(observed_metrics) < 3 and time.monotonic() < observe_deadline:
+                            line = reader.readline()
+                            if line:
+                                event = json.loads(line)
+                                events.append(event)
+                                if event.get("name") == "train.loss":
+                                    observed_metrics.append(event)
+                            elif process.poll() is not None:
+                                break
+                            else:
+                                time.sleep(0.02)
+                    self.assertGreaterEqual(
+                        len(observed_metrics), 3,
+                        "slow-stop must perform real optimization before the stop request\n"
+                        + stderr_path.read_text(encoding="utf-8"),
+                    )
+                    descriptors = [event for event in events if event.get("schema") == "ani.cpu03.recipe.v1"]
+                    self.assertEqual(len(descriptors), 1)
+                    self.assertEqual(descriptors[0]["recipe"], "slow-stop")
+                    self.assertEqual(descriptors[0]["max_steps"], 48)
+                    self.assertEqual(descriptors[0]["step_delay_seconds"], 0.2)
+                    self.assertEqual(descriptors[0]["deadline_seconds"], 30)
+                    self.assertTrue(all(math.isfinite(event["value"]) for event in observed_metrics))
+                    self.assertIsNone(process.poll(), "stop must target a still-running training process")
+                    process.terminate()
+                    exit_code = process.wait(timeout=10)
+                    self.assertIn(exit_code, (-signal.SIGTERM, 128 + signal.SIGTERM))
+                finally:
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait(timeout=5)
+            self.assertEqual(data.read_bytes(), selected_bytes)
+            self.assertEqual(
+                {path.name for path in output.iterdir()}, {"metrics.jsonl"},
+                "stopped training must not report a successful checkpoint or candidate",
+            )
+            persisted = [
+                json.loads(line)
+                for line in (output / "metrics.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertGreaterEqual(len(persisted), 3)
+            self.assertLess(len(persisted), 48)
+            self.assertEqual([event["step"] for event in persisted], list(range(1, len(persisted) + 1)))
 
 
 if __name__ == "__main__":
