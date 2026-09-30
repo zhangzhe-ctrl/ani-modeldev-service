@@ -11,6 +11,7 @@ import (
 	"sort"
 	"syscall"
 
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 )
 
@@ -51,9 +52,14 @@ func Collect(ctx context.Context, directory string, execution biz.Execution) (bi
 		remaining -= entry.SizeBytes
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].RelativePath < files[j].RelativePath })
+	manifest, manifestHash, err := cpup01.OutputManifestBytes(cpup01.AdmissionEnvelope(execution.Admission), files)
+	if err != nil {
+		return biz.CollectedOutput{}, biz.ErrInvalidWorkspaceOutput
+	}
 	return biz.CollectedOutput{
 		ExecutionID: execution.ExecutionID, ExecutionSpecHash: execution.SpecHash,
 		StorageState: "WORKSPACE_ONLY", Files: files,
+		Manifest: manifest, ManifestSHA256: manifestHash,
 	}, nil
 }
 
