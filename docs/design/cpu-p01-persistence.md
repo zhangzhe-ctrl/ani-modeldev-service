@@ -12,8 +12,10 @@ GREEN / exit 0（含受限 PG preflight），gofmt 无差异。冲突/隔离候�
 错误地产生新记录。六 pool 原命令竞争、跨租户隐藏 Get、16 类非法受理以及
 原正向/重投均 PASS。修复在固定 `cd393c7` 的 repository 全量、真实 PG 并发
 race 和完整 make verify 均 GREEN / exit 0；该证据只覆盖该固定源码。
-后续 UUID 查询严格性修复和首墓碑候选尚待各自固定验证；未接业务装配，不标
-整个 CPU04 CODE_READY。
+UUID 查询严格性修复在 `af2407b` 定向与 repository 全量 GREEN；首墓碑测试在
+`90692b0` 实际 PG preflight PASS 后取得 NOT_IMPLEMENTED / exit 1 的预期 RED。
+首墓碑 SQL 在固定 `cf4307a` 经 Fedora pinned sqlc 1.31.1 生成成功；当前适配器
+候选待新固定验证，未接业务装配，不标整个 CPU04 CODE_READY。
 
 ## 持久事实与最小边界
 
@@ -25,7 +27,8 @@ envelope 一起保存，不能仅凭相同 spec_hash 接管其他执行。
 首个 `modeldev_executions` 行同时作为不可变执行受理和持久 inbox。无需单独
 ACK 表；只有整行提交后 `Accept` 才能返回成功。`Get(tenant_id, execution_id)`
 经显式租户过滤读取同一事实；没有查询当前 Release、重新解析默认值或在内存
-中代替数据库的路径。本阶段只有 Accept/Get 两个 port 方法，不预建其他 adapter。
+中代替数据库的路径。受理边界使用 Accept/Get；首墓碑另外使用文末说明的
+ApplyCloseIntent/GetCloseIntent，不预建其他 adapter。
 
 `migrations/*.up.sql` 是按版本顺序应用的 schema 维护点，保留既有迁移历史。
 `internal/data/execution/queries.sql` 是应用 SQL 维护点，通过 `sqlc.yaml`
@@ -35,14 +38,20 @@ ACK 表；只有整行提交后 `Accept` 才能返回成功。`Get(tenant_id, ex
 每行带 `tenant_id`；0001 的主键 `(tenant_id, execution_id)`、唯一键
 `(tenant_id, operation_id)` 保留。0002 增加 operation_id、execution_id 各自的
 全局唯一约束，使原 operation/execution 身份不能在另一租户再次受理。
-当前只建一张表，没有跨表引用；后续表必须带 tenant_id 并使用保租户复合外键。
+0003 引入共享 `modeldev_execution_identities`：tenant/execution 主键，operation
+和 execution 各自全局唯一，冻结 tenant/operation/execution/spec hash 关联。
+已有受理从 0001 表回填，受理行和 close intent 都用包含 tenant 与完整身份的复合
+外键引用它。每个写入在同一事务内保留/锁定该身份，不能跨表另占同一个 ID。
+每张关系均携带 tenant_id；所有公开读取仍使用显式 tenant 过滤。
 RLS 显式禁用，隔离依赖 tenant-scoped SQL 和真正受限 runtime role，不能用
 superuser/BYPASSRLS 角色证明隔离。
 
-测试在独占 schema 中顺序应用全部版本化 up 迁移；sqlc 配置同样绑定 0001 与
-0002，不能只让测试或生成器看到其中一部分。如果已有数据违反新增全局约束，
+测试在独占 schema 中顺序应用全部版本化 up 迁移；sqlc 配置同样绑定 0001 至
+0003，不能只让测试或生成器看到其中一部分。如果已有数据违反新增全局约束，
 迁移必须失败并保留现场；禁止删除或改写不可变受理事实来强行迁移。
 
+`biz.Admission.CanonicalPayloads` 委托公共 `cpup01.AdmissionEnvelope` 的唯一
+合同实现，并将合同拒绝映射到稳定领域错误，避免消费者重复维护一致性规则。
 intent 和 snapshot 保存规范 UTF-8 字节及各自摘要，避免 JSONB 重排或数字
 转换改变合同字节。实现阶段必须重新规范化/计算两个摘要并比对来件，核对
 intent 的 preset/input/显式 image 等选择与 Snapshot，以及原截止时间与
@@ -59,12 +68,12 @@ accepted_at 的关系；不能直接信任摘要字符串。原意图的缺省�
 返回同一 ADMISSION_CONFLICT，不能越租户读取赢家或返回其身份。其他数据库
 错误仍为 PERSISTENCE_UNAVAILABLE，不伪装成业务冲突。数据库读取
 重新规范化并核对字节/摘要，不能把损坏的持久事实当作有效受理。
-停止墓碑、关闭意图、资源历史、输入/目录导入和 publication 尚未实现。
+首墓碑实现范围见下文；资源历史、输入/目录导入和 publication 尚未实现。
 
-严格重复回放仅在 INSERT 返回 PostgreSQL 唯一冲突后，使用现有生成查询按
-原 tenant/execution 读取已提交行。比较 tenant、operation、execution、actor、
+严格重复回放在共享身份锁下进行。INSERT 使用 ON CONFLICT DO NOTHING，
+未插入时按原 tenant/execution 读取原行。比较 tenant、operation、execution、actor、
 accepted_at、两个摘要及完整 canonical intent/snapshot 字节，全部相同才返回
-原受理事实。唯一竞争的失败插入后使用新查询语句读取赢家，不盲目重建、更新
+原受理事实。唯一竞争后使用新查询语句读取赢家，不盲目重建、更新
 原记录或退回内存回执。数据库异常或不一致仍返回失败，不把它们当作重复成功。
 actor 保存可信上下文字符串，例如 `governance:user:42`，不要求主体 ID 为 UUID。
 
@@ -80,7 +89,9 @@ actor 保存可信上下文字符串，例如 `governance:user:42`，不要求�
 Fedora 执行者从受保护文件载入 `CPU_P01_TEST_DATABASE_URL` 和
 `CPU_P01_TEST_DATABASE_ADMIN_URL`，不得打印/回传其值。测试先验证两角色指向
 同一测试实例/库，runtime 为 NOSUPERUSER/NOBYPASSRLS，创建本次独占 schema，
-用迁移角色应用版本化 schema，只给 runtime INSERT/SELECT。直接 SQL 仅在
+用迁移角色应用版本化 schema，只给 runtime 各业务关系 INSERT/SELECT 和
+identity anchor 的 close_generation 列 UPDATE（用于行锁与 owner 代际更新），
+不给 tenant/operation/execution/spec 身份列 UPDATE。直接 SQL 仅在
 这种数据库准备、角色核查、权限和本测试精确 schema 清理中使用。
 
 依赖/权限/迁移失败带 `CPU04_DB_PREFLIGHT` 和 `behavior NOT_RUN`，不能算作
@@ -126,8 +137,13 @@ SourceGeneration、reason、requested_at/actor 的关闭意图；关闭原 pool 
 repository 读取同一墓碑，要求原事实、owner generation 1 和 CLOSING。查询
 Admission 仍为 NOT_FOUND，不创造伪快照，不将停止受理冒充 CLOSED。
 
-当前两个方法明确返回 NOT_IMPLEMENTED，测试候选尚待固定 RED；无新增持久
-实现或迁移。下一 matching late Admission 切片才通过真实并发测试引入共享身份
-anchor 与事务围栏，冻结 tenant/operation/execution/spec 关联，不能用两个互不
-关联的唯一表代替全局约束。此首墓碑切片绝不宣称迟到 Accept 或真实资源创建
-已经闭锁，也不证明 KFP/TrainJob 已终止或无活跃写者。
+首墓碑 RED 已保存。当前实现候选在 0003 的共享身份锁下增加 owner 代际，并与
+USER_STOP receipt 同事务提交；两个序号用 numeric(20,0) 精确覆盖 uint64，失败
+事务连同计数一起回滚。来源固定为 GOVERNANCE，只实现本测试要求的首条关闭
+意图与新连接读取，不预先接入 Step/deadline 或幂等重放成功分支。
+
+共享 anchor 已随本切片建立，因此原 Accept 全部行为必须回归；matching late
+Admission 的关闭状态传播及真实创建许可消费仍需要后续真实并发 RED/GREEN。
+此首墓碑切片绝不宣称迟到 Accept 或真实资源创建已经闭锁，也不证明
+KFP/TrainJob 已终止或无活跃写者。重复关闭的成功回执/来源代际冲突同样留待
+下一独立行为，不能用首次持久化证据代替。

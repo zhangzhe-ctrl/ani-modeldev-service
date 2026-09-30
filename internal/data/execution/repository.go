@@ -8,7 +8,6 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -54,24 +53,21 @@ func (r *Repository) Accept(ctx context.Context, admission biz.Admission) (biz.E
 		SpecHash:          admission.SpecHash,
 		AcceptedAt:        pgtype.Timestamptz{Time: admission.AcceptedAt.UTC(), Valid: true},
 	}
-	queries := executionsql.New(r.pool)
-	// This single statement is committed by PostgreSQL before its successful
-	// result is acknowledged; no in-memory receipt can substitute for the row.
-	row, err := queries.InsertExecution(ctx, command)
+	transaction, queries, err := r.lockIdentity(ctx, executionsql.InsertExecutionIdentityParams{
+		TenantID: tenantID, ExecutionID: executionID, OperationID: operationID, SpecHash: admission.SpecHash,
+	})
 	if err != nil {
-		var databaseError *pgconn.PgError
-		if !errors.As(err, &databaseError) || databaseError.Code != "23505" {
-			return biz.Execution{}, biz.ErrPersistence
-		}
-		// PostgreSQL resolves a competing unique-key insert before reporting
-		// this violation. A fresh statement can now read the committed winner,
-		// still scoped to the caller's tenant and original execution identity.
+		return biz.Execution{}, err
+	}
+	defer rollbackExecutionTransaction(transaction)
+	// The identity reservation and admission payload commit together. A close
+	// tombstone and Admission can never reserve this identity independently.
+	row, err := queries.InsertExecution(ctx, command)
+	if errors.Is(err, pgx.ErrNoRows) {
 		row, err = queries.GetExecution(ctx, executionsql.GetExecutionParams{
 			TenantID: tenantID, ExecutionID: executionID,
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
-			// The conflicting identity belongs to another execution or tenant.
-			// Do not query outside the trusted scope or disclose that record.
 			return biz.Execution{}, biz.ErrAdmissionConflict
 		}
 		if err != nil {
@@ -80,8 +76,17 @@ func (r *Repository) Accept(ctx context.Context, admission biz.Admission) (biz.E
 		if !sameAdmission(row, command) {
 			return biz.Execution{}, biz.ErrAdmissionConflict
 		}
+	} else if err != nil {
+		return biz.Execution{}, biz.ErrPersistence
 	}
-	return executionFromRow(row)
+	execution, err := executionFromRow(row)
+	if err != nil {
+		return biz.Execution{}, err
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return biz.Execution{}, biz.ErrPersistence
+	}
+	return execution, nil
 }
 
 func sameAdmission(row executionsql.ModeldevExecution, command executionsql.InsertExecutionParams) bool {
