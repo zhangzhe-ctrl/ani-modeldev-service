@@ -3132,7 +3132,9 @@ type ApplyCloseIntentRequest struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Identity         *v1.ExecutionIdentity  `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
 	ResourceTenantId string                 `protobuf:"bytes,2,opt,name=resource_tenant_id,json=resourceTenantId,proto3" json:"resource_tenant_id,omitempty"`
-	CloseGeneration  uint64                 `protobuf:"varint,3,opt,name=close_generation,json=closeGeneration,proto3" json:"close_generation,omitempty"`
+	// Governance's durable source command sequence, used only for deduplication.
+	// It is independent of the ModelDev-owned creation fence generation.
+	IntentGeneration uint64                 `protobuf:"varint,3,opt,name=intent_generation,json=intentGeneration,proto3" json:"intent_generation,omitempty"`
 	Reason           CloseReason            `protobuf:"varint,4,opt,name=reason,proto3,enum=ani.modeldev.v1.CloseReason" json:"reason,omitempty"`
 	RequestedAt      *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=requested_at,json=requestedAt,proto3" json:"requested_at,omitempty"`
 	// Trusted Governance audit identity; current authorization is checked before
@@ -3186,9 +3188,9 @@ func (x *ApplyCloseIntentRequest) GetResourceTenantId() string {
 	return ""
 }
 
-func (x *ApplyCloseIntentRequest) GetCloseGeneration() uint64 {
+func (x *ApplyCloseIntentRequest) GetIntentGeneration() uint64 {
 	if x != nil {
-		return x.CloseGeneration
+		return x.IntentGeneration
 	}
 	return 0
 }
@@ -3215,11 +3217,13 @@ func (x *ApplyCloseIntentRequest) GetRequestedActorId() string {
 }
 
 type ApplyCloseIntentResponse struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Identity        *v1.ExecutionIdentity  `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
-	CloseGeneration uint64                 `protobuf:"varint,2,opt,name=close_generation,json=closeGeneration,proto3" json:"close_generation,omitempty"`
-	CloseState      CloseState             `protobuf:"varint,3,opt,name=close_state,json=closeState,proto3,enum=ani.modeldev.v1.CloseState" json:"close_state,omitempty"`
-	Replayed        bool                   `protobuf:"varint,4,opt,name=replayed,proto3" json:"replayed,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Identity *v1.ExecutionIdentity  `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
+	// ModelDev allocates this monotonic creation fence in the commit transaction.
+	// Governance, managed steps and deadline handling cannot supply its value.
+	CloseGeneration uint64     `protobuf:"varint,2,opt,name=close_generation,json=closeGeneration,proto3" json:"close_generation,omitempty"`
+	CloseState      CloseState `protobuf:"varint,3,opt,name=close_state,json=closeState,proto3,enum=ani.modeldev.v1.CloseState" json:"close_state,omitempty"`
+	Replayed        bool       `protobuf:"varint,4,opt,name=replayed,proto3" json:"replayed,omitempty"`
 	// True also permits a durable tombstone before AcceptExecution arrives.
 	DurablyRecorded bool `protobuf:"varint,5,opt,name=durably_recorded,json=durablyRecorded,proto3" json:"durably_recorded,omitempty"`
 	unknownFields   protoimpl.UnknownFields
@@ -5331,11 +5335,11 @@ const file_ani_modeldev_v1_modeldev_proto_rawDesc = "" +
 	"\bidentity\x18\x01 \x01(\v2\".ani.training.v1.ExecutionIdentityR\bidentity\x12\x1a\n" +
 	"\breplayed\x18\x02 \x01(\bR\breplayed\x128\n" +
 	"\x06states\x18\x03 \x01(\v2 .ani.modeldev.v1.ExecutionStatesR\x06states\x12\x1a\n" +
-	"\brevision\x18\x04 \x01(\x04R\brevision\"\xd5\x02\n" +
+	"\brevision\x18\x04 \x01(\x04R\brevision\"\xd7\x02\n" +
 	"\x17ApplyCloseIntentRequest\x12>\n" +
 	"\bidentity\x18\x01 \x01(\v2\".ani.training.v1.ExecutionIdentityR\bidentity\x12,\n" +
-	"\x12resource_tenant_id\x18\x02 \x01(\tR\x10resourceTenantId\x12)\n" +
-	"\x10close_generation\x18\x03 \x01(\x04R\x0fcloseGeneration\x124\n" +
+	"\x12resource_tenant_id\x18\x02 \x01(\tR\x10resourceTenantId\x12+\n" +
+	"\x11intent_generation\x18\x03 \x01(\x04R\x10intentGeneration\x124\n" +
 	"\x06reason\x18\x04 \x01(\x0e2\x1c.ani.modeldev.v1.CloseReasonR\x06reason\x12=\n" +
 	"\frequested_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\vrequestedAt\x12,\n" +
 	"\x12requested_actor_id\x18\x06 \x01(\tR\x10requestedActorId\"\x8a\x02\n" +

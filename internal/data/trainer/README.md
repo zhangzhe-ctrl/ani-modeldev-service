@@ -34,6 +34,14 @@ are tool prerequisites, not behavior RED. Root owns go.mod/go.sum updates; all
 dependency resolution, gofmt and tests run on Fedora against fixed Git source,
 and generated/format changes return for review and a new fixed commit.
 
+At source `a4aa47a1d7bfce8544d60650a02f332152d25008`, Fedora Go
+`go1.26.7-X:nodwarf5` completed official-proxy `go mod tidy`, `go mod download`
+and the three owned Go files' gofmt with exit 0. `GOPROXY=https://proxy.golang.org`
+and `GOSUMDB=sum.golang.org` remained enabled. Resolved module sums, generated
+file SHA256s and the exact command are archived in the CPU06 run evidence.
+The generated go.mod/go.sum and formatting were reviewed and returned locally;
+the behavior test remains NOT_RUN until this material is fixed in a new commit.
+
 The latest consumed ENV record still lacks a usable Trainer CRD/Runtime and
 application-identity handoff. Server-side dry-run and real resource observation
 are NOT_RUN. These missing LIVE inputs do not block the adapter's module tests.

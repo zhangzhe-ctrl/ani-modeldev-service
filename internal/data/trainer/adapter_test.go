@@ -59,13 +59,13 @@ func TestObserveSuspendedTrainJobDoesNotTreatFirstTrueConditionAsCompletion(t *t
 	}
 	adapter := trainer.New(client)
 	observation, err := adapter.ObserveTrainJob(context.Background(), biz.TrainJobBinding{
-		TenantID: "11111111-1111-4111-8111-111111111111",
-		ExecutionID: "22222222-2222-4222-8222-222222222222",
-		SpecSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		Namespace: "cpu-execution",
+		TenantID:     "11111111-1111-4111-8111-111111111111",
+		ExecutionID:  "22222222-2222-4222-8222-222222222222",
+		SpecSHA256:   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Namespace:    "cpu-execution",
 		NamespaceUID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-		Name: "md-22222222-2222-4222-8222-222222222222",
-		UID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+		Name:         "md-22222222-2222-4222-8222-222222222222",
+		UID:          "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
 	})
 	if err != nil {
 		t.Fatalf("observe bound TrainJob: %v", err)
