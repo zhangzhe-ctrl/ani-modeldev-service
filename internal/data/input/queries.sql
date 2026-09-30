@@ -29,7 +29,20 @@ SET state = 'READY',
     verified_at = sqlc.arg(verified_at),
     verified_schema_version = sqlc.arg(verified_schema_version),
     verified_row_count = sqlc.arg(verified_row_count),
-    verified_feature_count = sqlc.arg(verified_feature_count)
+    verified_feature_count = sqlc.arg(verified_feature_count),
+    failure_code = NULL,
+    failure_observed_at = NULL
+WHERE tenant_id = sqlc.arg(tenant_id)::uuid
+  AND input_version_id = sqlc.arg(input_version_id)::uuid
+  AND request_id = sqlc.arg(request_id)::uuid
+  AND state = 'VALIDATING'
+RETURNING *;
+
+-- name: RecordValidationFailure :one
+UPDATE modeldev_input_versions
+SET state = sqlc.arg(state),
+    failure_code = sqlc.arg(failure_code),
+    failure_observed_at = sqlc.arg(failure_observed_at)
 WHERE tenant_id = sqlc.arg(tenant_id)::uuid
   AND input_version_id = sqlc.arg(input_version_id)::uuid
   AND request_id = sqlc.arg(request_id)::uuid
