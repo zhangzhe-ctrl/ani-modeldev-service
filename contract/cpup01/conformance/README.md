@@ -26,3 +26,13 @@ until this generation step has completed; do not create placeholder JSON.
 Consumers use IntentV1/SnapshotV1 for fresh typed values and compare their actual
 wire round trips with the canonical byte accessors and fixed SHA256 constants.
 Mutable slices returned to one test do not change the next test's fixture.
+
+The Release v1 vector is maintained directly in `release-v1.json`. It was moved
+byte-for-byte from the manually authored catalogue test literal on Fedora:
+2362 bytes, SHA256 `388c7687614c92a2b50a14c8ee29df04f4d8934cf1dbf88d7b31258efc9f3dae`.
+Its expected digest was independently computed with Python hashlib. The file has
+no trailing newline; the generator above intentionally leaves it unchanged.
+`ReleaseCanonicalV1`, `ReleaseV1` and `ReleaseSHA256V1` provide the shared consumer
+test inputs. The catalogue test retains an independently authored expected Go
+document and tests the public parser against the exact digest. Do not derive the
+expected vector from the parser or maintain another JSON copy.

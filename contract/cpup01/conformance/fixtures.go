@@ -11,6 +11,7 @@ import (
 
 const IntentSHA256V1 = "152ed6b8e0a392be5697ee138e5a22be4183139c2954f009d6d85483cdf4a01a"
 const SnapshotSHA256V1 = "972dee14e65202d5d4da7da199cf5f37139b535701a0cb1b3de4d8ef8a5170b9"
+const ReleaseSHA256V1 = "388c7687614c92a2b50a14c8ee29df04f4d8934cf1dbf88d7b31258efc9f3dae"
 
 //go:embed intent-input-v1.json
 var intentInputV1 []byte
@@ -21,11 +22,16 @@ var intentCanonicalV1 []byte
 //go:embed snapshot-v1.json
 var snapshotCanonicalV1 []byte
 
+//go:embed release-v1.json
+var releaseCanonicalV1 []byte
+
 func IntentInputV1() []byte { return append([]byte{}, intentInputV1...) }
 
 func IntentCanonicalV1() []byte { return append([]byte{}, intentCanonicalV1...) }
 
 func SnapshotCanonicalV1() []byte { return append([]byte{}, snapshotCanonicalV1...) }
+
+func ReleaseCanonicalV1() []byte { return append([]byte{}, releaseCanonicalV1...) }
 
 func IntentV1() cpup01.Intent {
 	intent, err := cpup01.ParseIntent(intentInputV1)
@@ -46,4 +52,14 @@ func SnapshotV1() cpup01.Snapshot {
 		panic("embedded CPU-P01 snapshot violates its contract")
 	}
 	return snapshot
+}
+
+// ReleaseV1 returns fresh synthetic catalogue values for consumer tests only.
+// It does not establish a real or enabled Release, image, PipelineVersion or ENV.
+func ReleaseV1() cpup01.ReleaseDocument {
+	var release cpup01.ReleaseDocument
+	if err := json.Unmarshal(releaseCanonicalV1, &release); err != nil {
+		panic("invalid embedded CPU-P01 release conformance fixture")
+	}
+	return release
 }

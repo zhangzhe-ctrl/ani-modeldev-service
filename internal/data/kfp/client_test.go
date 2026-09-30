@@ -156,42 +156,42 @@ func TestCreateRunConfirmsOnlyCompleteMatchingOfficialResponse(t *testing.T) {
   "created_at":"2026-09-30T09:00:00Z"
 }`
 	cases := []struct {
-		name string
-		body string
-		status int
+		name        string
+		body        string
+		status      int
 		contentType string
-		redirect bool
-		confirmed bool
+		redirect    bool
+		confirmed   bool
 	}{
-		{name:"complete official response", body:response, confirmed:true},
-		{name:"created run may already report failed computation", body:strings.Replace(response,`"state":"PENDING"`,`"state":"FAILED"`,1), confirmed:true},
-		{name:"conversion error with run ID", body:`{"run_id":"55555555-6666-4777-8888-999999999999","experiment_id":"44444444-4444-4444-8444-444444444444","error":{"code":13,"message":"synthetic-sensitive-error"}}`},
-		{name:"error in otherwise complete response", body:strings.TrimSuffix(response,"}")+`,"error":{"code":13,"message":"synthetic-sensitive-error"}}`},
-		{name:"missing run ID", body:strings.Replace(response, `"run_id":"55555555-6666-4777-8888-999999999999",`, "", 1)},
-		{name:"invalid run ID", body:strings.Replace(response, "55555555-6666-4777-8888-999999999999", "NOT_RUN", 1)},
-		{name:"other experiment", body:strings.Replace(response, "44444444-4444-4444-8444-444444444444", "44444444-4444-4444-8444-555555555555", 1)},
-		{name:"other pipeline", body:strings.Replace(response, "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "cccccccc-cccc-4ccc-8ccc-dddddddddddd", 1)},
-		{name:"other pipeline version", body:strings.Replace(response, "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "dddddddd-dddd-4ddd-8ddd-cccccccccccc", 1)},
-		{name:"other execution", body:strings.ReplaceAll(response, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "aaaaaaaa-bbbb-4ccc-8ddd-ffffffffffff")},
-		{name:"other spec", body:strings.Replace(response, conformance.SnapshotSHA256V1, strings.Repeat("f",64), 1)},
-		{name:"other step service account", body:strings.Replace(response, "cpu-managed-step", "cpu-training", 1)},
-		{name:"other artifact root", body:strings.Replace(response, "managed-root", "other-root", 1)},
-		{name:"duplicate run ID", body:strings.TrimSuffix(response,"}")+`,"run_id":"55555555-6666-4777-8888-999999999999"}`},
-		{name:"duplicate nested spec", body:strings.Replace(response, `"spec_hash":`, `"spec_hash":"different","spec_hash":`, 1)},
-		{name:"case alias is not an official key", body:strings.Replace(response, `"run_id":`, `"RUN_ID":`, 1)},
-		{name:"truncated JSON", body:strings.TrimSuffix(response,"}")},
-		{name:"trailing JSON", body:response+`{}`},
-		{name:"exceeds one MiB response limit", body:strings.Repeat(" ", 1<<20)+response},
-		{name:"HTML media type", body:response, contentType:"text/html"},
-		{name:"undocumented success status", body:response, status:http.StatusCreated},
-		{name:"redirect", body:response, status:http.StatusTemporaryRedirect, redirect:true},
-		{name:"bad request", body:response, status:http.StatusBadRequest},
-		{name:"forbidden", body:response, status:http.StatusForbidden},
-		{name:"not found", body:response, status:http.StatusNotFound},
-		{name:"conflict", body:response, status:http.StatusConflict},
-		{name:"rate limited", body:response, status:http.StatusTooManyRequests},
-		{name:"internal error", body:response, status:http.StatusInternalServerError},
-		{name:"unavailable", body:response, status:http.StatusServiceUnavailable},
+		{name: "complete official response", body: response, confirmed: true},
+		{name: "created run may already report failed computation", body: strings.Replace(response, `"state":"PENDING"`, `"state":"FAILED"`, 1), confirmed: true},
+		{name: "conversion error with run ID", body: `{"run_id":"55555555-6666-4777-8888-999999999999","experiment_id":"44444444-4444-4444-8444-444444444444","error":{"code":13,"message":"synthetic-sensitive-error"}}`},
+		{name: "error in otherwise complete response", body: strings.TrimSuffix(response, "}") + `,"error":{"code":13,"message":"synthetic-sensitive-error"}}`},
+		{name: "missing run ID", body: strings.Replace(response, `"run_id":"55555555-6666-4777-8888-999999999999",`, "", 1)},
+		{name: "invalid run ID", body: strings.Replace(response, "55555555-6666-4777-8888-999999999999", "NOT_RUN", 1)},
+		{name: "other experiment", body: strings.Replace(response, "44444444-4444-4444-8444-444444444444", "44444444-4444-4444-8444-555555555555", 1)},
+		{name: "other pipeline", body: strings.Replace(response, "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "cccccccc-cccc-4ccc-8ccc-dddddddddddd", 1)},
+		{name: "other pipeline version", body: strings.Replace(response, "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "dddddddd-dddd-4ddd-8ddd-cccccccccccc", 1)},
+		{name: "other execution", body: strings.ReplaceAll(response, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "aaaaaaaa-bbbb-4ccc-8ddd-ffffffffffff")},
+		{name: "other spec", body: strings.Replace(response, conformance.SnapshotSHA256V1, strings.Repeat("f", 64), 1)},
+		{name: "other step service account", body: strings.Replace(response, "cpu-managed-step", "cpu-training", 1)},
+		{name: "other artifact root", body: strings.Replace(response, "managed-root", "other-root", 1)},
+		{name: "duplicate run ID", body: strings.TrimSuffix(response, "}") + `,"run_id":"55555555-6666-4777-8888-999999999999"}`},
+		{name: "duplicate nested spec", body: strings.Replace(response, `"spec_hash":`, `"spec_hash":"different","spec_hash":`, 1)},
+		{name: "case alias is not an official key", body: strings.Replace(response, `"run_id":`, `"RUN_ID":`, 1)},
+		{name: "truncated JSON", body: strings.TrimSuffix(response, "}")},
+		{name: "trailing JSON", body: response + `{}`},
+		{name: "exceeds one MiB response limit", body: strings.Repeat(" ", 1<<20) + response},
+		{name: "HTML media type", body: response, contentType: "text/html"},
+		{name: "undocumented success status", body: response, status: http.StatusCreated},
+		{name: "redirect", body: response, status: http.StatusTemporaryRedirect, redirect: true},
+		{name: "bad request", body: response, status: http.StatusBadRequest},
+		{name: "forbidden", body: response, status: http.StatusForbidden},
+		{name: "not found", body: response, status: http.StatusNotFound},
+		{name: "conflict", body: response, status: http.StatusConflict},
+		{name: "rate limited", body: response, status: http.StatusTooManyRequests},
+		{name: "internal error", body: response, status: http.StatusInternalServerError},
+		{name: "unavailable", body: response, status: http.StatusServiceUnavailable},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -201,32 +201,40 @@ func TestCreateRunConfirmsOnlyCompleteMatchingOfficialResponse(t *testing.T) {
 				calls.Add(1)
 				_, _ = io.Copy(io.Discard, r.Body)
 				mediaType := test.contentType
-				if mediaType == "" { mediaType = "application/json" }
-				w.Header().Set("Content-Type",mediaType)
+				if mediaType == "" {
+					mediaType = "application/json"
+				}
+				w.Header().Set("Content-Type", mediaType)
 				status := test.status
-				if status == 0 { status = http.StatusOK }
+				if status == 0 {
+					status = http.StatusOK
+				}
 				if test.redirect && r.URL.Path == "/apis/v2beta1/runs" {
-					w.Header().Set("Location",server.URL+"/redirected")
+					w.Header().Set("Location", server.URL+"/redirected")
 				} else if test.redirect {
 					status = http.StatusOK
 				}
 				w.WriteHeader(status)
-				_, _ = io.WriteString(w,test.body)
+				_, _ = io.WriteString(w, test.body)
 			}))
 			t.Cleanup(server.Close)
-			client := fixtureClient(t,server,tokenProviderFunc(func(context.Context,string,cpup01.EnvironmentBindingSnapshot)(string,error){return "synthetic-fixture-token",nil}))
-			observation, err := client.CreateRun(context.Background(),fixtureAdmission(t))
+			client := fixtureClient(t, server, tokenProviderFunc(func(context.Context, string, cpup01.EnvironmentBindingSnapshot) (string, error) {
+				return "synthetic-fixture-token", nil
+			}))
+			observation, err := client.CreateRun(context.Background(), fixtureAdmission(t))
 			if test.confirmed {
 				if err != nil || observation.State != biz.PipelineSubmissionConfirmed || observation.RunID != "55555555-6666-4777-8888-999999999999" {
-					t.Errorf("matching official response was not confirmed: %+v, %v",observation,err)
+					t.Errorf("matching official response was not confirmed: %+v, %v", observation, err)
 				}
 			} else if err == nil || observation.State != biz.PipelineSubmissionUncertain || observation.RunID != "" {
-				t.Errorf("untrusted response must remain uncertain: %+v, %v",observation,err)
+				t.Errorf("untrusted response must remain uncertain: %+v, %v", observation, err)
 			}
-			if err != nil && strings.Contains(err.Error(),"synthetic-sensitive-error") {
+			if err != nil && strings.Contains(err.Error(), "synthetic-sensitive-error") {
 				t.Error("raw KFP response leaked through returned error")
 			}
-			if calls.Load() != 1 { t.Errorf("CreateRun repeated or redirected POST: calls=%d", calls.Load()) }
+			if calls.Load() != 1 {
+				t.Errorf("CreateRun repeated or redirected POST: calls=%d", calls.Load())
+			}
 		})
 	}
 }
@@ -236,9 +244,11 @@ func fixtureClient(t *testing.T, server *httptest.Server, provider kfp.TokenProv
 	certificates := x509.NewCertPool()
 	certificates.AddCert(server.Certificate())
 	client, err := kfp.New(kfp.Config{
-		ConnectionRef:"kfp-managed-v1", Endpoint:server.URL,
-		PipelineRoot:"s3://fixture-kfp-artifacts/managed-root", RootCAs:certificates, Timeout:3*time.Second,
-	},provider)
-	if err != nil { t.Fatalf("construct fixture client: %v",err) }
+		ConnectionRef: "kfp-managed-v1", Endpoint: server.URL,
+		PipelineRoot: "s3://fixture-kfp-artifacts/managed-root", RootCAs: certificates, Timeout: 3 * time.Second,
+	}, provider)
+	if err != nil {
+		t.Fatalf("construct fixture client: %v", err)
+	}
 	return client
 }

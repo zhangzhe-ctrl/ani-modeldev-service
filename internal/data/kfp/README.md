@@ -35,9 +35,11 @@ call only; persistence and authoritative Run CAS remain separate. The candidate
 must not follow redirects or automatically repeat a POST. A sent request with
 lost, malformed, oversized or otherwise untrusted response remains uncertain;
 an HTTP error alone does not prove no creation occurred. Confirmation requires
-HTTP 200 JSON at most 1 MiB, no duplicate keys or error field, a nonzero canonical
-Run UUID and matching Experiment, display name, PipelineVersion, managed SA,
+HTTP 200 JSON at most 1 MiB, no duplicate keys or error field, a nonzero
+Run UUID in standard hyphenated form and matching Experiment, display name,
+PipelineVersion, managed SA,
 execution/spec parameters and root. Extra top-level output fields are allowed.
+Run UUIDs may contain uppercase hexadecimal and are returned in lowercase.
 A confirmed creation response may already report failed computation; it is not
 training success, verified namespace/Pod identity, or authority.
 
