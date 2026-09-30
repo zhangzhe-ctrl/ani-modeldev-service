@@ -80,8 +80,7 @@ then the command rejected the absent `--recipe` argument before computation.
 The implementation now accepts the three registered recipes, with `success` as
 the default. Failure is raised after the fifth actual optimizer update and
 flushed metric. Slow-stop uses a fixed POSIX alarm beginning after input admission
-and before PyTorch import; its delay follows each real optimizer update. SIGTERM
-keeps its normal process termination semantics. All six module tests passed at
+and before PyTorch import; its delay follows each real optimizer update. All six module tests passed at
 `d212f25e2180413a3e538370f1b4a011a6fadba7` on Fedora in 55.861 seconds, exit 0.
 This signal result applies to the workload subprocess; the packaged image's
 actual entrypoint and PID 1 still require the separate image smoke below.
@@ -141,7 +140,19 @@ generation, then failed: the default entrypoint could not read the root-owned
 mode-0600 trainer file. This is an image packaging RED before training; the
 failure and PID 1 stop recipes were not reached. The Dockerfile now gives the
 packaged trainer and material records explicit read-only mode 0444, independent
-of the build-context umask. The new fixed image build and smoke remain pending.
+of the build-context umask.
+
+The corrected image build passed at `7e2a045e9d619919917374b9d4ec7b621de3a3f7`,
+producing local image
+`sha256:2e68ce5905adc1213c2966bc0c635f3f826e51e2c6bfd3d138019eb42dbcd62d`.
+The real image success run, file/hash checks, independent weights-only reload and
+five-step failure all passed. The slow-stop check then observed actual optimizer
+steps and sent SIGTERM, but PID 1 did not terminate within ten seconds; this is a
+product behavior RED. Only that test's exact container ID was force-removed after
+retaining its metrics and logs. It had continued to 48 steps and written candidate
+files despite SIGTERM. The workload now explicitly handles SIGTERM and
+exits 143 while unwinding open files. This fix awaits a new fixed image build and
+both module and image smoke verification; the previous image is not accepted.
 The existing CI workflow has no
 image-publish job; the consumed ENV handoff is still a NOT_RUN template without a
 registry reference. Registry push therefore remains NOT_RUN until an explicit

@@ -88,7 +88,14 @@ def recipe_deadline(_signal, _frame):
     raise TimeoutError("CPU03_RECIPE_DEADLINE: 30-second training budget expired")
 
 
+def terminate(signum, _frame):
+    # The container's PID 1 must explicitly handle SIGTERM. SystemExit unwinds
+    # the open metrics file and reports nonzero termination to the owning runtime.
+    raise SystemExit(128 + signum)
+
+
 def main():
+    signal.signal(signal.SIGTERM, terminate)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", required=True)
     parser.add_argument("--output", required=True)
