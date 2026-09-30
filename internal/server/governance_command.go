@@ -57,22 +57,32 @@ func NewGovernanceCommandServer(c *conf.Server_GRPC, security CommandTLS, comman
 	authenticate := func(ctx context.Context, request any, info *grpc.UnaryServerInfo, next grpc.UnaryHandler) (any, error) {
 		denied := status.Error(codes.Unauthenticated, "authenticated Governance delivery required")
 		remote, ok := peer.FromContext(ctx)
-		if !ok { return nil, denied }
+		if !ok {
+			return nil, denied
+		}
 		tlsInfo, ok := remote.AuthInfo.(credentials.TLSInfo)
-		if !ok || verifyPeer(tlsInfo.State) != nil { return nil, denied }
+		if !ok || verifyPeer(tlsInfo.State) != nil {
+			return nil, denied
+		}
 		if info.FullMethod != modeldevv1.ModelDevCommandService_ApplyCloseIntent_FullMethodName && info.FullMethod != modeldevv1.ModelDevCommandService_AcceptExecution_FullMethodName {
 			return nil, status.Error(codes.PermissionDenied, "Governance delivery does not permit this method")
 		}
 		md, ok := metadata.FromIncomingContext(ctx)
-		if !ok { return nil, denied }
+		if !ok {
+			return nil, denied
+		}
 		// User credentials and forwarded certificate headers cannot accompany
 		// this durable workload command or substitute for the actual TLS peer.
 		for _, key := range []string{"authorization", "cookie", "x-forwarded-client-cert"} {
-			if len(md.Get(key)) != 0 { return nil, denied }
+			if len(md.Get(key)) != 0 {
+				return nil, denied
+			}
 		}
 		single := func(key string) string {
 			values := md.Get(key)
-			if len(values) != 1 { return "" }
+			if len(values) != 1 {
+				return ""
+			}
 			return values[0]
 		}
 		delivery := service.GovernanceDelivery{TenantID: single("x-ani-tenant-id"), Actor: single("x-ani-actor"), RequestID: single("x-ani-request-id")}
@@ -80,7 +90,9 @@ func NewGovernanceCommandServer(c *conf.Server_GRPC, security CommandTLS, comman
 			id, err := uuid.Parse(value)
 			return err == nil && id != uuid.Nil && id.String() == value
 		}
-		if !canonicalID(delivery.TenantID) || !canonicalID(delivery.RequestID) || !cpup01.ValidAuditActor(delivery.Actor) { return nil, denied }
+		if !canonicalID(delivery.TenantID) || !canonicalID(delivery.RequestID) || !cpup01.ValidAuditActor(delivery.Actor) {
+			return nil, denied
+		}
 		return next(service.WithVerifiedGovernanceDelivery(ctx, delivery), request)
 	}
 	s := kratosgrpc.NewServer(

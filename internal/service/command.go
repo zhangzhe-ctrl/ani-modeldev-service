@@ -80,7 +80,7 @@ func (command *Command) ApplyCloseIntent(ctx context.Context, request *modeldevv
 		}
 	}
 	return &modeldevv1.ApplyCloseIntentResponse{
-		Identity: &trainingv1.ExecutionIdentity{OperationId: receipt.OperationID, ExecutionId: receipt.ExecutionID, ExecutionSpecHash: receipt.SpecHash},
+		Identity:        &trainingv1.ExecutionIdentity{OperationId: receipt.OperationID, ExecutionId: receipt.ExecutionID, ExecutionSpecHash: receipt.SpecHash},
 		CloseGeneration: receipt.Generation, CloseState: modeldevv1.CloseState_CLOSE_STATE_CLOSING,
 		Replayed: receipt.Replayed, DurablyRecorded: true,
 	}, nil
