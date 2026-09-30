@@ -62,7 +62,7 @@ func TestResolveManagedAdmissionUsesPinnedFactsWithDurableInput(t *testing.T) {
 		Input: cpup01.InputRef{InputVersionID: imported.InputVersionID, Object: imported.Object, Format: "CSV", SchemaVersion: "ani.cpu.csv.v1", RowCount: 1024, FeatureCount: 16},
 		Program: cpup01.ProgramRef{
 			ImageVersionID: release.Program.ImageVersionID, ImageDigest: release.Program.ImageDigest, Command: release.Program.Command,
-			ResolvedArgs: []string{"--data", "/prepared-fixture/data.csv", "--output", "/trained-fixture", "--expected-input-sha256", "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "--expected-input-bytes", "65536", "--learning-rate", "0.02"},
+			ResolvedArgs:       []string{"--data", "/prepared-fixture/data.csv", "--output", "/trained-fixture", "--expected-input-sha256", "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "--expected-input-bytes", "65536", "--learning-rate", "0.02"},
 			ResolvedParameters: []cpup01.Parameter{{Name: "batch_size", Type: "INTEGER", Value: "64"}, {Name: "epochs", Type: "INTEGER", Value: "3"}, {Name: "learning_rate", Type: "DECIMAL", Value: "0.02"}},
 		},
 		Resources: release.Resources, Environment: fixture.facts.Environment, Workspace: release.Workspace,
@@ -103,26 +103,26 @@ func writeManagedFactsFixture(t *testing.T, fixture resolutionFixture) admission
 	t.Helper()
 	type evidence struct {
 		Reference string `json:"reference"`
-		SHA256 string `json:"sha256"`
+		SHA256    string `json:"sha256"`
 	}
 	document := struct {
-		SchemaVersion string `json:"schema_version"`
-		ResourceTenantID string `json:"resource_tenant_id"`
-		ReleaseID string `json:"release_id"`
-		ReleaseDigest string `json:"release_digest"`
-		Environment cpup01.EnvironmentBindingSnapshot `json:"environment"`
-		InputScope cpup01.StorageScope `json:"input_scope"`
-		PublicationScope cpup01.StorageScope `json:"publication_scope"`
-		Runtime cpup01.RuntimeRef `json:"runtime"`
-		Workspace cpup01.WorkspaceContract `json:"workspace"`
-		InputFilePath string `json:"input_file_path"`
-		OutputDirectoryPath string `json:"output_directory_path"`
-		EnvironmentEvidence evidence `json:"environment_evidence"`
-		ApplicationEvidence evidence `json:"application_evidence"`
+		SchemaVersion       string                            `json:"schema_version"`
+		ResourceTenantID    string                            `json:"resource_tenant_id"`
+		ReleaseID           string                            `json:"release_id"`
+		ReleaseDigest       string                            `json:"release_digest"`
+		Environment         cpup01.EnvironmentBindingSnapshot `json:"environment"`
+		InputScope          cpup01.StorageScope               `json:"input_scope"`
+		PublicationScope    cpup01.StorageScope               `json:"publication_scope"`
+		Runtime             cpup01.RuntimeRef                 `json:"runtime"`
+		Workspace           cpup01.WorkspaceContract          `json:"workspace"`
+		InputFilePath       string                            `json:"input_file_path"`
+		OutputDirectoryPath string                            `json:"output_directory_path"`
+		EnvironmentEvidence evidence                          `json:"environment_evidence"`
+		ApplicationEvidence evidence                          `json:"application_evidence"`
 	}{
-		SchemaVersion: "ani.modeldev.managed-admission-facts.v1",
+		SchemaVersion:    "ani.modeldev.managed-admission-facts.v1",
 		ResourceTenantID: fixture.selection.TenantID,
-		ReleaseID: fixture.selection.Release.ReleaseID, ReleaseDigest: fixture.selection.Release.ReleaseDigest,
+		ReleaseID:        fixture.selection.Release.ReleaseID, ReleaseDigest: fixture.selection.Release.ReleaseDigest,
 		Environment: fixture.facts.Environment, InputScope: fixture.facts.InputScope, PublicationScope: fixture.facts.PublicationScope,
 		Runtime: fixture.facts.Runtime, Workspace: fixture.facts.Workspace,
 		InputFilePath: fixture.facts.InputFilePath, OutputDirectoryPath: fixture.facts.OutputDirectoryPath,

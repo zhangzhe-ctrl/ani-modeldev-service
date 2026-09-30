@@ -24,13 +24,13 @@ import (
 
 const (
 	schemaVersion = "ani.modeldev.managed-admission-facts.v1"
-	maxFiles = 64
-	maxFileBytes = 64 * 1024
-	maxJSONDepth = 16
+	maxFiles      = 64
+	maxFileBytes  = 64 * 1024
+	maxJSONDepth  = 16
 )
 
 var (
-	ErrInvalidFacts = errors.New("INVALID_MANAGED_ADMISSION_FACTS")
+	ErrInvalidFacts     = errors.New("INVALID_MANAGED_ADMISSION_FACTS")
 	ErrFactsUnavailable = errors.New("MANAGED_ADMISSION_FACTS_UNAVAILABLE")
 )
 
@@ -50,10 +50,10 @@ type document struct {
 	ReleaseID           string                            `json:"release_id"`
 	ReleaseDigest       string                            `json:"release_digest"`
 	Environment         cpup01.EnvironmentBindingSnapshot `json:"environment"`
-	InputScope          cpup01.StorageScope                `json:"input_scope"`
-	PublicationScope    cpup01.StorageScope                `json:"publication_scope"`
-	Runtime             cpup01.RuntimeRef                  `json:"runtime"`
-	Workspace           cpup01.WorkspaceContract           `json:"workspace"`
+	InputScope          cpup01.StorageScope               `json:"input_scope"`
+	PublicationScope    cpup01.StorageScope               `json:"publication_scope"`
+	Runtime             cpup01.RuntimeRef                 `json:"runtime"`
+	Workspace           cpup01.WorkspaceContract          `json:"workspace"`
 	InputFilePath       string                            `json:"input_file_path"`
 	OutputDirectoryPath string                            `json:"output_directory_path"`
 	EnvironmentEvidence evidenceReference                 `json:"environment_evidence"`
@@ -72,8 +72,8 @@ type Reader struct {
 }
 
 type documentKey struct {
-	tenantID string
-	releaseID string
+	tenantID      string
+	releaseID     string
 	releaseDigest string
 }
 
