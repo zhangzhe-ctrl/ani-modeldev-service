@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"path"
 	"regexp"
@@ -14,6 +15,10 @@ import (
 
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01"
 )
+
+// ErrPipelineDispatchBlocked rejects a first reservation after close or the
+// original deadline. An existing reservation remains readable without a permit.
+var ErrPipelineDispatchBlocked = errors.New("PIPELINE_DISPATCH_BLOCKED")
 
 // PipelineOwnerConfiguration is an explicitly supplied owner configuration
 // revision. Its digest is a reference, not proof that the configuration exists

@@ -2,11 +2,19 @@
 package submission
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
+	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
+	submissionsql "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/submission/sqlc"
 )
 
 type Repository struct {
@@ -17,14 +25,199 @@ func New(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
 }
 
-// Reserve deliberately fails until the real PostgreSQL reservation behavior
-// has a recorded RED. This candidate is not wired to a product entry point.
-func (repository *Repository) Reserve(context.Context, biz.PipelineDispatchRequest) (biz.PipelineDispatchReservation, error) {
-	return biz.PipelineDispatchReservation{}, biz.ErrPersistence
+// Reserve serializes first creation with Admission and close on the existing
+// identity row. No network operation or current-default lookup occurs here.
+func (repository *Repository) Reserve(ctx context.Context, request biz.PipelineDispatchRequest) (biz.PipelineDispatchReservation, error) {
+	plan, err := request.Freeze()
+	if err != nil {
+		return biz.PipelineDispatchReservation{}, err
+	}
+	canonical, err := plan.Canonical()
+	if err != nil {
+		return biz.PipelineDispatchReservation{}, err
+	}
+	planHash, err := plan.Digest()
+	if err != nil {
+		return biz.PipelineDispatchReservation{}, err
+	}
+	tenantID, err := databaseID(plan.TenantID)
+	if err != nil {
+		return biz.PipelineDispatchReservation{}, err
+	}
+	executionID, err := databaseID(plan.ExecutionID)
+	if err != nil {
+		return biz.PipelineDispatchReservation{}, err
+	}
+	operationID, err := databaseID(plan.OperationID)
+	if err != nil {
+		return biz.PipelineDispatchReservation{}, err
+	}
+	if repository == nil || repository.pool == nil {
+		return biz.PipelineDispatchReservation{}, biz.ErrPersistence
+	}
+	transaction, err := repository.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return biz.PipelineDispatchReservation{}, biz.ErrPersistence
+	}
+	defer rollback(transaction)
+	queries := submissionsql.New(transaction)
+	identity, err := queries.LockExecutionIdentity(ctx, submissionsql.LockExecutionIdentityParams{TenantID: tenantID, ExecutionID: executionID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return biz.PipelineDispatchReservation{}, biz.ErrExecutionNotFound
+	}
+	if err != nil {
+		return biz.PipelineDispatchReservation{}, biz.ErrPersistence
+	}
+	if identity.TenantID != tenantID || identity.ExecutionID != executionID || identity.OperationID != operationID || identity.SpecHash != plan.SpecHash {
+		return biz.PipelineDispatchReservation{}, biz.ErrAdmissionConflict
+	}
+	admission, err := queries.GetAdmission(ctx, submissionsql.GetAdmissionParams{TenantID: tenantID, ExecutionID: executionID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return biz.PipelineDispatchReservation{}, biz.ErrExecutionNotFound
+	}
+	if err != nil {
+		return biz.PipelineDispatchReservation{}, biz.ErrPersistence
+	}
+	intent, snapshot, err := request.Admission.CanonicalPayloads()
+	if err != nil {
+		return biz.PipelineDispatchReservation{}, err
+	}
+	if admission.TenantID != tenantID || admission.ExecutionID != executionID || admission.OperationID != operationID ||
+		admission.Actor != request.Admission.Actor || admission.IntentHash != request.Admission.IntentHash || admission.SpecHash != plan.SpecHash ||
+		!bytes.Equal(admission.IntentCanonical, intent) || !bytes.Equal(admission.SnapshotCanonical, snapshot) ||
+		!admission.AcceptedAt.Valid || admission.AcceptedAt.InfinityModifier != pgtype.Finite || !admission.AcceptedAt.Time.Equal(request.Admission.AcceptedAt) {
+		return biz.PipelineDispatchReservation{}, biz.ErrAdmissionConflict
+	}
+	row, err := queries.GetPipelineDispatch(ctx, submissionsql.GetPipelineDispatchParams{TenantID: tenantID, ExecutionID: executionID})
+	if err == nil {
+		dispatch, err := dispatchFromRow(row, admission)
+		if err != nil {
+			return biz.PipelineDispatchReservation{}, err
+		}
+		if !bytes.Equal(row.PlanCanonical, canonical) || row.PlanHash != planHash {
+			return biz.PipelineDispatchReservation{}, biz.ErrAdmissionConflict
+		}
+		// Close/deadline cannot erase a prior fact. Even a successful replay
+		// transaction never reconstructs the original sending permission.
+		if err := transaction.Commit(ctx); err != nil {
+			return biz.PipelineDispatchReservation{}, biz.ErrPersistence
+		}
+		return biz.PipelineDispatchReservation{Dispatch: dispatch}, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return biz.PipelineDispatchReservation{}, biz.ErrPersistence
+	}
+	if !identity.CreationOpen {
+		return biz.PipelineDispatchReservation{}, biz.ErrPipelineDispatchBlocked
+	}
+	attemptID, err := uuid.NewRandom()
+	if err != nil {
+		return biz.PipelineDispatchReservation{}, biz.ErrPersistence
+	}
+	row, err = queries.InsertPipelineDispatch(ctx, submissionsql.InsertPipelineDispatchParams{
+		TenantID: tenantID, ExecutionID: executionID, OperationID: operationID, SpecHash: plan.SpecHash,
+		AttemptID: pgtype.UUID{Bytes: attemptID, Valid: true}, PlanCanonical: canonical, PlanHash: planHash,
+		DeadlineAt: pgtype.Timestamptz{Time: plan.DeadlineAt.UTC(), Valid: true},
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return biz.PipelineDispatchReservation{}, biz.ErrPipelineDispatchBlocked
+	}
+	if err != nil {
+		return biz.PipelineDispatchReservation{}, biz.ErrPersistence
+	}
+	dispatch, err := dispatchFromRow(row, admission)
+	if err != nil {
+		return biz.PipelineDispatchReservation{}, err
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		// An unknown commit outcome must not authorize a send. If it committed,
+		// any subsequent Reserve observes the original row without a permit.
+		return biz.PipelineDispatchReservation{}, biz.ErrPersistence
+	}
+	return biz.PipelineDispatchReservation{
+		Dispatch: dispatch,
+		SendPermit: &biz.PipelineSendPermit{TenantID: plan.TenantID, ExecutionID: plan.ExecutionID, AttemptID: dispatch.AttemptID, PlanHash: planHash},
+	}, nil
 }
 
-func (repository *Repository) Get(context.Context, string, string) (biz.PipelineDispatch, error) {
-	return biz.PipelineDispatch{}, biz.ErrPersistence
+func (repository *Repository) Get(ctx context.Context, tenant, execution string) (biz.PipelineDispatch, error) {
+	tenantID, err := databaseID(tenant)
+	if err != nil {
+		return biz.PipelineDispatch{}, err
+	}
+	executionID, err := databaseID(execution)
+	if err != nil {
+		return biz.PipelineDispatch{}, err
+	}
+	if repository == nil || repository.pool == nil {
+		return biz.PipelineDispatch{}, biz.ErrPersistence
+	}
+	queries := submissionsql.New(repository.pool)
+	row, err := queries.GetPipelineDispatch(ctx, submissionsql.GetPipelineDispatchParams{TenantID: tenantID, ExecutionID: executionID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return biz.PipelineDispatch{}, biz.ErrExecutionNotFound
+	}
+	if err != nil {
+		return biz.PipelineDispatch{}, biz.ErrPersistence
+	}
+	admission, err := queries.GetAdmission(ctx, submissionsql.GetAdmissionParams{TenantID: tenantID, ExecutionID: executionID})
+	if err != nil {
+		return biz.PipelineDispatch{}, biz.ErrPersistence
+	}
+	return dispatchFromRow(row, admission)
 }
 
 var _ biz.PipelineDispatchRepository = (*Repository)(nil)
+
+func databaseID(value string) (pgtype.UUID, error) {
+	if len(value) != 36 || value[8] != '-' || value[13] != '-' || value[18] != '-' || value[23] != '-' {
+		return pgtype.UUID{}, biz.ErrInvalidAdmission
+	}
+	var id pgtype.UUID
+	if id.Scan(value) != nil || !id.Valid || id.Bytes == [16]byte{} {
+		return pgtype.UUID{}, biz.ErrInvalidAdmission
+	}
+	return id, nil
+}
+
+func rollback(transaction pgx.Tx) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = transaction.Rollback(ctx)
+}
+
+func dispatchFromRow(row submissionsql.ModeldevPipelineDispatch, original submissionsql.ModeldevExecution) (biz.PipelineDispatch, error) {
+	if !row.TenantID.Valid || !row.ExecutionID.Valid || !row.OperationID.Valid || !row.AttemptID.Valid || row.AttemptID.Bytes == [16]byte{} ||
+		!row.ReservedAt.Valid || row.ReservedAt.InfinityModifier != pgtype.Finite || row.ReservedAt.Time.IsZero() || row.State != string(biz.PipelineDispatchSubmitting) ||
+		row.TenantID != original.TenantID || row.ExecutionID != original.ExecutionID || row.OperationID != original.OperationID || row.SpecHash != original.SpecHash ||
+		!original.AcceptedAt.Valid || original.AcceptedAt.InfinityModifier != pgtype.Finite {
+		return biz.PipelineDispatch{}, biz.ErrPersistence
+	}
+	admission := biz.Admission{
+		TenantID: original.TenantID.String(), ExecutionID: original.ExecutionID.String(), OperationID: original.OperationID.String(),
+		Actor: original.Actor, IntentHash: original.IntentHash, SpecHash: original.SpecHash, AcceptedAt: original.AcceptedAt.Time.UTC(),
+	}
+	var storedPlan biz.PipelineDispatchPlan
+	if json.Unmarshal(original.IntentCanonical, &admission.Intent) != nil || json.Unmarshal(original.SnapshotCanonical, &admission.Snapshot) != nil || json.Unmarshal(row.PlanCanonical, &storedPlan) != nil {
+		return biz.PipelineDispatch{}, biz.ErrPersistence
+	}
+	intent, snapshot, err := admission.CanonicalPayloads()
+	if err != nil || !bytes.Equal(intent, original.IntentCanonical) || !bytes.Equal(snapshot, original.SnapshotCanonical) {
+		return biz.PipelineDispatch{}, biz.ErrPersistence
+	}
+	// Re-derive every plan field from the immutable Admission plus its stored
+	// owner revision. Canonical comparison rejects unknown or altered fields.
+	plan, err := (biz.PipelineDispatchRequest{Admission: admission, Owner: storedPlan.Owner}).Freeze()
+	if err != nil {
+		return biz.PipelineDispatch{}, biz.ErrPersistence
+	}
+	canonical, err := plan.Canonical()
+	if err != nil || !bytes.Equal(canonical, row.PlanCanonical) {
+		return biz.PipelineDispatch{}, biz.ErrPersistence
+	}
+	hash, err := plan.Digest()
+	if err != nil || hash != row.PlanHash {
+		return biz.PipelineDispatch{}, biz.ErrPersistence
+	}
+	return biz.PipelineDispatch{AttemptID: row.AttemptID.String(), Plan: plan, PlanHash: hash, State: biz.PipelineDispatchSubmitting, ReservedAt: row.ReservedAt.Time.UTC()}, nil
+}
