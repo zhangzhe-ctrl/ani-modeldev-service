@@ -10,6 +10,7 @@ import (
 var (
 	ErrInvalidPipelineSubmitter    = errors.New("INVALID_PIPELINE_SUBMITTER_CONFIGURATION")
 	ErrPipelineSubmissionUncertain = errors.New("PIPELINE_SUBMISSION_UNCERTAIN")
+	ErrPipelineSubmissionNotSent = errors.New("PIPELINE_SUBMISSION_NOT_SENT")
 )
 
 // PipelineSubmitResult separates the last acknowledged durable dispatch from
@@ -58,7 +59,7 @@ func (submitter *PipelineSubmitter) Submit(ctx context.Context, request Pipeline
 	}
 	permit := *reservation.SendPermit
 	input := PipelineCreateRequest{Admission: request.Admission, Plan: reservation.Dispatch.Plan, Permit: permit}
-	if reservation.Dispatch.State != PipelineDispatchSubmitting || reservation.Dispatch.UncertainAt != nil || len(reservation.Dispatch.ConfirmedRuns) != 0 ||
+	if reservation.Dispatch.State != PipelineDispatchSubmitting || reservation.Dispatch.UncertainAt != nil || reservation.Dispatch.NotSentAt != nil || len(reservation.Dispatch.ConfirmedRuns) != 0 ||
 		!strings.EqualFold(permit.AttemptID, reservation.Dispatch.AttemptID) || permit.PlanHash != reservation.Dispatch.PlanHash || input.Plan.Owner != request.Owner || input.Validate() != nil {
 		return result, ErrPersistence
 	}
@@ -71,14 +72,12 @@ func (submitter *PipelineSubmitter) Submit(ctx context.Context, request Pipeline
 		if callErr != nil || !validAdmissionID(observation.RunID) {
 			return result, ErrPersistence
 		}
-	case PipelineSubmissionUncertain:
+	case PipelineSubmissionUncertain, PipelineSubmissionNotSent:
 		if callErr == nil || observation.RunID != "" {
 			return result, ErrPersistence
 		}
 	default:
-		// NOT_SENT persistence is the next vertical behavior. Retain the
-		// transient outcome without inventing uncertainty or acknowledging a
-		// durable result. Unknown/error observations are likewise never ACKed.
+		// Retain unknown/error observations without inventing a durable result.
 		return result, ErrPersistence
 	}
 	// A canceled caller must not erase a response from the original attempt.
@@ -97,6 +96,14 @@ func (submitter *PipelineSubmitter) Submit(ctx context.Context, request Pipeline
 		}
 		result.Dispatch = receipt.Dispatch
 		return result, nil
+	}
+	if observation.State == PipelineSubmissionNotSent {
+		dispatch, err := submitter.repository.MarkSubmissionNotSent(writeContext, permit, observedAt)
+		if err != nil {
+			return result, ErrPersistence
+		}
+		result.Dispatch = dispatch
+		return result, ErrPipelineSubmissionNotSent
 	}
 	dispatch, err := submitter.repository.MarkSubmissionUncertain(writeContext, permit, observedAt)
 	if err != nil {

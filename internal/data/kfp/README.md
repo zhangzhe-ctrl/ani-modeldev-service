@@ -38,9 +38,12 @@ The submitting caller must commit SUBMITTING under the shared identity/close
 fence before this call. The first PG-plus-TLS submitter test reached its explicit
 orchestration stub at fixed `066b331`: real Admission/dependency preflight passed,
 then Submit returned PERSISTENCE_UNAVAILABLE as the expected behavior RED.
-KFP regression passed at the same source. The next implementation candidate
-connects the real reservation, one POST and bounded observation persistence;
-its fixed-source GREEN is still pending. This is not leased recovery.
+KFP regression passed at the same source. Fixed `a27b622` then passed all
+submittest/submission/execution/KFP tests: one POST after committed reservation,
+durable uncertainty after a lost response, confirmed Run persistence including
+close during POST, and retention of a transient Run when the real recording
+pool becomes unavailable. Reconnected callers did not resend. These tests use
+synthetic external KFP/credentials and do not establish leased recovery.
 NotSent/Uncertain/Confirmed describe the observed
 call only; persistence and authoritative Run CAS remain separate. The candidate
 must not follow redirects or automatically repeat a POST. A sent request with
@@ -74,8 +77,8 @@ preflight/credential failures, cancellation after observed receipt, CA rejection
 null/UTF-8/depth limits and uppercase UUID normalization. These were regression
 passes against the existing implementation, not a new RED/fix cycle. Real
 provider and product entry-point wiring remain unfinished. The submitter's
-NOT_SENT persistence is a required next behavior: the current candidate returns
-a persistence error and retains that transient observation, without inventing
+NOT_SENT persistence is the next behavior under test: its explicit repository
+stub returns a persistence error and retains that transient observation, without inventing
 UNCERTAIN, granting another permit or claiming the whole use case complete.
 Existing root-rejection cases
 now target the frozen request rather than removed constructor configuration;

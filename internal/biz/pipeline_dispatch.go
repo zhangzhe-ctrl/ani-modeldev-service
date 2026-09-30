@@ -119,6 +119,7 @@ type PipelineDispatchState string
 
 const (
 	PipelineDispatchSubmitting PipelineDispatchState = "SUBMITTING"
+	PipelineDispatchNotSent    PipelineDispatchState = "SUBMISSION_NOT_SENT"
 	PipelineDispatchUncertain  PipelineDispatchState = "SUBMISSION_UNCERTAIN"
 	PipelineDispatchConfirmed  PipelineDispatchState = "SUBMISSION_CONFIRMED"
 )
@@ -140,6 +141,10 @@ type PipelineDispatch struct {
 	// UncertainAt is the first durably accepted uncertainty observation. It is
 	// nil while SUBMITTING; replay cannot refresh it or grant another send.
 	UncertainAt *time.Time
+	// NotSentAt retains the first local no-send observation for this attempt.
+	// It may coexist with later uncertainty/confirmed facts, never authorizes
+	// another send, and is not an execution cancellation or training failure.
+	NotSentAt *time.Time
 	// ConfirmedRuns retains every distinct observed Run for this attempt, sorted
 	// by canonical RunID. Position grants no priority or training permission.
 	ConfirmedRuns []PipelineConfirmedRun
@@ -175,6 +180,9 @@ type PipelineDispatchRepository interface {
 	// outbound observation. This is a database recording time, not the KFP
 	// creation time, and never grants a send. It must not precede reserved_at.
 	SubmissionObservationTime(context.Context, PipelineSendPermit) (time.Time, error)
+	// MarkSubmissionNotSent retains a local no-send observation without
+	// discarding stronger facts or reconstructing the original send permit.
+	MarkSubmissionNotSent(context.Context, PipelineSendPermit, time.Time) (PipelineDispatch, error)
 	// MarkSubmissionUncertain records only the original attempt's outcome;
 	// it is permitted after close and never grants permission to send again.
 	// A late uncertain observation cannot downgrade a confirmed dispatch.
