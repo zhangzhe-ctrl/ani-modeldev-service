@@ -2,8 +2,8 @@
 
 This package is an unwired first TDD slice. Fixed commit `ffa993b` first produced
 Fedora behavior RED against an explicit `KFP_CREATE_RUN_NOT_IMPLEMENTED` stub.
-The candidate implementation sends once and conservatively treats every
-response as uncertain; confirmed-response validation is still outstanding.
+The candidate implementation sends once and confirms only a bounded, complete
+response matching the frozen request. Validation of this behavior is in progress.
 It has no durable submission
 worker, Run authority binding, training creation permit, or product entry point.
 
@@ -34,12 +34,25 @@ fence before this call. NotSent/Uncertain/Confirmed will describe the observed
 call only; persistence and authoritative Run CAS remain separate. The candidate
 must not follow redirects or automatically repeat a POST. A sent request with
 lost, malformed, oversized or otherwise untrusted response remains uncertain;
-an HTTP error alone does not prove no creation occurred.
+an HTTP error alone does not prove no creation occurred. Confirmation requires
+HTTP 200 JSON at most 1 MiB, no duplicate keys or error field, a nonzero canonical
+Run UUID and matching Experiment, display name, PipelineVersion, managed SA,
+execution/spec parameters and root. Extra top-level output fields are allowed.
+A confirmed creation response may already report failed computation; it is not
+training success, verified namespace/Pod identity, or authority.
+
+The fixed upstream [API converter](https://github.com/kubeflow/pipelines/blob/2.16.0/backend/src/apiserver/server/api_converter.go#L1430-L1503)
+can return HTTP 200 with Run ID and an error after conversion failure. The
+response validator retains uncertainty for that case. No 4xx/5xx status is
+interpreted here as proof of rejection without side effect.
 
 The first test uses an in-process TLS server which receives the request then
 disconnects. It checks one POST, fixed payload and uncertain outcome. It is
 neither real KFP nor proof of multi-user authorization, storage, durable worker
 recovery, real callbacks, Trainer creation, or LIVE. All execution and format
-checks run only on Fedora at an immutable source SHA. The lost-response test
-is the first behavior; malformed-response, constructor, preflight and redirect
-negative tests and response confirmation remain follow-on verification.
+checks run only on Fedora at an immutable source SHA. Lost-response behavior
+passed at `f16bcde`, including race. Second response behavior RED at `ff3329c`
+failed only the two expected complete-response cases (pending and already failed
+computation); the 27 uncertain-response cases and original disconnect case
+passed. Response validation GREEN is pending. Constructor/preflight negative
+tests and real provider/wiring remain follow-on verification.

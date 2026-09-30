@@ -8,14 +8,19 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"io"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
 	"path"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
+	"github.com/google/uuid"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 )
@@ -27,6 +32,8 @@ var (
 )
 
 var bearerTokenPattern = regexp.MustCompile(`^[A-Za-z0-9._~+/-]+=*$`)
+
+const maxCreateRunResponseBytes = 1 << 20
 
 // Config is supplied by the owner, never by a browser request. No endpoint or
 // artifact-root default is available. PipelineRoot is distinct from publication
@@ -48,8 +55,8 @@ type TokenProvider interface {
 }
 
 // Client is not wired into a product entry point. It creates no durable facts
-// or authority. The first slice sends once and conservatively reports every
-// received or lost response as uncertain until response validation is added.
+// or authority. It sends once and only confirms complete matching API responses;
+// lost or untrusted responses remain uncertain and never authorize a retry.
 type Client struct {
 	connectionRef string
 	endpoint      string
@@ -146,7 +153,98 @@ func (client *Client) CreateRun(ctx context.Context, admission biz.Admission) (b
 		return uncertain, ErrUncertain
 	}
 	defer response.Body.Close()
-	return uncertain, ErrUncertain
+	mediaType, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
+	if response.StatusCode != http.StatusOK || err != nil || mediaType != "application/json" {
+		return uncertain, ErrUncertain
+	}
+	responseBody, err := io.ReadAll(io.LimitReader(response.Body, maxCreateRunResponseBytes+1))
+	if err != nil || len(responseBody) > maxCreateRunResponseBytes {
+		return uncertain, ErrUncertain
+	}
+	runID := confirmedRunID(responseBody, requestBody)
+	if runID == "" {
+		return uncertain, ErrUncertain
+	}
+	return biz.PipelineSubmissionObservation{State: biz.PipelineSubmissionConfirmed, RunID: runID}, nil
+}
+
+func confirmedRunID(responseBody, requestBody []byte) string {
+	if !utf8.Valid(responseBody) {
+		return ""
+	}
+	decoder := json.NewDecoder(bytes.NewReader(responseBody))
+	decoder.UseNumber()
+	if !uniqueJSONValue(decoder, 0) {
+		return ""
+	}
+	var response, request map[string]any
+	if json.Unmarshal(responseBody, &response) != nil || json.Unmarshal(requestBody, &request) != nil {
+		return ""
+	}
+	// KFP's converter can return HTTP 200 with run_id plus an error. That is
+	// not a complete trustworthy response even when the ID looks well formed.
+	if _, hasError := response["error"]; hasError {
+		return ""
+	}
+	for key, wanted := range request {
+		// Exact API keys and complete nested values prevent casing aliases,
+		// omitted fields or a different execution/version/root from matching.
+		if !reflect.DeepEqual(response[key], wanted) {
+			return ""
+		}
+	}
+	runID, ok := response["run_id"].(string)
+	id, err := uuid.Parse(runID)
+	if !ok || err != nil || id == uuid.Nil || id.String() != strings.ToLower(runID) {
+		return ""
+	}
+	// This confirms the observed creation response only. A Run may already
+	// report failed computation, and no response grants authoritative ownership.
+	return id.String()
+}
+
+// encoding/json permits duplicate object keys. Check the bounded response with
+// its token API before decoding associations; do not let a later duplicate
+// silently replace an earlier Run or nested execution binding.
+func uniqueJSONValue(decoder *json.Decoder, depth int) bool {
+	if depth > 32 {
+		return false
+	}
+	token, err := decoder.Token()
+	if err != nil {
+		return false
+	}
+	delimiter, isContainer := token.(json.Delim)
+	if !isContainer {
+		return true
+	}
+	switch delimiter {
+	case '{':
+		keys := make(map[string]bool)
+		for decoder.More() {
+			keyToken, err := decoder.Token()
+			key, ok := keyToken.(string)
+			if err != nil || !ok || keys[key] {
+				return false
+			}
+			keys[key] = true
+			if !uniqueJSONValue(decoder, depth+1) {
+				return false
+			}
+		}
+		end, err := decoder.Token()
+		return err == nil && end == json.Delim('}')
+	case '[':
+		for decoder.More() {
+			if !uniqueJSONValue(decoder, depth+1) {
+				return false
+			}
+		}
+		end, err := decoder.Token()
+		return err == nil && end == json.Delim(']')
+	default:
+		return false
+	}
 }
 
 // Exact JSON field names follow the fixed KFP 2.16.0 v2beta1 API schema.
