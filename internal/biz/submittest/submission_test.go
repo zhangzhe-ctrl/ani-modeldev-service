@@ -116,7 +116,7 @@ func TestSubmitLostResponsePersistsUncertaintyWithoutResendingAfterReconnect(t *
 	t.Log("CPU07_SUBMIT_PREFLIGHT PASS: real Admission committed, independent PG pools and TLS KFP clients ready")
 	type result struct {
 		value biz.PipelineSubmitResult
-		err error
+		err   error
 	}
 	start := make(chan struct{})
 	results := make(chan result, len(submitters))
@@ -235,7 +235,7 @@ func newSubmitter(t *testing.T, repository *submission.Repository, server *httpt
 	t.Helper()
 	certificates := x509.NewCertPool()
 	certificates.AddCert(server.Certificate())
-	client, err := kfp.New(kfp.Config{ConnectionRef: "kfp-managed-v1", Endpoint: server.URL, RootCAs: certificates, Timeout: 3*time.Second}, provider)
+	client, err := kfp.New(kfp.Config{ConnectionRef: "kfp-managed-v1", Endpoint: server.URL, RootCAs: certificates, Timeout: 3 * time.Second}, provider)
 	if err != nil {
 		t.Fatal("CPU07_SUBMIT_PREFLIGHT: fixture client construction failed; behavior NOT_RUN")
 	}

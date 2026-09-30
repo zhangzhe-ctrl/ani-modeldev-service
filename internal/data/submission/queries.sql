@@ -20,6 +20,18 @@ FROM modeldev_pipeline_dispatches
 WHERE tenant_id = sqlc.arg(tenant_id)::uuid
   AND execution_id = sqlc.arg(execution_id)::uuid;
 
+-- Sample this database's clock after the outbound call. The adapter compares
+-- the returned immutable attempt/hash with the original permit and requires
+-- observed_at >= reserved_at. Keeping the tenant-scoped row distinguishes a
+-- missing reservation from a conflicting attempt without a second lookup.
+-- This read neither authorizes a send nor locks across network work.
+-- name: GetSubmissionObservationTime :one
+SELECT attempt_id, plan_hash, reserved_at,
+    clock_timestamp()::timestamptz AS observed_at
+FROM modeldev_pipeline_dispatches
+WHERE tenant_id = sqlc.arg(tenant_id)::uuid
+  AND execution_id = sqlc.arg(execution_id)::uuid;
+
 -- The caller holds this identity's row lock and has compared the complete
 -- admitted command. Check the current database clock after acquiring the lock;
 -- transaction-start time could predate a long wait behind a close transaction.

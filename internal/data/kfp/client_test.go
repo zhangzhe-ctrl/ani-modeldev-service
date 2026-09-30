@@ -126,7 +126,7 @@ func fixtureCreateRequest(t *testing.T, admission biz.Admission) biz.PipelineCre
 	t.Helper()
 	plan, err := (biz.PipelineDispatchRequest{
 		Admission: admission,
-		Owner: biz.PipelineOwnerConfiguration{Reference: "cpu07-fixture-owner", RevisionSHA256: strings.Repeat("a", 64), PipelineRoot: "s3://fixture-kfp-artifacts/managed-root"},
+		Owner:     biz.PipelineOwnerConfiguration{Reference: "cpu07-fixture-owner", RevisionSHA256: strings.Repeat("a", 64), PipelineRoot: "s3://fixture-kfp-artifacts/managed-root"},
 	}).Freeze()
 	if err != nil {
 		t.Fatalf("freeze create request fixture: %v", err)

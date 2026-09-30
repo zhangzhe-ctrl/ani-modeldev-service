@@ -81,7 +81,9 @@ func TestCreateRunLocalFailuresNeverSendOrLeakCredentials(t *testing.T) {
 		// move here and still require zero credentials and zero HTTP calls.
 		{name: "no root", mutate: func(r *biz.PipelineCreateRequest) { r.Plan.Owner.PipelineRoot = "" }},
 		{name: "root traversal", mutate: func(r *biz.PipelineCreateRequest) { r.Plan.Owner.PipelineRoot = "s3://fixture-kfp-artifacts/a/../b" }},
-		{name: "root temporary query", mutate: func(r *biz.PipelineCreateRequest) { r.Plan.Owner.PipelineRoot = "s3://fixture-kfp-artifacts/managed-root?signature=synthetic" }},
+		{name: "root temporary query", mutate: func(r *biz.PipelineCreateRequest) {
+			r.Plan.Owner.PipelineRoot = "s3://fixture-kfp-artifacts/managed-root?signature=synthetic"
+		}},
 		{name: "plan differs from admission", mutate: func(r *biz.PipelineCreateRequest) { r.Plan.Environment.Identities.KFPStepServiceAccount = "other-step" }},
 		{name: "other permit tenant", mutate: func(r *biz.PipelineCreateRequest) { r.Permit.TenantID = "22222222-2222-4222-8222-222222222222" }},
 		{name: "other permit execution", mutate: func(r *biz.PipelineCreateRequest) { r.Permit.ExecutionID = "22222222-2222-4222-8222-222222222222" }},

@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	ErrInvalidPipelineSubmitter = errors.New("INVALID_PIPELINE_SUBMITTER_CONFIGURATION")
+	ErrInvalidPipelineSubmitter    = errors.New("INVALID_PIPELINE_SUBMITTER_CONFIGURATION")
 	ErrPipelineSubmissionUncertain = errors.New("PIPELINE_SUBMISSION_UNCERTAIN")
 )
 
@@ -16,15 +16,15 @@ var (
 // retain a RunID which was not durably acknowledged; it is not a success receipt.
 // A replay has no new observation and never carries another send permit.
 type PipelineSubmitResult struct {
-	Dispatch PipelineDispatch
+	Dispatch    PipelineDispatch
 	Observation *PipelineSubmissionObservation
 }
 
 // PipelineSubmitter connects a committed reservation to at most one network
 // call. It does not enumerate work, lease attempts, reconcile or grant authority.
 type PipelineSubmitter struct {
-	repository PipelineDispatchRepository
-	creator PipelineRunCreator
+	repository              PipelineDispatchRepository
+	creator                 PipelineRunCreator
 	observationWriteTimeout time.Duration
 }
 
