@@ -3,6 +3,7 @@ package objectstore_test
 import (
 	"context"
 	"encoding/csv"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/objectstore"
 )
 
@@ -39,6 +41,49 @@ func TestVerifyCSVReadsFixedVersionAndActualRegisteredShape(t *testing.T) {
 	}
 	if gets.Load() != 1 || !reflect.DeepEqual(got.Object, object) || got.SchemaVersion != "ani.cpu.csv.v1" || got.RowCount != 1024 || got.FeatureCount != 16 || got.VerifiedAt.IsZero() {
 		t.Fatalf("missing observed immutable input facts: %+v", got)
+	}
+}
+
+func TestVerifyCSVRejectsShapesTheRegisteredTrainerCannotConsume(t *testing.T) {
+	valid := inputCSVFixture(t)
+	lines := strings.Split(valid, "\r\n")
+	cases := []struct {
+		name string
+		payload string
+	}{
+		{"wrong header", strings.Replace(valid, "x0,", "feature0,", 1)},
+		{"duplicate header", strings.Replace(valid, "x1,", "x0,", 1)},
+		{"BOM header", "\xef\xbb\xbf" + valid},
+		{"missing sample", strings.Join(lines[:1024], "\r\n") + "\r\n"},
+		{"extra sample", valid + lines[1] + "\r\n"},
+		{"nonbinary label", strings.Replace(valid, ",0\r\n", ",2\r\n", 1)},
+		{"fractional label", strings.Replace(valid, ",0\r\n", ",0.0\r\n", 1)},
+		{"missing feature", strings.Replace(valid, "0.25,", "", 1)},
+		{"empty feature", strings.Replace(valid, "0.25,", ",", 1)},
+		{"invalid UTF-8", strings.Replace(valid, "0.25", "\xff", 1)},
+		{"NaN", strings.Replace(valid, "0.25", "NaN", 1)},
+		{"infinity", strings.Replace(valid, "0.25", "+Inf", 1)},
+		{"float32 overflow", strings.Replace(valid, "0.25", "3.5e38", 1)},
+		{"malformed quoted field", strings.Replace(valid, "0.25", `0"25`, 1)},
+		// Go encoding/csv skips blank lines and ParseFloat accepts hexadecimal
+		// floats. The registered Python loader does neither, so these must fail.
+		{"blank first row", "\r\n" + valid},
+		{"blank trailing row", valid + "\r\n"},
+		{"hexadecimal feature", strings.Replace(valid, "0.25", "0x1p-2", 1)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			scope, object := objectFixture(tc.payload)
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("x-amz-version-id", "version-1")
+				_, _ = io.WriteString(w, tc.payload)
+			}))
+			defer server.Close()
+			got, err := objectstore.NewVerifier(testS3Client(server), scope.StorageConnectionID, 32*1024*1024).VerifyCSV(context.Background(), scope, object)
+			if !errors.Is(err, biz.ErrInputVerification) || !got.VerifiedAt.IsZero() || got.RowCount != 0 {
+				t.Fatal("trainer-incompatible bytes produced a verified input observation")
+			}
+		})
 	}
 }
 
