@@ -47,13 +47,18 @@ identity, malformed fixed CSV (shape, labels, NaN/Inf), non-singleton WORLD_SIZE
 symlink input/output, and nonempty output before emitting optimization metrics or
 creating output artifacts. At `fd9015bdea0af35c6c0b9d0898ae3a958c63e741`, Fedora
 recorded the normal case passing and 14 rejection subcases failing in 83.035
-seconds, exit 1. The corresponding checks are now implemented locally; GREEN
-for that implementation is pending a new fixed commit and Fedora run.
+seconds, exit 1. At `23aa203b24d3b60a4ab74d8686d36819eb2a76da`, the corresponding
+checks passed both tests (including all 19 refusal scenarios) in 17.187 seconds,
+exit 0.
 
-After that cycle, cover the contract's explicit canonical `--learning-rate`
-argument in (0, 0.1], and the separate controlled real-compute failure/stop recipes.
-Epochs and batch size remain fixed at 3 and 64. The current first slice still uses
-the baseline learning rate 0.01; it cannot silently serve a Release specifying a
-different value. The initial subprocess reload is CPU03 module evidence; the
+The next behavior tests cover canonical `--learning-rate` in (0, 0.1] and an
+existing empty output directory. The valid test runs both default 0.01 and explicit
+0.02, requires the effective decimal in the summary, reloads both checkpoints,
+and compares actual tensors to prove the selected rate affected training. Another
+test rejects malformed/out-of-range/non-finite rates before output creation.
+These new tests are not run; production still uses 0.01 and refuses existing
+output paths until this RED/GREEN cycle completes. Epochs and batch size remain
+fixed at 3 and 64. Controlled real-compute failure/stop recipes follow separately.
+The initial subprocess reload is CPU03 module evidence; the
 independent BFF/S3 verifier belongs to CPU08/CPU09 and must not mount the original
 training PVC.

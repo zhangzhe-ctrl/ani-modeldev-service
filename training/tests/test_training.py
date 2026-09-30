@@ -233,6 +233,96 @@ class FixedCSVTrainingTest(unittest.TestCase):
                             )
                         self.assertEqual(output.is_symlink(), case == "symlink_output")
 
+    def test_learning_rate_changes_training_and_accepts_an_existing_empty_output(self):
+        dependency = self.run_python(
+            "-c", "import torch; assert torch.version.cuda is None, 'CPU wheel required'"
+        )
+        self.assertEqual(
+            dependency.returncode, 0,
+            f"ENVIRONMENT_NOT_READY (not a behavior RED)\n{dependency.stderr}",
+        )
+        with tempfile.TemporaryDirectory(prefix="cpu03-learning-rate-") as temporary:
+            root = Path(temporary)
+            data = root / "selected-input.csv"
+            generated = self.run_python(TRAINING_ROOT / "make_data.py", "--output", data)
+            self.assertEqual(generated.returncode, 0, generated.stderr)
+            input_bytes = data.read_bytes()
+            common = (
+                "--data", data,
+                "--expected-input-sha256", hashlib.sha256(input_bytes).hexdigest(),
+                "--expected-input-bytes", len(input_bytes),
+            )
+            baseline_output = root / "default-rate-output"
+            baseline = self.run_python(
+                TRAINING_ROOT / "train_mlp.py", *common, "--output", baseline_output,
+            )
+            self.assertEqual(baseline.returncode, 0, baseline.stderr)
+
+            changed_output = root / "selected-rate-output"
+            changed_output.mkdir()
+            changed = self.run_python(
+                TRAINING_ROOT / "train_mlp.py", *common, "--output", changed_output,
+                "--learning-rate", "0.02",
+            )
+            self.assertEqual(
+                changed.returncode, 0,
+                "a valid explicit learning rate and an existing empty output must train\n"
+                f"{changed.stdout}\n{changed.stderr}",
+            )
+            self.assertEqual(data.read_bytes(), input_bytes)
+            for output, effective_rate in ((baseline_output, "0.01"), (changed_output, "0.02")):
+                summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
+                self.assertEqual(summary["learning_rate"], effective_rate)
+                self.assertEqual(summary["epochs"], 3)
+                self.assertEqual(summary["batch_size"], 64)
+                self.assertEqual(summary["steps"], 48)
+                self.assertTrue(math.isfinite(summary["final_loss"]))
+                metrics = [
+                    json.loads(line)
+                    for line in (output / "metrics.jsonl").read_text(encoding="utf-8").splitlines()
+                ]
+                self.assertEqual([entry["step"] for entry in metrics], list(range(1, 49)))
+                reloaded = self.run_python(Path(__file__).with_name("reload_checkpoint.py"), output)
+                self.assertEqual(reloaded.returncode, 0, reloaded.stderr)
+            comparison = self.run_python(
+                Path(__file__).with_name("compare_checkpoints.py"), baseline_output, changed_output,
+            )
+            self.assertEqual(comparison.returncode, 0, comparison.stderr)
+            self.assertEqual(json.loads(comparison.stdout), {"different_parameters": True})
+
+    def test_invalid_learning_rate_is_rejected_before_training(self):
+        dependency = self.run_python(
+            "-c", "import torch; assert torch.version.cuda is None, 'CPU wheel required'"
+        )
+        self.assertEqual(
+            dependency.returncode, 0,
+            f"ENVIRONMENT_NOT_READY (not a behavior RED)\n{dependency.stderr}",
+        )
+        invalid_rates = (
+            "", "0", "-0.01", "0.1000001", "NaN", "Inf", "-Inf",
+            "1e-2", "+0.02", "00.02", " 0.02", "0." + "0" * 31 + "1",
+        )
+        with tempfile.TemporaryDirectory(prefix="cpu03-rejected-rate-") as temporary:
+            root = Path(temporary)
+            data = root / "selected-input.csv"
+            generated = self.run_python(TRAINING_ROOT / "make_data.py", "--output", data)
+            self.assertEqual(generated.returncode, 0, generated.stderr)
+            input_bytes = data.read_bytes()
+            for number, rate in enumerate(invalid_rates):
+                with self.subTest(learning_rate=rate):
+                    output = root / f"rejected-{number}"
+                    rejected = self.run_python(
+                        TRAINING_ROOT / "train_mlp.py",
+                        "--data", data, "--output", output,
+                        "--expected-input-sha256", hashlib.sha256(input_bytes).hexdigest(),
+                        "--expected-input-bytes", len(input_bytes),
+                        "--learning-rate", rate,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, rejected.stdout)
+                    self.assertNotIn('"train.loss"', rejected.stdout)
+                    self.assertFalse(output.exists(), "invalid learning rate must not create output")
+                    self.assertEqual(data.read_bytes(), input_bytes)
+
 
 if __name__ == "__main__":
     unittest.main()
