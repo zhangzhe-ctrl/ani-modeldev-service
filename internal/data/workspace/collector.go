@@ -18,7 +18,9 @@ import (
 // directory. Its caller owns authentication, workspace UID binding and writer
 // closure; this adapter does not accept user-selected host paths.
 func Collect(ctx context.Context, directory string, execution biz.Execution) (biz.CollectedOutput, error) {
-	if err := ctx.Err(); err != nil { return biz.CollectedOutput{}, err }
+	if err := ctx.Err(); err != nil {
+		return biz.CollectedOutput{}, err
+	}
 	if _, _, err := execution.CanonicalPayloads(); err != nil || !filepath.IsAbs(directory) || filepath.Clean(directory) != directory {
 		return biz.CollectedOutput{}, biz.ErrInvalidWorkspaceOutput
 	}
@@ -26,17 +28,25 @@ func Collect(ctx context.Context, directory string, execution biz.Execution) (bi
 	// each leaf relative to this descriptor prevents traversal and directory
 	// replacement from redirecting the read after the root has been opened.
 	root, err := syscall.Open(directory, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
-	if err != nil { return biz.CollectedOutput{}, biz.ErrInvalidWorkspaceOutput }
+	if err != nil {
+		return biz.CollectedOutput{}, biz.ErrInvalidWorkspaceOutput
+	}
 	defer syscall.Close(root)
 	contract := execution.Snapshot.OutputContract
 	files := make([]biz.CollectedFile, 0, len(contract.RequiredFiles))
 	remaining := contract.MaxTotalBytes
 	for _, required := range contract.RequiredFiles {
-		if err := ctx.Err(); err != nil { return biz.CollectedOutput{}, err }
+		if err := ctx.Err(); err != nil {
+			return biz.CollectedOutput{}, err
+		}
 		limit := required.MaxSizeBytes
-		if remaining < limit { limit = remaining }
+		if remaining < limit {
+			limit = remaining
+		}
 		entry, err := collectFile(ctx, root, required.RelativePath, required.Role, limit)
-		if err != nil { return biz.CollectedOutput{}, err }
+		if err != nil {
+			return biz.CollectedOutput{}, err
+		}
 		files = append(files, entry)
 		remaining -= entry.SizeBytes
 	}
@@ -48,11 +58,15 @@ func Collect(ctx context.Context, directory string, execution biz.Execution) (bi
 }
 
 func collectFile(ctx context.Context, root int, name, role string, limit int64) (biz.CollectedFile, error) {
-	if limit <= 0 { return biz.CollectedFile{}, biz.ErrInvalidWorkspaceOutput }
+	if limit <= 0 {
+		return biz.CollectedFile{}, biz.ErrInvalidWorkspaceOutput
+	}
 	// NONBLOCK prevents an untrusted FIFO replacement from blocking before the
 	// descriptor's type is checked. No symlink or multiply-linked file is read.
 	fd, err := syscall.Openat(root, name, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
-	if err != nil { return biz.CollectedFile{}, biz.ErrInvalidWorkspaceOutput }
+	if err != nil {
+		return biz.CollectedFile{}, biz.ErrInvalidWorkspaceOutput
+	}
 	file := os.NewFile(uintptr(fd), name)
 	defer file.Close()
 	var before syscall.Stat_t
@@ -63,12 +77,16 @@ func collectFile(ctx context.Context, root int, name, role string, limit int64) 
 	reader := contextReader{ctx: ctx, reader: file}
 	size, err := io.Copy(digest, io.LimitReader(reader, limit))
 	if err != nil {
-		if ctx.Err() != nil { return biz.CollectedFile{}, ctx.Err() }
+		if ctx.Err() != nil {
+			return biz.CollectedFile{}, ctx.Err()
+		}
 		return biz.CollectedFile{}, biz.ErrInvalidWorkspaceOutput
 	}
 	var extra [1]byte
 	n, readErr := reader.Read(extra[:])
-	if ctx.Err() != nil { return biz.CollectedFile{}, ctx.Err() }
+	if ctx.Err() != nil {
+		return biz.CollectedFile{}, ctx.Err()
+	}
 	var after syscall.Stat_t
 	if n != 0 || readErr != io.EOF || syscall.Fstat(fd, &after) != nil || size != before.Size || after.Size != before.Size || after.Nlink != 1 || after.Mtim != before.Mtim || after.Ctim != before.Ctim {
 		return biz.CollectedFile{}, biz.ErrInvalidWorkspaceOutput
@@ -76,9 +94,14 @@ func collectFile(ctx context.Context, root int, name, role string, limit int64) 
 	return biz.CollectedFile{RelativePath: name, Role: role, SizeBytes: size, SHA256: hex.EncodeToString(digest.Sum(nil))}, nil
 }
 
-type contextReader struct { ctx context.Context; reader io.Reader }
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
 
 func (reader contextReader) Read(buffer []byte) (int, error) {
-	if err := reader.ctx.Err(); err != nil { return 0, err }
+	if err := reader.ctx.Err(); err != nil {
+		return 0, err
+	}
 	return reader.reader.Read(buffer)
 }
