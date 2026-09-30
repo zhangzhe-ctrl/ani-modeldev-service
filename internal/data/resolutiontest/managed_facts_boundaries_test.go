@@ -53,11 +53,11 @@ func TestManagedFactsLoadRejectsAmbiguousAndUntypedFileBytes(t *testing.T) {
 	}
 	for _, test := range []struct {
 		name string
-		raw []byte
+		raw  []byte
 	}{
 		{"unknown root field", replace(`{"schema_version":`, `{"current":true,"schema_version":`)},
 		{"unknown nested field", replace(`"runtime":{`, `"runtime":{"verified":true,`)},
-		{"duplicate root field", replace(`{"schema_version":`, `{"release_digest":"` + fixture.selection.Release.ReleaseDigest + `","schema_version":`)},
+		{"duplicate root field", replace(`{"schema_version":`, `{"release_digest":"`+fixture.selection.Release.ReleaseDigest+`","schema_version":`)},
 		{"duplicate nested field", replace(`"name":"cpu-module-fixture"`, `"name":"cpu-module-fixture","name":"cpu-module-fixture"`)},
 		{"field case alias", replace(`"runtime":`, `"Runtime":`)},
 		{"nested case alias", replace(`"target_jobs":`, `"Target_Jobs":`)},
@@ -171,11 +171,11 @@ func TestManagedFactsReaderUsesExactTenantReleaseKeysAndIndependentLoadedValues(
 		t.Fatal(err)
 	}
 	for _, test := range []struct {
-		name string
-		tenant string
+		name    string
+		tenant  string
 		release string
-		digest string
-		want error
+		digest  string
+		want    error
 	}{
 		{"other tenant", strings.ToUpper(otherTenant), fixture.selection.Release.ReleaseID, fixture.selection.Release.ReleaseDigest, nil},
 		{"other release", fixture.selection.TenantID, strings.ToUpper(otherRelease), otherDigest, nil},
@@ -229,7 +229,7 @@ func TestManagedFactsCancellationReturnsNoReaderFactsOrCandidate(t *testing.T) {
 	defer finish()
 	for _, test := range []struct {
 		name string
-		ctx context.Context
+		ctx  context.Context
 		want error
 	}{{"canceled", canceled, context.Canceled}, {"expired", expired, context.DeadlineExceeded}} {
 		t.Run(test.name, func(t *testing.T) {
@@ -291,7 +291,7 @@ func requireManagedFactsLoadFailure(t *testing.T, ctx context.Context, sources [
 	t.Helper()
 	type result struct {
 		reader *admissionfacts.Reader
-		err error
+		err    error
 	}
 	done := make(chan result, 1)
 	go func() {

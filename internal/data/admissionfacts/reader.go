@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"syscall"
@@ -176,7 +177,7 @@ func readDocument(ctx context.Context, source FileSource) (document, error) {
 	var value document
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	if decoder.Decode(&value) != nil || value.SchemaVersion != schemaVersion ||
+	if decoder.Decode(&value) != nil || !hasRequiredDocumentFields(raw, reflect.TypeOf(value)) || value.SchemaVersion != schemaVersion ||
 		!canonicalID(value.ResourceTenantID) || !canonicalID(value.ReleaseID) || !validDigest(value.ReleaseDigest) ||
 		!validEvidence(value.EnvironmentEvidence) || !validEvidence(value.ApplicationEvidence) {
 		return document{}, ErrInvalidFacts
@@ -187,6 +188,32 @@ func readDocument(ctx context.Context, source FileSource) (document, error) {
 	// Compatibility and the complete Snapshot shape remain in the existing biz
 	// resolver/shared contract. Loading this document never asserts ENV proof.
 	return value, nil
+}
+
+// Every field in this private document's tagged structs is required, including
+// explicitly empty input credential references. Walk those types instead of
+// copying nested field lists or inventing a Snapshot for validation. Scalar and
+// slice value types have already been checked by the strict typed decoder.
+func hasRequiredDocumentFields(raw []byte, shape reflect.Type) bool {
+	if shape.Kind() != reflect.Struct {
+		return true
+	}
+	var object map[string]json.RawMessage
+	if json.Unmarshal(raw, &object) != nil {
+		return false
+	}
+	for index := 0; index < shape.NumField(); index++ {
+		field := shape.Field(index)
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if name == "" || name == "-" {
+			return false
+		}
+		value, present := object[name]
+		if !present || !hasRequiredDocumentFields(value, field.Type) {
+			return false
+		}
+	}
+	return true
 }
 
 func canonicalID(value string) bool {
