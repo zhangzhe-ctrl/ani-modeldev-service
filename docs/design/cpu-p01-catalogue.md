@@ -103,7 +103,33 @@ JSON/内容、同 ID 改字节、文内身份不符、软硬链接/FIFO/目录/�
 非法选择、缺失及取消全部回归 PASS / exit 0（0.048s）。这些行为的既有实现
 已经正确，没有制造新 RED。该测试 gofmt 回传后固定于 `1989863`。
 
-规范 JSON 正机械迁移到公共 conformance 的 `release-v1.json` 单一维护点，
+规范 JSON 已机械迁移到公共 conformance 的 `release-v1.json` 单一维护点，
 精确字节和上述摘要不变；只提供复制的测试数据访问器，保留 reader 测试独立
-手写的期望 Go 对象。没有新生产目录或实际来源证明。迁移新 SHA 待完整合同、
-目录与生成稳定性复验；整个 CPU04 仍 IN_PROGRESS。
+手写的期望 Go 对象。没有新生产目录或实际来源证明。迁移后固定组合
+`241cec394a86ad3967bd3477d3eea9c677268f9b` 的完整合同/protobuf、目录全部测试
+及 verify-source 生成稳定性/全仓格式检查均 PASS / exit 0。整个 CPU04 仍 IN_PROGRESS。
+
+## 下一独立切片：不可变文件导入适配器
+
+依据 D03/O08，`catalogue.ImportRelease(ctx, trustedDirectory, raw, expectedDigest)`
+是 T02 将来复用的窄存储接口，返回 `ReleaseID, Digest, Created`。它不接收目录
+状态、不更新 Governance 当前指针，也不授予“已验收/可启用”资格。受认证受管
+T02 调用者须先完成真实 ENV、镜像、Runtime、PipelineVersion 及其证据核验；
+本 data adapter 尚未接产品命令或外部入口，不能由纯语法通过替代这些事实。
+
+拟实现的写入承诺：复用严格 ParseRelease 并核对实际摘要，在受信 no-follow
+目录中创建本次私有临时文件，完整写入与 fsync 后以 Linux
+`renameat2(RENAME_NOREPLACE)` 原子安装到 `<ID>.json`，再 fsync 目录后返回。
+不支持该原子操作的文件系统须失败，不退回覆盖式 rename。相同 ID+摘要的
+已存在文件必须通过真实 ReadRelease 校验才可幂等回放；不同内容冲突，旧文件
+不得被覆盖。只清理本次精确临时名字，不扫描或删旧版本。
+
+取消或在写入后遇到同步错误可能留下原 ID 的已安装文件；调用者重试同 ID 与
+摘要完成对账，不换 ID、不给失败冒充成功，也不删除唯一已有版本。
+目录应由受管配置指定，仅授权发布身份可写；应用 reader 可只读挂载。数据库、
+schema 和当前启用记录均不在本切片。
+
+经 root 确认的首个测试只要求：成功导入回执后，独立真实 ReadRelease 能按
+同 ID/digest 读取完整原配置。当前为该 test/stub 候选，尚未执行 RED；随后依次
+覆盖原件重投、同 ID 异件、竞争、取消与失败保留。真实文件测试不证明断电恢复，
+更不证明 T02 的真实环境校验或授权入口已经交付。
