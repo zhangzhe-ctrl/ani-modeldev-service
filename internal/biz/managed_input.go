@@ -22,13 +22,13 @@ type VerifiedCSV struct {
 // actor and storage scope must come from the managed import authorization path.
 // Neither a request nor its durable receipt establishes a READY input.
 type InputImport struct {
-	TenantID string
-	RequestID string
+	TenantID       string
+	RequestID      string
 	InputVersionID string
-	Actor string
-	RequestedAt time.Time
-	Scope cpup01.StorageScope
-	Object cpup01.FixedObjectRef
+	Actor          string
+	RequestedAt    time.Time
+	Scope          cpup01.StorageScope
+	Object         cpup01.FixedObjectRef
 }
 
 type InputState string
@@ -37,5 +37,5 @@ const InputStateValidating InputState = "VALIDATING"
 
 type InputVersion struct {
 	Import InputImport
-	State InputState
+	State  InputState
 }

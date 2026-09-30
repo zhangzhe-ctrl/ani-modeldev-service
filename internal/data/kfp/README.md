@@ -58,5 +58,9 @@ passed at `f16bcde`, including race. Second response behavior RED at `ff3329c`
 failed only the two expected complete-response cases (pending and already failed
 computation); the 27 uncertain-response cases and original disconnect case
 passed. Response validation GREEN and race passed at `241cec3` (two main tests,
-29 response cases). Constructor/preflight negative tests and real
-provider/wiring remain follow-on verification.
+29 response cases). Boundary regression at `8ef410d` also passed with race:
+six main tests / 61 table cases include protected constructor configuration,
+preflight/credential failures, cancellation after observed receipt, CA rejection,
+null/UTF-8/depth limits and uppercase UUID normalization. These were regression
+passes against the existing implementation, not a new RED/fix cycle. Real
+provider, persistence and product wiring remain unfinished.

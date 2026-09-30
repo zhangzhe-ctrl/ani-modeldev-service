@@ -130,6 +130,10 @@ T02 调用者须先完成真实 ENV、镜像、Runtime、PipelineVersion 及其�
 schema 和当前启用记录均不在本切片。
 
 经 root 确认的首个测试只要求：成功导入回执后，独立真实 ReadRelease 能按
-同 ID/digest 读取完整原配置。当前为该 test/stub 候选，尚未执行 RED；随后依次
+同 ID/digest 读取完整原配置。首 test/stub 固定 `88fa723925872662f893fcc76fff219bc3339111`
+已在 Fedora 取得有效 RED：目录与 reader 预检 PASS 后 Import 返回
+`RELEASE_IMPORT_NOT_IMPLEMENTED`，exit 1（0.004s）。首次原子安装实现候选
+复用仓库已锁定 x/sys v0.47.0，实际使用 RENAME_NOREPLACE 和文件/目录 fsync；
+尚未取得 GREEN，同件 replay 暂未实现，下一独立测试补齐。随后依次
 覆盖原件重投、同 ID 异件、竞争、取消与失败保留。真实文件测试不证明断电恢复，
 更不证明 T02 的真实环境校验或授权入口已经交付。

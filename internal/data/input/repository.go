@@ -9,7 +9,7 @@ import (
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 )
 
-type Repository struct { pool *pgxpool.Pool }
+type Repository struct{ pool *pgxpool.Pool }
 
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
 
