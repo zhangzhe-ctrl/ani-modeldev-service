@@ -168,7 +168,9 @@ GREEN / exit 0，格式无差异；已有实现正确的场景如实记回归 PA
 首测试要求 stop 先到后 matching Accept、重投及新连接 Get 都携带原 CLOSING，
 保持完整不可变 Admission；双 pool 竞争显式等待 Accept/ApplyCloseIntent 均完成
 后再读，不靠 sleep 推测先后。原墓碑的 tenant/operation/execution/spec 不能被
-不匹配的迟到受理接管。这些测试及字段声明等待固定 RED，适配器尚未填充字段。
+不匹配的迟到受理接管。固定 `27b1ae2` 取得有效 PG RED：前两项因 Close 缺失
+失败，四类身份/spec 拒绝仍 PASS。适配器候选复用生成的租户限定查询，在
+Accept 的身份锁事务内读取并校验关联 Close；Get 附带当前可见的同身份关闭事实。
 
 `Close == nil` 从不表示 CanCreate。Accept 将在共享身份事务内读取关联 close
 事实；Get 的两次读取不构成创建许可。真实创建许可必须后续在同一身份锁下

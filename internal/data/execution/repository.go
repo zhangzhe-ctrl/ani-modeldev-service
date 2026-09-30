@@ -79,7 +79,7 @@ func (r *Repository) Accept(ctx context.Context, admission biz.Admission) (biz.E
 	} else if err != nil {
 		return biz.Execution{}, biz.ErrPersistence
 	}
-	execution, err := executionFromRow(row)
+	execution, err := executionWithClose(ctx, queries, row)
 	if err != nil {
 		return biz.Execution{}, err
 	}
@@ -111,7 +111,8 @@ func (r *Repository) Get(ctx context.Context, tenant, execution string) (biz.Exe
 	if err != nil {
 		return biz.Execution{}, err
 	}
-	row, err := executionsql.New(r.pool).GetExecution(ctx, executionsql.GetExecutionParams{
+	queries := executionsql.New(r.pool)
+	row, err := queries.GetExecution(ctx, executionsql.GetExecutionParams{
 		TenantID: tenantID, ExecutionID: executionID,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -120,7 +121,34 @@ func (r *Repository) Get(ctx context.Context, tenant, execution string) (biz.Exe
 	if err != nil {
 		return biz.Execution{}, biz.ErrPersistence
 	}
-	return executionFromRow(row)
+	// This read reports durable facts, not permission to create resources.
+	// A creator must check and persist its intent under the shared identity lock.
+	return executionWithClose(ctx, queries, row)
+}
+
+func executionWithClose(ctx context.Context, queries *executionsql.Queries, row executionsql.ModeldevExecution) (biz.Execution, error) {
+	execution, err := executionFromRow(row)
+	if err != nil {
+		return biz.Execution{}, err
+	}
+	closeRow, err := queries.GetCloseIntent(ctx, executionsql.GetCloseIntentParams{
+		TenantID: row.TenantID, ExecutionID: row.ExecutionID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return execution, nil
+	}
+	if err != nil {
+		return biz.Execution{}, biz.ErrPersistence
+	}
+	closeRecord, err := closeRecordFromRow(closeRow)
+	if err != nil {
+		return biz.Execution{}, err
+	}
+	if closeRecord.TenantID != execution.TenantID || closeRecord.OperationID != execution.OperationID || closeRecord.ExecutionID != execution.ExecutionID || closeRecord.SpecHash != execution.SpecHash {
+		return biz.Execution{}, biz.ErrPersistence
+	}
+	execution.Close = &closeRecord
+	return execution, nil
 }
 
 func databaseID(value string) (pgtype.UUID, error) {
