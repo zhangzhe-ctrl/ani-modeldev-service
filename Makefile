@@ -21,7 +21,7 @@ SERVICE_NAME ?= ani-modeldev-service
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.Name=$(SERVICE_NAME) -X main.Version=$(VERSION)
 
-.PHONY: tools check-buf supply-chain-tools check-govulncheck check-cyclonedx check-gitleaks config generate build test verify vuln secrets sbom supply-chain-verify audit clean help
+.PHONY: tools check-buf supply-chain-tools check-govulncheck check-cyclonedx check-gitleaks config api generate build test verify vuln secrets sbom supply-chain-verify audit clean help
 
 tools: check-buf
 
@@ -63,7 +63,12 @@ config: $(BUF)
 	$(BUF) build
 	$(BUF) generate --template buf.gen.yaml
 
-generate: config
+api: $(BUF)
+	$(BUF) lint
+	$(BUF) build
+	$(BUF) generate --template buf.api.gen.yaml
+
+generate: config api
 	$(GO) generate ./...
 	find . -type f -name '*.go' -not -path './.git/*' -not -path './.tools/*' -print0 | xargs -0 --no-run-if-empty gofmt -w
 

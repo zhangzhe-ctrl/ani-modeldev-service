@@ -62,6 +62,7 @@ write_manifest "$temporary_root/before"
 (cd "$repository_root" && "$buf_path" lint)
 (cd "$repository_root" && "$buf_path" build)
 (cd "$repository_root" && "$buf_path" generate --template buf.gen.yaml)
+(cd "$repository_root" && "$buf_path" generate --template buf.api.gen.yaml)
 (cd "$repository_root" && go generate ./...)
 write_manifest "$temporary_root/after"
 if ! cmp --silent "$temporary_root/before" "$temporary_root/after"; then
