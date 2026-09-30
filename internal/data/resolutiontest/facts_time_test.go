@@ -17,9 +17,9 @@ import (
 func TestResolveAdmissionRequiresCompatibleExplicitManagedFacts(t *testing.T) {
 	fixture := prepareResolution(t)
 	for _, test := range []struct {
-		name string
+		name   string
 		change func(*biz.TenantAdmissionFacts)
-		want error
+		want   error
 	}{
 		{"Runtime name", func(f *biz.TenantAdmissionFacts) { f.Runtime.Name = "other-runtime" }, biz.ErrAdmissionEnvironmentNotReady},
 		{"Runtime content", func(f *biz.TenantAdmissionFacts) { f.Runtime.ContentSHA256 = strings.Repeat("a", 64) }, biz.ErrAdmissionEnvironmentNotReady},
@@ -37,7 +37,9 @@ func TestResolveAdmissionRequiresCompatibleExplicitManagedFacts(t *testing.T) {
 		{"output below input", func(f *biz.TenantAdmissionFacts) { f.OutputDirectoryPath = f.InputFilePath + "/output" }, biz.ErrAdmissionEnvironmentNotReady},
 		{"unknown environment", func(f *biz.TenantAdmissionFacts) { f.Environment.ClusterID = "UNKNOWN" }, biz.ErrInvalidAdmission},
 		{"missing namespace identity", func(f *biz.TenantAdmissionFacts) { f.Environment.NamespaceUID = "" }, biz.ErrInvalidAdmission},
-		{"shared step and training identity", func(f *biz.TenantAdmissionFacts) { f.Environment.Identities.TrainerServiceAccount = f.Environment.Identities.KFPStepServiceAccount }, biz.ErrInvalidAdmission},
+		{"shared step and training identity", func(f *biz.TenantAdmissionFacts) {
+			f.Environment.Identities.TrainerServiceAccount = f.Environment.Identities.KFPStepServiceAccount
+		}, biz.ErrInvalidAdmission},
 		{"missing publication authority", func(f *biz.TenantAdmissionFacts) { f.PublicationScope.CredentialReference = "" }, biz.ErrInvalidAdmission},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -74,7 +76,7 @@ func TestResolveAdmissionUsesFixedMicrosecondTimeAndCanonicalIdentity(t *testing
 		t.Fatalf("equivalent time/identity changed the frozen configuration: %v", err)
 	}
 	for _, test := range []struct {
-		name string
+		name     string
 		accepted time.Time
 	}{
 		{"missing time", time.Time{}},
@@ -102,7 +104,7 @@ func TestResolveAdmissionCancellationNeverReturnsCandidate(t *testing.T) {
 	defer stopExpired()
 	for _, test := range []struct {
 		name string
-		ctx context.Context
+		ctx  context.Context
 		want error
 	}{
 		{"already canceled", canceled, context.Canceled},
@@ -132,7 +134,7 @@ func TestResolveAdmissionCancellationNeverReturnsCandidate(t *testing.T) {
 // is controlled, without sleep or replacing a dependency with fake success.
 type cancelAfterReleaseRead struct {
 	delegate biz.AdmissionReleaseReader
-	cancel context.CancelFunc
+	cancel   context.CancelFunc
 }
 
 func (reader cancelAfterReleaseRead) ReadRelease(ctx context.Context, id, digest string) (cpup01.ReleaseDocument, error) {

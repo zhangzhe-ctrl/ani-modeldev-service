@@ -102,6 +102,9 @@ func (resolver *AdmissionResolver) Resolve(ctx context.Context, request Admissio
 		return AdmissionResolution{}, ErrPersistence
 	}
 	release, err := resolver.releases.ReadRelease(ctx, strings.ToLower(request.Release.ReleaseID), request.Release.ReleaseDigest)
+	if err := ctx.Err(); err != nil {
+		return AdmissionResolution{}, err
+	}
 	if err != nil {
 		return AdmissionResolution{}, err
 	}
@@ -112,6 +115,9 @@ func (resolver *AdmissionResolver) Resolve(ctx context.Context, request Admissio
 		return AdmissionResolution{}, ErrNoCompatibleRelease
 	}
 	version, err := resolver.inputs.Get(ctx, strings.ToLower(request.TenantID), intent.DatasetVersionID)
+	if err := ctx.Err(); err != nil {
+		return AdmissionResolution{}, err
+	}
 	if err != nil {
 		return AdmissionResolution{}, err
 	}

@@ -23,9 +23,9 @@ func TestResolveAdmissionPreservesIntentPresenceWhileResolvingEquivalentDefaults
 	}
 	image := fixture.release.Program.ImageVersionID
 	variants := []struct {
-		name string
+		name       string
 		parameters *[]cpup01.Parameter
-		image *string
+		image      *string
 	}{
 		{"omitted", nil, nil},
 		{"empty", &empty, nil},
@@ -71,9 +71,9 @@ func TestResolveAdmissionPreservesIntentPresenceWhileResolvingEquivalentDefaults
 func TestResolveAdmissionRejectsInvalidOrIncompatibleSelections(t *testing.T) {
 	fixture := prepareResolution(t)
 	for _, test := range []struct {
-		name string
+		name   string
 		change func(*biz.AdmissionResolutionRequest)
-		want error
+		want   error
 	}{
 		{"missing release", func(r *biz.AdmissionResolutionRequest) { r.Release.ReleaseID = "77777777-7777-4777-8777-777777777777" }, biz.ErrNoCompatibleRelease},
 		{"wrong digest", func(r *biz.AdmissionResolutionRequest) { r.Release.ReleaseDigest = strings.Repeat("0", 64) }, biz.ErrNoCompatibleRelease},
@@ -82,11 +82,26 @@ func TestResolveAdmissionRejectsInvalidOrIncompatibleSelections(t *testing.T) {
 		{"zero generation", func(r *biz.AdmissionResolutionRequest) { r.Release.BindingGeneration = 0 }, biz.ErrInvalidAdmission},
 		{"wrong preset", func(r *biz.AdmissionResolutionRequest) { r.Intent.PresetID = "77777777-7777-4777-8777-777777777777" }, biz.ErrNoCompatibleRelease},
 		{"unsupported kind", func(r *biz.AdmissionResolutionRequest) { r.Intent.Kind = "FINETUNING" }, biz.ErrInvalidAdmission},
-		{"different image", func(r *biz.AdmissionResolutionRequest) { id := "77777777-7777-4777-8777-777777777777"; r.Intent.ImageVersionID = &id }, biz.ErrNoCompatibleRelease},
-		{"unknown parameter", func(r *biz.AdmissionResolutionRequest) { values := []cpup01.Parameter{{Name: "script", Type: "STRING", Value: "unregistered"}}; r.Intent.GeneralParameters = &values }, biz.ErrInvalidAdmission},
-		{"duplicate parameter", func(r *biz.AdmissionResolutionRequest) { values := []cpup01.Parameter{{Name: "epochs", Type: "INTEGER", Value: "3"}, {Name: "epochs", Type: "INTEGER", Value: "3"}}; r.Intent.GeneralParameters = &values }, biz.ErrInvalidAdmission},
-		{"wrong parameter type", func(r *biz.AdmissionResolutionRequest) { values := []cpup01.Parameter{{Name: "learning_rate", Type: "INTEGER", Value: "0.01"}}; r.Intent.GeneralParameters = &values }, biz.ErrInvalidAdmission},
-		{"out of range parameter", func(r *biz.AdmissionResolutionRequest) { values := []cpup01.Parameter{{Name: "learning_rate", Type: "DECIMAL", Value: "0.11"}}; r.Intent.GeneralParameters = &values }, biz.ErrInvalidAdmission},
+		{"different image", func(r *biz.AdmissionResolutionRequest) {
+			id := "77777777-7777-4777-8777-777777777777"
+			r.Intent.ImageVersionID = &id
+		}, biz.ErrNoCompatibleRelease},
+		{"unknown parameter", func(r *biz.AdmissionResolutionRequest) {
+			values := []cpup01.Parameter{{Name: "script", Type: "STRING", Value: "unregistered"}}
+			r.Intent.GeneralParameters = &values
+		}, biz.ErrInvalidAdmission},
+		{"duplicate parameter", func(r *biz.AdmissionResolutionRequest) {
+			values := []cpup01.Parameter{{Name: "epochs", Type: "INTEGER", Value: "3"}, {Name: "epochs", Type: "INTEGER", Value: "3"}}
+			r.Intent.GeneralParameters = &values
+		}, biz.ErrInvalidAdmission},
+		{"wrong parameter type", func(r *biz.AdmissionResolutionRequest) {
+			values := []cpup01.Parameter{{Name: "learning_rate", Type: "INTEGER", Value: "0.01"}}
+			r.Intent.GeneralParameters = &values
+		}, biz.ErrInvalidAdmission},
+		{"out of range parameter", func(r *biz.AdmissionResolutionRequest) {
+			values := []cpup01.Parameter{{Name: "learning_rate", Type: "DECIMAL", Value: "0.11"}}
+			r.Intent.GeneralParameters = &values
+		}, biz.ErrInvalidAdmission},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			selection := fixture.selection
