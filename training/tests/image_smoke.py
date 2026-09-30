@@ -60,7 +60,7 @@ def main():
     ]
     command(common + ["--rm", "--entrypoint", "/opt/venv/bin/python", image_id, "-I", "-c",
         "import json,os,platform,torch; "
-        "assert os.getuid()==10001; assert platform.python_version()=='3.13.11'; "
+        "assert os.getuid()==10001; assert platform.python_version()=='3.13.15'; "
         "assert torch.__version__=='2.10.0+cpu'; assert torch.version.cuda is None; "
         "print(json.dumps({'uid':os.getuid(),'python':platform.python_version(),'torch':torch.__version__,'cuda':torch.version.cuda}))"
     ], "runtime")

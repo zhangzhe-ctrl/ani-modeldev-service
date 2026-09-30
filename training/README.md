@@ -34,11 +34,13 @@ are implemented and checked. The first slice fixes three epochs, batch
 size 64, and CPU MLP 16→32→2. `result.json` is a workload output candidate, not
 proof of S3 publication or business success.
 
-`runtime-lock.json` records the actual Python 3.13.11 container image identity
-and PyTorch 2.10.0+cpu environment inspected on Fedora. `requirements.lock` pins
+`runtime-lock.json` records the Python 3.13.15 slim-trixie base image identity
+resolved and inspected on Fedora, with PyTorch 2.10.0+cpu still fixed. `requirements.lock` pins
 the resolved ten dependency wheels by version and SHA256; `wheelhouse.sha256`
-records the filenames. A Fedora offline `pip install --dry-run --ignore-installed
---require-hashes` resolved this lock successfully. These files do not establish a
+records the filenames. The original Python 3.13.11/setuptools 78.1.0 lock was
+resolved and tested on Fedora. The security remediation replaces only the base
+image and setuptools wheel (80.10.2); its rebuilt-image verification is pending.
+All ten current wheel hashes were checked on Fedora. These files do not establish a
 built workload image digest. Fixture CSVs, wheels, and model output stay out of
 Git. PyTorch's optional NumPy integration reports a warning because this workload
 uses tensors directly and does not install NumPy.
@@ -151,8 +153,43 @@ steps and sent SIGTERM, but PID 1 did not terminate within ten seconds; this is 
 product behavior RED. Only that test's exact container ID was force-removed after
 retaining its metrics and logs. It had continued to 48 steps and written candidate
 files despite SIGTERM. The workload now explicitly handles SIGTERM and
-exits 143 while unwinding open files. This fix awaits a new fixed image build and
-both module and image smoke verification; the previous image is not accepted.
+exits 143 while unwinding open files.
+
+At `a2b799b4fe8577c53ff1a796f90412f574c3071c`, all six module tests passed in
+73.885 seconds. The offline image build produced
+`sha256:eacf4804d14d3778718e21acf4e55f5ae198ebffe4653b661328154a290b58c0`,
+and its real image smoke passed success48steps, independent checkpoint reload,
+fail5steps and bounded stop. The stop run exited 143 after four actual optimizer
+steps and retained only metrics.jsonl. All tests used the image's actual nonroot
+PID 1 entrypoint, without a wrapper or runtime downloads. The failed earlier
+images and their evidence remain separate; they are not accepted candidates.
+
+Root subsequently installed checksum-verified Syft 1.52.0 and Grype 0.119.0
+under the Fedora task directory. SBOM generation for the exact a2b799b image
+passed. Grype with the verified 2026-09-30 database and `--fail-on high` returned
+exit 2: 387 matches, including 16 Critical and 120 High. This is a real image
+scan FAIL; module/image behavior PASS does not override it. Earlier database
+download failures are retained separately from that completed scan.
+
+The remediation candidate uses the official Python 3.13.15 slim-trixie image at
+`sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b`,
+retaining CPython 3.13 and the existing CPU Torch wheel. The Fedora base probe
+reports Python 3.13.15, OpenSSL 3.5.7 and SQLite 3.46.1. Setuptools 80.10.2's
+official wheel replaces 78.1.0 and includes jaraco.context 6.1.0 and wheel 0.46.3;
+the other nine locked wheels are unchanged. Builds remain offline and run as
+UID 10001. No package database, scanner finding or standard library is removed
+to obtain a passing scan.
+
+The candidate requires a fresh build, six module tests, image smoke, SBOM and
+Grype scan before any acceptance. Python's official advisory confirms that
+CVE-2026-82049 affects the 3.13 line; a published 3.13.15 base does not resolve
+that remaining High issue. It remains an explicit unresolved finding, without
+an ignore rule or a claim of a clean scan. See
+[Python 3.13.15](https://www.python.org/downloads/release/python-31315/),
+[official image source](https://github.com/docker-library/python/blob/688a0b86bb44289df16a363e9f41d90514c1a5f9/3.13/slim-trixie/Dockerfile),
+[setuptools maintenance changes](https://github.com/pypa/setuptools/blob/v80.10.2/NEWS.rst),
+[Debian SQLite assessment](https://security-tracker.debian.org/tracker/CVE-2025-7458)
+and [Python security advisory](https://mail.python.org/archives/list/security-announce%40python.org/thread/EFJWGAZJA56AKSBR2WHMHQZO7RRLZPRH/).
 The existing CI workflow has no
 image-publish job; the consumed ENV handoff is still a NOT_RUN template without a
 registry reference. Registry push therefore remains NOT_RUN until an explicit

@@ -1,11 +1,11 @@
-FROM docker.io/library/python@sha256:ac76900038d8606cc99b413d4ede77bc7152f1e42b94cf5d50d4b80a999652fe AS dependencies
+FROM docker.io/library/python@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b AS dependencies
 COPY training/requirements.lock /tmp/requirements.lock
 COPY wheelhouse/ /tmp/wheelhouse/
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/python -m pip install --no-index --no-cache-dir \
        --find-links=/tmp/wheelhouse --require-hashes -r /tmp/requirements.lock
 
-FROM docker.io/library/python@sha256:ac76900038d8606cc99b413d4ede77bc7152f1e42b94cf5d50d4b80a999652fe
+FROM docker.io/library/python@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b
 COPY --from=dependencies /opt/venv /opt/venv
 COPY --chmod=0444 training/train_mlp.py /opt/cpu03/train_mlp.py
 COPY --chmod=0444 training/runtime-lock.json training/requirements.lock training/wheelhouse.sha256 /opt/cpu03/materials/
