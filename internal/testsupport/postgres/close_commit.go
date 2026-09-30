@@ -17,6 +17,14 @@ import (
 // The returned removal is idempotent and also runs during test cleanup.
 func RejectCloseCommit(t testing.TB, runtimePool *pgxpool.Pool) func() {
 	t.Helper()
+	return rejectInsertCommit(t, runtimePool, "modeldev_close_intents", "reject_close_commit", "injected_close_commit_failure")
+}
+
+// Only the two fixed exported fixtures choose these object and error names.
+// This private helper shares isolation/connection/cleanup guards, not an
+// externally configurable fault-injection interface.
+func rejectInsertCommit(t testing.TB, runtimePool *pgxpool.Pool, tableName, functionName, errorMarker string) func() {
+	t.Helper()
 	runtimeConfig := runtimePool.Config().ConnConfig
 	schemaName := runtimeConfig.RuntimeParams["search_path"]
 	if !strings.HasPrefix(schemaName, "cpu04_") {
@@ -37,8 +45,9 @@ func RejectCloseCommit(t testing.TB, runtimePool *pgxpool.Pool) func() {
 		defer closeCancel()
 		_ = admin.Close(closeContext)
 	})
-	table := pgx.Identifier{schemaName, "modeldev_close_intents"}.Sanitize()
-	function := pgx.Identifier{schemaName, "reject_close_commit"}.Sanitize()
+	table := pgx.Identifier{schemaName, tableName}.Sanitize()
+	function := pgx.Identifier{schemaName, functionName}.Sanitize()
+	trigger := pgx.Identifier{functionName}.Sanitize()
 	removed := false
 	remove := func() {
 		t.Helper()
@@ -47,7 +56,7 @@ func RejectCloseCommit(t testing.TB, runtimePool *pgxpool.Pool) func() {
 		}
 		cleanupContext, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cleanupCancel()
-		if _, err := admin.Exec(cleanupContext, "DROP TRIGGER IF EXISTS reject_close_commit ON "+table); err != nil {
+		if _, err := admin.Exec(cleanupContext, "DROP TRIGGER IF EXISTS "+trigger+" ON "+table); err != nil {
 			t.Error("CPU04_DB_CLEANUP: isolated commit-fault trigger removal failed")
 			return
 		}
@@ -58,10 +67,11 @@ func RejectCloseCommit(t testing.TB, runtimePool *pgxpool.Pool) func() {
 		removed = true
 	}
 	t.Cleanup(remove)
-	if _, err := admin.Exec(ctx, "CREATE FUNCTION "+function+"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected_close_commit_failure' USING ERRCODE = '23514'; END; $$"); err != nil {
+	message := "'" + strings.ReplaceAll(errorMarker, "'", "''") + "'"
+	if _, err := admin.Exec(ctx, "CREATE FUNCTION "+function+"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION "+message+" USING ERRCODE = '23514'; END; $$"); err != nil {
 		t.Fatal("CPU04_DB_PREFLIGHT: isolated commit-fault function creation failed; behavior NOT_RUN")
 	}
-	if _, err := admin.Exec(ctx, "CREATE CONSTRAINT TRIGGER reject_close_commit AFTER INSERT ON "+table+" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "+function+"()"); err != nil {
+	if _, err := admin.Exec(ctx, "CREATE CONSTRAINT TRIGGER "+trigger+" AFTER INSERT ON "+table+" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "+function+"()"); err != nil {
 		t.Fatal("CPU04_DB_PREFLIGHT: isolated commit-fault trigger creation failed; behavior NOT_RUN")
 	}
 	return remove

@@ -49,15 +49,31 @@ hash 和原 Admission 派生字段。完整原件或计划不一致返回 ADMISS
 且不再发许可，原 Admission 和 close 事实不变。这个方法不证明实际发送过网络
 请求，也不决定关闭完成。
 
+## 已确认创建响应的句柄
+
+SQL 0010 增加原预约下不可变的 confirmed Run 观察，完整合同与证据见
+[持久化文档的 CPU07 confirmed Run 章节](cpu-p01-persistence.md#cpu07-confirmed-run-观察的持久化)。
+`RecordSubmissionConfirmed` 在共享 identity 锁下匹配原 attempt/plan，保存
+Run 句柄并在同一事务进入内部 SUBMISSION_CONFIRMED，成功 commit 后才返回
+回执。关闭/deadline 后原句柄仍保留，已有 UncertainAt 不丢失，迟到 Uncertain
+不降级。相同 Run 不刷新首次时间，不同 Run 全部保留并返回 ConflictingRuns，
+不能据此接管旧 Run 或获得训练许可。
+
+固定 `3ede847` 的首个真实 PG 行为 RED 后，`ae2c657` 取得同一行为 GREEN；
+`5ad95e4` 完整 submission/execution 回归及限定 confirmed 并发 race PASS。
+Get 用同一只读 Repeatable Read 快照读取状态与全部句柄，Reserve 重放仍无
+SendPermit。这些测试只证明合成内部观察的持久化，不证明实际 KFP 响应或 Pod
+身份。confirmed COMMIT 失败故障注入候选尚未执行，不能借用 Close 的结果。
+
 ## 当前不成立的能力
 
-当前持久化切片未实现 HTTP 调用、Run 句柄、租约、发送恢复或权威 Run CAS。
-现有 KFP CreateRun 仍从客户端配置读取 root，故此候选不把预约接到该客户端。
-后续独立行为必须证明：close 先到拒绝新许可；预约先到后关闭不能漏掉在途
-创建；HTTP 不明只能保留 UNCERTAIN，不能因租约到期或查询未命中盲重发；
-迟到句柄按原 attempt/计划匹配保存而不丢失，Confirmed 不被迟到不明降级。
+当前持久化切片未实现 HTTP 调用、租约、发送恢复、严格关联查询或权威 Run CAS。
+现有 KFP CreateRun 仍从客户端配置读取 root，故此切片不把预约接到该客户端。
+后续实际发送必须消费已持久的 frozen plan；预约先到后关闭仍须对账在途创建。
+HTTP 不明不能因租约到期或查询未命中盲重发，保存句柄不证明关闭完成。
 
-SQL 0007/0009 只建设原预约和首次不明观察，不预建 handles、lease 或 reconcile
-schema。双外键要求完整租户身份及实际已持久 Admission，close-only tombstone
-不能单独授权提交。新增表显式 tenant 隔离并禁用 RLS；SQL 用独立 submission
-query 源和 sqlc 生成。ENV、真实 KFP、生产身份和 LIVE 仍未验证。
+SQL 0007/0009 保留原预约和首次不明观察，0010 单独保存确认句柄；没有 lease
+或 reconcile schema。原双外键要求完整租户身份及实际已持久 Admission，新增
+完整 tenant/execution/attempt/plan FK 将句柄绑定原预约。close-only tombstone
+不能单独授权提交。表显式 tenant 隔离并禁用 RLS；SQL 用独立 submission query
+源和 sqlc 生成。ENV、真实 KFP、生产身份和 LIVE 仍未验证。

@@ -203,6 +203,75 @@ deadline/自然关闭、持久创建许可与外部 UID 历史、实际业务装
 Get 是观察接口；`Close == nil` 不授权创建，CLOSING 不证明无写者。当前源码的
 完整 make verify/audit 由根任务统一执行，未以本节 repository GREEN 替代。
 
+## CPU07 confirmed Run 观察的持久化
+
+本切片延续 [原提交预约与不明观察](cpu-p01-pipeline-submission.md)，只保存原
+attempt 的内部 confirmed 观察，不装配 KFP 发送器或赋予 Run 权威。固定
+`3ede847` 在真实 PG、受限角色、隔离迁移及 Accept/Reserve/Uncertain/Close
+前置全部成功后，因明确 stub 返回 PERSISTENCE_UNAVAILABLE 取得行为 RED。
+0010/SQL 输入固定于 `16f4162`，Fedora pinned sqlc 1.31.1 生成物固定于
+`eaee583`；实现 `ae2c657` 的同一行为及完整 submission/execution 测试 GREEN。
+固定 `5ad95e4` 的完整 submission/execution 与限定 confirmed 并发 race 均
+PASS，格式无差异。新增回归直接通过，未制造另一轮 RED。
+
+`RecordSubmissionConfirmed` 只接受 CONFIRMED 观察、非零 Run UUID、原
+tenant/execution/attempt/plan hash 和合法观察时间。仓储在已有 execution
+identity 行锁下核对原预约、完整 Admission 与 frozen plan canonical/hash；
+不能用语法合法的 permit 创造缺失预约，也不重新读取当前 owner 配置。
+观察输入仍来自受信内部调用；它不是网络响应、实际 Pod/Namespace 身份或当前
+授权的独立证明。现有 KFP client 仅返回 State/RunID，且仍读取 client root，
+本切片没有将它接到持久发送路径。
+
+`modeldev_pipeline_confirmed_runs` 保存 tenant/execution/attempt/plan hash、
+Run UUID 和首次观察时间。完整复合 FK 指向原 dispatch；父记录继续通过既有
+FK 关联真实 Admission 和 immutable identity。主键包含 Run UUID，故同件
+重放保留首次时间，另一 Run 作为另一条事实保存，不覆盖先前句柄。Run UUID
+应在 frozen environment 的 ClusterID/KFPConnectionRef/NamespaceUID 范围内
+解释；本表不以全局 Run UUID 唯一约束分配外部资源所有权。每条记录显式带
+tenant_id，查询带完整租户与预约过滤，RLS 禁用；测试 runtime 仅获子表
+INSERT/SELECT，没有 UPDATE/DELETE。生产 Go SQL 仍全部来自 submission
+query 源与 sqlc 生成物。
+
+插入句柄和内部状态 SUBMISSION_CONFIRMED 在同一事务中提交。此状态仅表示
+已保存至少一条创建响应观察，不表示 QUEUED、训练成功或权威 Run 已绑定。
+原 UncertainAt、attempt、plan 和 reserved_at 不变；迟到 Uncertain 读回确认
+事实，不降级或新增/刷新不明时间。close 与 deadline 只封新发送许可，不能
+丢弃已有预约的迟到结果；记录句柄不改变 CLOSING/代际，不决定 CLOSED。
+
+观察时间先按同一瞬时值规范为 UTC，要求非零、UTC 年 1–9999、整微秒且不早于
+reserved_at，亚微秒输入拒绝而不四舍五入。每个 Run 的 FirstObservedAt 以
+首次成功提交的观察为准，之后即使报告更早或更晚的合法时间也不改写。confirmed
+时间可早于已存 UncertainAt，表示不同观察乱序送达，并不重排历史。句柄列表按
+canonical Run UUID 排序；这个顺序不赋予优先级。
+
+成功回执只在 COMMIT 成功后返回。若存在多个不同 Run，返回
+`ConflictingRuns=true` 和全部已保存句柄，不以错误回滚冲突事实，也不选择主
+Run。参数非法、缺预约、原 attempt/plan 不匹配及持久化失败沿既有内部错误
+约定返回；失败不携带确认回执。即使 commit 结果不明也不返回成功或新发送许可，
+调用方只能读取/重记原观察，不能据此再次 POST。
+
+Get 在同一只读 REPEATABLE READ 事务中读取 dispatch、不可变 Admission 和
+句柄列表，避免拼接旧状态与新句柄；Reserve 重放及两个观察写入使用原共享
+identity 锁。解码核对状态/列表一致、完整 child identity、UUID、时间及顺序。
+没有句柄时保持 nil 列表。Get、Reserve 重放和确认回执均不产生 SendPermit。
+
+真实 PG 测试已覆盖第三 pool 立即可见、关闭写 pool 后重连、首次时间保留、
+同/异 Run 双 pool 竞争且冲突全部保留、close 竞争、迟到不明不降级、真实租户
+边界、UUID/时间别名及非法输入、缺预约/墓碑、数据库 deadline 到达后的迟到
+确认。证据见 `.scratch/cpu-p01/runs/20260930-01/cpu07/` 的
+`submission-confirmed-checkpoint.md` 与固定 SHA 的原始日志。
+
+本切片尚未故障注入 confirmed 自身的 COMMIT 失败，已有 Close 提交失败测试
+不能代替它。最小补验收应只验证一次真实 PG 延迟约束拒绝提交：空回执、原
+dispatch/句柄均未被该失败事务改写、解除后原观察可持久而无新发送许可。当前
+读取一致性由代码中的同一 RR 事务和 PG 快照语义保证，尚未做强制插入父/子查询
+之间的并发提交调度测试；没有发现需要因此增加调度框架的实现缺陷。
+
+上述证据不包含服务进程中止、网络层丢失 COMMIT 响应、真实 KFP、租约/发送
+恢复、BeginExecution 真实关联验证、权威 Run CAS、TrainJob 许可或关闭完成。
+ENV/LIVE 仍未验证。未来权威绑定必须另行认证受管步骤并核实实际关联；本表
+任何已保存 Run 都不能单凭这条观察获训练许可。
+
 ## 下一目录读取与 Release 冻结方案（未实现）
 
 依据原 CPU04 与 v0.4 D03/D05/D13，下一步只增加受管不可变目录和 Governance
