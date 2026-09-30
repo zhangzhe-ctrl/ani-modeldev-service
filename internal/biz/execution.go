@@ -18,7 +18,7 @@ import (
 var (
 	ErrInvalidAdmission  = errors.New("INVALID_ARGUMENT")
 	ErrExecutionNotFound = errors.New("NOT_FOUND")
-	ErrPersistence      = errors.New("PERSISTENCE_UNAVAILABLE")
+	ErrPersistence       = errors.New("PERSISTENCE_UNAVAILABLE")
 )
 
 // Admission is the trusted, immutable command accepted by Governance. TenantID
