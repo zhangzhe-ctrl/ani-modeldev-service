@@ -8,6 +8,7 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -42,9 +43,7 @@ func (r *Repository) Accept(ctx context.Context, admission biz.Admission) (biz.E
 	if err != nil {
 		return biz.Execution{}, err
 	}
-	// This single statement is committed by PostgreSQL before its successful
-	// result is acknowledged; no in-memory receipt can substitute for the row.
-	row, err := executionsql.New(r.pool).InsertExecution(ctx, executionsql.InsertExecutionParams{
+	command := executionsql.InsertExecutionParams{
 		TenantID:          tenantID,
 		ExecutionID:       executionID,
 		OperationID:       operationID,
@@ -54,11 +53,40 @@ func (r *Repository) Accept(ctx context.Context, admission biz.Admission) (biz.E
 		SnapshotCanonical: snapshot,
 		SpecHash:          admission.SpecHash,
 		AcceptedAt:        pgtype.Timestamptz{Time: admission.AcceptedAt.UTC(), Valid: true},
-	})
+	}
+	queries := executionsql.New(r.pool)
+	// This single statement is committed by PostgreSQL before its successful
+	// result is acknowledged; no in-memory receipt can substitute for the row.
+	row, err := queries.InsertExecution(ctx, command)
 	if err != nil {
-		return biz.Execution{}, biz.ErrPersistence
+		var databaseError *pgconn.PgError
+		if !errors.As(err, &databaseError) || databaseError.Code != "23505" {
+			return biz.Execution{}, biz.ErrPersistence
+		}
+		// PostgreSQL resolves a competing unique-key insert before reporting
+		// this violation. A fresh statement can now read the committed winner,
+		// still scoped to the caller's tenant and original execution identity.
+		row, err = queries.GetExecution(ctx, executionsql.GetExecutionParams{
+			TenantID: tenantID, ExecutionID: executionID,
+		})
+		if err != nil || !sameAdmission(row, command) {
+			return biz.Execution{}, biz.ErrPersistence
+		}
 	}
 	return executionFromRow(row)
+}
+
+func sameAdmission(row executionsql.ModeldevExecution, command executionsql.InsertExecutionParams) bool {
+	return row.TenantID == command.TenantID &&
+		row.ExecutionID == command.ExecutionID &&
+		row.OperationID == command.OperationID &&
+		row.Actor == command.Actor &&
+		row.IntentHash == command.IntentHash &&
+		row.SpecHash == command.SpecHash &&
+		bytes.Equal(row.IntentCanonical, command.IntentCanonical) &&
+		bytes.Equal(row.SnapshotCanonical, command.SnapshotCanonical) &&
+		row.AcceptedAt.Valid && row.AcceptedAt.InfinityModifier == pgtype.Finite &&
+		row.AcceptedAt.Time.Equal(command.AcceptedAt.Time)
 }
 
 func (r *Repository) Get(ctx context.Context, tenant, execution string) (biz.Execution, error) {

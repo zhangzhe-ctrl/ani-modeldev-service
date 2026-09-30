@@ -4,7 +4,9 @@
 [领域合同](cpu-p01-domain-model.md)、[快照规范](cpu-p01-snapshot.md)。
 执行来源与固定审查基线见 `.scratch/cpu-p01/`。固定候选 `0266313` 已在 Fedora
 取得有效 RED：真实 PostgreSQL、受限角色和隔离迁移 preflight PASS 后，Accept
-返回 NOT_IMPLEMENTED / exit 1。当前为首个 Accept/Get 实现候选，尚待固定提交
+返回 NOT_IMPLEMENTED / exit 1。首个正向持久受理在固定 `bc46d60` 取得 GREEN。
+重复投递测试在固定 `e716e4e` 取得有效 RED：preflight PASS 后重复 Accept 返回
+PERSISTENCE_UNAVAILABLE / exit 1。当前为严格重复回放实现候选，尚待固定提交
 GREEN；未接业务装配，不标整个 CPU04 CODE_READY。
 
 ## 持久事实与最小边界
@@ -30,6 +32,10 @@ ACK 表；只有整行提交后 `Accept` 才能返回成功。`Get(tenant_id, ex
 RLS 显式禁用，隔离依赖 tenant-scoped SQL 和真正受限 runtime role，不能用
 superuser/BYPASSRLS 角色证明隔离。
 
+源合同要求 operation_id 与 execution_id 各自全局唯一；当前迁移尚只有上述
+租户复合约束，全局唯一及跨租户复用 ID 的拒绝行为留待下一冲突切片先 RED
+再扩迁移，不能将当前约束视为完整覆盖。
+
 intent 和 snapshot 保存规范 UTF-8 字节及各自摘要，避免 JSONB 重排或数字
 转换改变合同字节。实现阶段必须重新规范化/计算两个摘要并比对来件，核对
 intent 的 preset/input/显式 image 等选择与 Snapshot，以及原截止时间与
@@ -42,9 +48,16 @@ accepted_at 的关系；不能直接信任摘要字符串。原意图的缺省�
 
 业务错误必须稳定，不暴露 SQL、DSN、另一租户记录或原始驱动异常。当前实现
 用 INVALID_ARGUMENT、NOT_FOUND、PERSISTENCE_UNAVAILABLE 表示本切片错误；
-冲突投递的稳定拒绝和重放语义由下一条真实 RED/GREEN 切片补齐。数据库读取
+冲突投递的独立稳定错误由下一条真实 RED/GREEN 切片补齐。数据库读取
 重新规范化并核对字节/摘要，不能把损坏的持久事实当作有效受理。
 停止墓碑、关闭意图、资源历史、输入/目录导入和 publication 尚未实现。
+
+严格重复回放仅在 INSERT 返回 PostgreSQL 唯一冲突后，使用现有生成查询按
+原 tenant/execution 读取已提交行。比较 tenant、operation、execution、actor、
+accepted_at、两个摘要及完整 canonical intent/snapshot 字节，全部相同才返回
+原受理事实。唯一竞争的失败插入后使用新查询语句读取赢家，不盲目重建、更新
+原记录或退回内存回执。数据库异常或不一致仍返回失败，不把它们当作重复成功。
+actor 保存可信上下文字符串，例如 `governance:user:42`，不要求主体 ID 为 UUID。
 
 ## 第一条真实 PostgreSQL 测试
 
@@ -69,7 +82,11 @@ Fedora 执行者从受保护文件载入 `CPU_P01_TEST_DATABASE_URL` 和
 使用受限 loopback 通道，不能指向共享业务数据库。当前已提供的实例及镜像
 身份以本轮 baseline 为准，测试不内置凭据、端口或生产默认值。
 
-重复投递、并发、同键异参、跨租户负向、停止墓碑和恢复门闩是后续独立
-RED/GREEN 切片；本条正向持久化不能代替这些证据。真实 PG 模块结果亦不能
+`TestAcceptDuplicateAfterReconnectReturnsOriginalAdmission` 在首次 Accept 后
+关闭 pool，经新 pool 重投同一命令，核对回放响应与 Get 均保持完整原受理。
+此测试已有上述 RED，当前实现 GREEN 尚未取得。
+
+并发、同键异参、跨租户负向、停止墓碑和恢复门闩是后续独立 RED/GREEN 切片；
+正向持久化或串行重复回放不能代替这些证据。真实 PG 模块结果亦不能
 证明目标集群、BFF、KFP、Trainer、S3 或 L1–L4 验收通过。新 pool 读取证明数据库
 已提交的持久事实；进程中途终止与重启恢复属于 CPU10 后续验证，不在这里冒称完成。
