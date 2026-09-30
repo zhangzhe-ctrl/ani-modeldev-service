@@ -57,8 +57,21 @@ conditions fail closed; missing/stale/unversioned conditions remain Unknown.
 Annotation comparison establishes resource correlation, not an independent hash
 of the entire rendered CRD spec. Full create-intent/spec reconciliation and Pod
 exit/writer history remain future slices. No product transport is wired, no create
-operation exists yet, and this is IN_PROGRESS rather than CODE_READY. GREEN and
-focused binding-negative RED/GREEN await fixed commits; tests were not weakened.
+operation exists yet, and this is IN_PROGRESS rather than CODE_READY.
+
+The first named observer test passed on Fedora at fixed source
+`f2e1efcd952708dbb45307e511665775a128a647` with exit 0 in 0.007 seconds.
+The new checkout remained clean. Both TMPDIR and GOTMPDIR use the task directory.
+This GREEN covers the Suspended/Complete/Failed distinction and returned identity
+through an HTTP API substitute; it does not cover live resource identity.
+
+The next test-only slice covers invalid binding before network access, namespace
+recreation before reading a TrainJob, mismatched resource/owner/spec correlation,
+unavailable or stale condition generations, ambiguous controller conditions and
+preserved NotFound/Forbidden API errors. These tests await a fixed commit and
+Fedora execution. Cases already satisfied by the initial fail-closed
+implementation will be recorded as regression PASS, not fabricated RED. Product
+code remains unchanged for this test slice.
 
 The latest consumed ENV record still lacks a usable Trainer CRD/Runtime and
 application-identity handoff. Server-side dry-run and real resource observation
