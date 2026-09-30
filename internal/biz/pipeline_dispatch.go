@@ -117,7 +117,10 @@ func (plan PipelineDispatchPlan) Digest() (string, error) {
 
 type PipelineDispatchState string
 
-const PipelineDispatchSubmitting PipelineDispatchState = "SUBMITTING"
+const (
+	PipelineDispatchSubmitting PipelineDispatchState = "SUBMITTING"
+	PipelineDispatchUncertain PipelineDispatchState = "SUBMISSION_UNCERTAIN"
+)
 
 type PipelineDispatch struct {
 	AttemptID  string
@@ -125,6 +128,9 @@ type PipelineDispatch struct {
 	PlanHash   string
 	State      PipelineDispatchState
 	ReservedAt time.Time
+	// UncertainAt is the first durably accepted uncertainty observation. It is
+	// nil while SUBMITTING; replay cannot refresh it or grant another send.
+	UncertainAt *time.Time
 }
 
 // PipelineSendPermit is returned only by the transaction which creates and
@@ -145,4 +151,7 @@ type PipelineDispatchReservation struct {
 type PipelineDispatchRepository interface {
 	Reserve(context.Context, PipelineDispatchRequest) (PipelineDispatchReservation, error)
 	Get(context.Context, string, string) (PipelineDispatch, error)
+	// MarkSubmissionUncertain records only the original attempt's outcome;
+	// it is permitted after close and never grants permission to send again.
+	MarkSubmissionUncertain(context.Context, PipelineSendPermit, time.Time) (PipelineDispatch, error)
 }
