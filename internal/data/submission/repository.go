@@ -188,7 +188,7 @@ func rollback(transaction pgx.Tx) {
 
 func dispatchFromRow(row submissionsql.ModeldevPipelineDispatch, original submissionsql.ModeldevExecution) (biz.PipelineDispatch, error) {
 	if !row.TenantID.Valid || !row.ExecutionID.Valid || !row.OperationID.Valid || !row.AttemptID.Valid || row.AttemptID.Bytes == [16]byte{} ||
-		!row.ReservedAt.Valid || row.ReservedAt.InfinityModifier != pgtype.Finite || row.ReservedAt.Time.IsZero() || row.State != string(biz.PipelineDispatchSubmitting) ||
+		!row.ReservedAt.Valid || row.ReservedAt.InfinityModifier != pgtype.Finite || row.ReservedAt.Time.IsZero() ||
 		row.TenantID != original.TenantID || row.ExecutionID != original.ExecutionID || row.OperationID != original.OperationID || row.SpecHash != original.SpecHash ||
 		!original.AcceptedAt.Valid || original.AcceptedAt.InfinityModifier != pgtype.Finite {
 		return biz.PipelineDispatch{}, biz.ErrPersistence
@@ -219,5 +219,20 @@ func dispatchFromRow(row submissionsql.ModeldevPipelineDispatch, original submis
 	if err != nil || hash != row.PlanHash {
 		return biz.PipelineDispatch{}, biz.ErrPersistence
 	}
-	return biz.PipelineDispatch{AttemptID: row.AttemptID.String(), Plan: plan, PlanHash: hash, State: biz.PipelineDispatchSubmitting, ReservedAt: row.ReservedAt.Time.UTC()}, nil
+	dispatch := biz.PipelineDispatch{AttemptID: row.AttemptID.String(), Plan: plan, PlanHash: hash, State: biz.PipelineDispatchState(row.State), ReservedAt: row.ReservedAt.Time.UTC()}
+	switch dispatch.State {
+	case biz.PipelineDispatchSubmitting:
+		if row.UncertainAt.Valid {
+			return biz.PipelineDispatch{}, biz.ErrPersistence
+		}
+	case biz.PipelineDispatchUncertain:
+		if !row.UncertainAt.Valid || row.UncertainAt.InfinityModifier != pgtype.Finite || !validUncertaintyTime(row.UncertainAt.Time) || row.UncertainAt.Time.Before(dispatch.ReservedAt) {
+			return biz.PipelineDispatch{}, biz.ErrPersistence
+		}
+		observedAt := row.UncertainAt.Time.UTC()
+		dispatch.UncertainAt = &observedAt
+	default:
+		return biz.PipelineDispatch{}, biz.ErrPersistence
+	}
+	return dispatch, nil
 }

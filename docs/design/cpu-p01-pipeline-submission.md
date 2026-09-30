@@ -40,13 +40,21 @@ hash 和原 Admission 派生字段。完整原件或计划不一致返回 ADMISS
 
 ## 当前不成立的能力
 
-Phase A 未实现 HTTP 调用、调用结果写回、Run 句柄、租约、恢复或权威 Run CAS。
+原预约的不明结果在 `70b4957` 取得真实 PG 行为 RED；SQL 0009 和独立 sqlc
+输出已固定。当前 `MarkSubmissionUncertain` 实现候选尚待固定提交后的 GREEN。
+它仅接受原 tenant/execution/attempt/plan hash；合法观察时间规范到 UTC、精确到
+微秒且不得早于 reserved_at。首次成功提交的 SUBMISSION_UNCERTAIN/UncertainAt
+不被重放刷新；关闭或原 deadline 不丢弃迟到不明观察。Get/Reserve 保留原冻结计划
+且不再发许可，原 Admission 和 close 事实不变。这个方法不证明实际发送过网络
+请求，也不决定关闭完成。
+
+Phase A 未实现 HTTP 调用、Run 句柄、租约、发送恢复或权威 Run CAS。
 现有 KFP CreateRun 仍从客户端配置读取 root，故此候选不把预约接到该客户端。
 后续独立行为必须证明：close 先到拒绝新许可；预约先到后关闭不能漏掉在途
 创建；HTTP 不明只能保留 UNCERTAIN，不能因租约到期或查询未命中盲重发；
 迟到句柄按原 attempt/计划匹配保存而不丢失，Confirmed 不被迟到不明降级。
 
-SQL 0007 只建设本切片的不可变预约关系，不预建 handles、lease 或 reconcile
+SQL 0007/0009 只建设原预约和首次不明观察，不预建 handles、lease 或 reconcile
 schema。双外键要求完整租户身份及实际已持久 Admission，close-only tombstone
 不能单独授权提交。新增表显式 tenant 隔离并禁用 RLS；SQL 用独立 submission
 query 源和 sqlc 生成。ENV、真实 KFP、生产身份和 LIVE 仍未验证。
