@@ -32,3 +32,19 @@ and test-only anonymous credentials. The server is an explicit external-system
 test double. This proves request, correlation, streaming, and rejection behavior;
 it does not prove a deployed S3 service, real tenant IAM, upload completion,
 publication persistence, or a BFF-authorized independent verifier Job.
+
+`VerifyCSV` consumes the same fixed-version stream and verifies the registered
+`ani.cpu.csv.v1` format: the exact x0 through x15, label header; 1024 samples;
+16 finite decimal features representable as float32; and labels 0 or 1. The
+declared input must fit both the owner's read budget and the 32 MiB CSV ceiling.
+Blank physical lines, multiline numeric cells, hexadecimal floats, invalid
+records, missing or extra samples, and non-finite values are rejected. The
+inspection must finish before actual length, SHA256 and EOF can produce a
+`VerifiedCSV` observation. It neither creates an input version nor marks READY.
+
+Fedora module evidence at source `3910d3312093c62b4c004865abeea07e1d4bf40f`
+passes all object/CSV tests with clean formatting. Initial CSV behavior was RED
+at `94601750d6b00dca0c102a92869a2b4ce8781ccb`; additional blank-line and
+hexadecimal-float rejection was RED at
+`bf13d80251e070a712ea8c480d69b4edf3e15409`. These are synthetic SDK-boundary
+tests, not a real S3 import or persistent READY proof.
