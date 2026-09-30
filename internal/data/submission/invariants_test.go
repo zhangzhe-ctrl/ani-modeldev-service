@@ -50,7 +50,7 @@ func TestCloseBeforeReservationRejectsFirstSendPermit(t *testing.T) {
 			assertRejectedReservation(t, got, err, biz.ErrPipelineDispatchBlocked)
 			assertNoDispatch(t, ctx, submission.New(openPool()), request.Admission.TenantID, request.Admission.ExecutionID)
 			stored, err := admissions.Get(ctx, request.Admission.TenantID, request.Admission.ExecutionID)
-			if err != nil || stored.Close == nil || !reflect.DeepEqual(*stored.Close, closed) {
+			if err != nil || stored.Close == nil || !reflect.DeepEqual(*stored.Close, closed.CloseRecord) {
 				t.Fatal("rejected reservation changed the original closing fact")
 			}
 			assertSameDispatchAdmission(t, stored.Admission, request.Admission)

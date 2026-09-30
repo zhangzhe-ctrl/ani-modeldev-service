@@ -108,12 +108,19 @@ type CloseRecord struct {
 	State      CloseState
 }
 
+// CloseReceipt is returned only after a successful command transaction commits.
+// Replayed identifies this delivery's outcome, not a persisted close fact.
+type CloseReceipt struct {
+	CloseRecord
+	Replayed bool
+}
+
 // ExecutionRepository exposes only the persistence behaviors needed by the
 // admission and first close-intent slices. Successful command receipts require
 // a durable commit. No runtime resource operation is implied by this port.
 type ExecutionRepository interface {
 	Accept(context.Context, Admission) (Execution, error)
 	Get(context.Context, string, string) (Execution, error)
-	ApplyCloseIntent(context.Context, CloseIntent) (CloseRecord, error)
+	ApplyCloseIntent(context.Context, CloseIntent) (CloseReceipt, error)
 	GetCloseIntent(context.Context, string, string) (CloseRecord, error)
 }

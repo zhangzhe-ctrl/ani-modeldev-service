@@ -13,27 +13,29 @@ import (
 	executionsql "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/execution/sqlc"
 )
 
-func (r *Repository) ApplyCloseIntent(ctx context.Context, intent biz.CloseIntent) (biz.CloseRecord, error) {
+// RED candidate: the receipt shape is present, but replay discrimination is not
+// implemented until the reconnect behavior has failed against real PostgreSQL.
+func (r *Repository) ApplyCloseIntent(ctx context.Context, intent biz.CloseIntent) (biz.CloseReceipt, error) {
 	if err := intent.Validate(); err != nil {
-		return biz.CloseRecord{}, err
+		return biz.CloseReceipt{}, err
 	}
 	tenantID, err := databaseID(intent.TenantID)
 	if err != nil {
-		return biz.CloseRecord{}, err
+		return biz.CloseReceipt{}, err
 	}
 	executionID, err := databaseID(intent.ExecutionID)
 	if err != nil {
-		return biz.CloseRecord{}, err
+		return biz.CloseReceipt{}, err
 	}
 	operationID, err := databaseID(intent.OperationID)
 	if err != nil {
-		return biz.CloseRecord{}, err
+		return biz.CloseReceipt{}, err
 	}
 	transaction, queries, err := r.lockIdentity(ctx, executionsql.InsertExecutionIdentityParams{
 		TenantID: tenantID, ExecutionID: executionID, OperationID: operationID, SpecHash: intent.SpecHash,
 	})
 	if err != nil {
-		return biz.CloseRecord{}, err
+		return biz.CloseReceipt{}, err
 	}
 	defer rollbackExecutionTransaction(transaction)
 	sourceGeneration := pgtype.Numeric{Int: new(big.Int).SetUint64(intent.SourceGeneration), Valid: true}
@@ -43,24 +45,24 @@ func (r *Repository) ApplyCloseIntent(ctx context.Context, intent biz.CloseInten
 	if err == nil {
 		record, err := closeRecordFromRow(existing)
 		if err != nil {
-			return biz.CloseRecord{}, err
+			return biz.CloseReceipt{}, err
 		}
 		if !sameCloseIntent(record.CloseIntent, intent) {
-			return biz.CloseRecord{}, biz.ErrAdmissionConflict
+			return biz.CloseReceipt{}, biz.ErrAdmissionConflict
 		}
 		if err := transaction.Commit(ctx); err != nil {
-			return biz.CloseRecord{}, biz.ErrPersistence
+			return biz.CloseReceipt{}, biz.ErrPersistence
 		}
-		return record, nil
+		return biz.CloseReceipt{CloseRecord: record}, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return biz.CloseRecord{}, biz.ErrPersistence
+		return biz.CloseReceipt{}, biz.ErrPersistence
 	}
 	generation, err := queries.AdvanceCloseGeneration(ctx, executionsql.AdvanceCloseGenerationParams{
 		TenantID: tenantID, ExecutionID: executionID,
 	})
 	if err != nil {
-		return biz.CloseRecord{}, biz.ErrPersistence
+		return biz.CloseReceipt{}, biz.ErrPersistence
 	}
 	row, err := queries.InsertCloseIntent(ctx, executionsql.InsertCloseIntentParams{
 		TenantID: tenantID, ExecutionID: executionID, OperationID: operationID, SpecHash: intent.SpecHash,
@@ -70,16 +72,16 @@ func (r *Repository) ApplyCloseIntent(ctx context.Context, intent biz.CloseInten
 		RequestedActor:   intent.RequestedActor,
 	})
 	if err != nil {
-		return biz.CloseRecord{}, biz.ErrPersistence
+		return biz.CloseReceipt{}, biz.ErrPersistence
 	}
 	record, err := closeRecordFromRow(row)
 	if err != nil {
-		return biz.CloseRecord{}, err
+		return biz.CloseReceipt{}, err
 	}
 	if err := transaction.Commit(ctx); err != nil {
-		return biz.CloseRecord{}, biz.ErrPersistence
+		return biz.CloseReceipt{}, biz.ErrPersistence
 	}
-	return record, nil
+	return biz.CloseReceipt{CloseRecord: record}, nil
 }
 
 func sameCloseIntent(stored, requested biz.CloseIntent) bool {

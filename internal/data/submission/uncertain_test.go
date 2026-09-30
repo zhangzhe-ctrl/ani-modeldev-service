@@ -36,10 +36,11 @@ func TestSubmissionUncertaintySurvivesReconnectWithoutAnotherPermit(t *testing.T
 			}
 			var closed biz.CloseRecord
 			if closeBeforeObservation {
-				closed, err = admissions.ApplyCloseIntent(ctx, dispatchCloseIntent(request))
-				if err != nil {
-					t.Fatalf("real close fixture failed; late uncertainty behavior NOT_RUN: %v", err)
+				receipt, closeErr := admissions.ApplyCloseIntent(ctx, dispatchCloseIntent(request))
+				if closeErr != nil {
+					t.Fatalf("real close fixture failed; late uncertainty behavior NOT_RUN: %v", closeErr)
 				}
+				closed = receipt.CloseRecord
 			}
 			// Observation input is supplied by the original sender, separately
 			// from reservation/commit time, and has database timestamp precision.

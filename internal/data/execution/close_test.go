@@ -32,7 +32,7 @@ func TestUserStopBeforeAdmissionPersistsClosingTombstoneAcrossNewConnections(t *
 	if err != nil {
 		t.Fatalf("USER_STOP before Admission must commit a closing tombstone: %v", err)
 	}
-	assertInitialCloseTombstone(t, receipt, intent)
+	assertInitialCloseTombstone(t, receipt.CloseRecord, intent)
 	writerPool.Close()
 
 	reader := execution.New(openRuntimePool())
@@ -69,7 +69,10 @@ func TestUserStopDuplicateAfterReconnectReturnsOriginalFenceAndFacts(t *testing.
 	if err != nil {
 		t.Fatalf("initial USER_STOP: %v", err)
 	}
-	assertInitialCloseTombstone(t, first, intent)
+	assertInitialCloseTombstone(t, first.CloseRecord, intent)
+	if first.Replayed {
+		t.Fatal("the first committed close command must not report a replay")
+	}
 	writerPool.Close()
 
 	repository := execution.New(openRuntimePool())
@@ -79,7 +82,10 @@ func TestUserStopDuplicateAfterReconnectReturnsOriginalFenceAndFacts(t *testing.
 	if err != nil {
 		t.Fatalf("exact USER_STOP replay must return the original receipt: %v", err)
 	}
-	assertInitialCloseTombstone(t, replayed, intent)
+	assertInitialCloseTombstone(t, replayed.CloseRecord, intent)
+	if !replayed.Replayed {
+		t.Fatal("the same committed close command after reconnect must report a replay")
+	}
 	stored, err := repository.GetCloseIntent(replayContext, intent.TenantID, intent.ExecutionID)
 	if err != nil {
 		t.Fatalf("GetCloseIntent after replay: %v", err)

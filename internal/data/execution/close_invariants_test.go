@@ -40,7 +40,7 @@ func TestUserStopConflictingReplayPreservesOriginalFactsAndFence(t *testing.T) {
 				t.Fatalf("initial close: %v", err)
 			}
 			got, err := repository.ApplyCloseIntent(ctx, candidate)
-			assertEmptyCloseFailure(t, got, err, biz.ErrAdmissionConflict)
+			assertEmptyCloseReceiptFailure(t, got, err, biz.ErrAdmissionConflict)
 			stored, err := repository.GetCloseIntent(ctx, original.TenantID, original.ExecutionID)
 			if err != nil {
 				t.Fatalf("GetCloseIntent after conflict: %v", err)
@@ -58,7 +58,7 @@ func TestUserStopConflictingReplayPreservesOriginalFactsAndFence(t *testing.T) {
 			if err != nil {
 				t.Fatalf("next legitimate close after conflict: %v", err)
 			}
-			assertCloseTombstone(t, second, next, 2)
+			assertCloseTombstone(t, second.CloseRecord, next, 2)
 		})
 	}
 }
@@ -104,7 +104,7 @@ func TestUserStopConcurrentDuplicatesAcrossSixPoolsAllocateOneFence(t *testing.T
 			t.Errorf("concurrent close replay %d rejected: %v", outcome.index, outcome.err)
 			continue
 		}
-		assertInitialCloseTombstone(t, outcome.record, intent)
+		assertInitialCloseTombstone(t, outcome.record.CloseRecord, intent)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -121,7 +121,7 @@ func TestUserStopConcurrentDuplicatesAcrossSixPoolsAllocateOneFence(t *testing.T
 	if err != nil {
 		t.Fatalf("next distinct source after replay race: %v", err)
 	}
-	assertCloseTombstone(t, got, next, 2)
+	assertCloseTombstone(t, got.CloseRecord, next, 2)
 }
 
 func TestUserStopConcurrentDifferentFactsHaveOneWinner(t *testing.T) {
@@ -133,9 +133,9 @@ func TestUserStopConcurrentDifferentFactsHaveOneWinner(t *testing.T) {
 	for _, outcome := range raceCloseIntents(t, openRuntimePool, commands) {
 		if outcome.err == nil {
 			winner, successes = outcome.index, successes+1
-			assertInitialCloseTombstone(t, outcome.record, commands[outcome.index])
+			assertInitialCloseTombstone(t, outcome.record.CloseRecord, commands[outcome.index])
 		} else {
-			assertEmptyCloseFailure(t, outcome.record, outcome.err, biz.ErrAdmissionConflict)
+			assertEmptyCloseReceiptFailure(t, outcome.record, outcome.err, biz.ErrAdmissionConflict)
 		}
 	}
 	if successes != 1 {
@@ -165,14 +165,14 @@ func TestUserStopEarlierSourceReplayDoesNotReplaceLatestFence(t *testing.T) {
 		if err != nil {
 			t.Fatalf("close source %d: %v", intent.SourceGeneration, err)
 		}
-		assertCloseTombstone(t, got, intent, uint64(i+1))
+		assertCloseTombstone(t, got.CloseRecord, intent, uint64(i+1))
 	}
 	repository = execution.New(openRuntimePool())
 	replayed, err := repository.ApplyCloseIntent(ctx, first)
 	if err != nil {
 		t.Fatalf("earlier source replay: %v", err)
 	}
-	assertInitialCloseTombstone(t, replayed, first)
+	assertInitialCloseTombstone(t, replayed.CloseRecord, first)
 	latest, err := repository.GetCloseIntent(ctx, first.TenantID, first.ExecutionID)
 	if err != nil {
 		t.Fatalf("latest close after earlier replay: %v", err)
@@ -197,9 +197,16 @@ func assertEmptyCloseFailure(t *testing.T, got biz.CloseRecord, err, want error)
 	}
 }
 
+func assertEmptyCloseReceiptFailure(t *testing.T, got biz.CloseReceipt, err, want error) {
+	t.Helper()
+	if !errors.Is(err, want) || err.Error() != want.Error() || !reflect.DeepEqual(got, biz.CloseReceipt{}) {
+		t.Fatalf("close failure must be stable %s with an empty receipt; got error %v, nonempty=%t", want, err, !reflect.DeepEqual(got, biz.CloseReceipt{}))
+	}
+}
+
 type closeOutcome struct {
 	index  int
-	record biz.CloseRecord
+	record biz.CloseReceipt
 	err    error
 }
 

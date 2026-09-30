@@ -82,7 +82,7 @@ func TestConcurrentAdmissionAndUserStopConvergeToClosingFacts(t *testing.T) {
 		t.Fatalf("both matching facts must commit: admission=%v close=%v", admitted.err, closed.err)
 	}
 	assertOriginalAdmission(t, admitted.execution, admission)
-	assertInitialCloseTombstone(t, closed.record, stop)
+	assertInitialCloseTombstone(t, closed.record.CloseRecord, stop)
 	if admitted.execution.Close != nil {
 		assertExecutionClose(t, admitted.execution, stop)
 	}
