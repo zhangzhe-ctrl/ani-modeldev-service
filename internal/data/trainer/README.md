@@ -53,7 +53,9 @@ The local first implementation now performs real namespace and TrainJob GETs via
 the official client, checks names/namespace, Namespace UID, exact TrainJob UID,
 tenant/execution ownership and execution-spec annotation, and preserves each
 controller condition separately. Invalid metadata or conflicting terminal
-conditions fail closed; missing/stale/unversioned conditions remain Unknown.
+conditions fail closed. The original implementation treated missing/stale/unversioned
+condition generations as Unknown; the fixed-upstream review below found this was
+an unsupported assumption and records its correction.
 Annotation comparison establishes resource correlation, not an independent hash
 of the entire rendered CRD spec. Full create-intent/spec reconciliation and Pod
 exit/writer history remain future slices. No product transport is wired, no create
@@ -79,3 +81,42 @@ external HTTP API substitute.
 The latest consumed ENV record still lacks a usable Trainer CRD/Runtime and
 application-identity handoff. Server-side dry-run and real resource observation
 are NOT_RUN. These missing LIVE inputs do not block the adapter's module tests.
+
+## Fixed-upstream condition semantics correction
+
+Spec review of `ca25478...cef25b4` found that the observer erased legitimate
+controller reports. CPU06 execution detail 4 requires correct Complete/Failed
+interpretation; the exact local task reference
+is `ANI-doc/02-issues/modeldev/cpu-p01/tasks/CPU06.md:26`.
+
+The pinned source facts are:
+
+- [Trainer v2.1.0 controller, lines 171–200](https://github.com/kubeflow/trainer/blob/v2.1.0/pkg/controller/trainjob_controller.go#L171-L200)
+  emits Suspended/Resumed and its own Failed conditions without observedGeneration.
+- [Trainer v2.1.0 JobSet plugin, lines 285–298](https://github.com/kubeflow/trainer/blob/v2.1.0/pkg/runtime/framework/plugins/jobset/jobset.go#L285-L298)
+  copies Complete/Failed conditions from JobSet. Their generations, if present,
+  cannot be assumed to describe the TrainJob generation.
+- [Trainer v2.1.0 go.mod](https://github.com/kubeflow/trainer/blob/v2.1.0/go.mod#L22)
+  pins JobSet v0.10.1; its [condition construction, lines 881–945](https://github.com/kubernetes-sigs/jobset/blob/v0.10.1/pkg/controllers/jobset_controller.go#L881-L945)
+  adds transition time but omits observedGeneration for Completed.
+
+The corrected boundary preserves each known condition's reported status and
+separate metadata: condition presence, optional generation presence and its raw
+integer value. Missing conditions remain Unknown; an explicitly reported Unknown
+is distinguishable from absence. Null, noninteger or negative generations,
+malformed statuses, duplicates and contradictory Complete=True/Failed=True
+reports are rejected. No condition generation is compared with TrainJob generation.
+
+These reports do not establish current-spec reconciliation, Pod success,
+publication, writer absence, CLOSED, or creation permission. Consumers must
+establish those independent facts; no product transport or RPC is wired here.
+The earlier stale/future/unversioned Unknown test cases are retained as corrected
+report-preservation cases with explicit metadata assertions, based on the upstream
+facts above. Existing ownership, missing-condition and API error checks remain.
+
+Fixed candidate `5545f8c9a17d6f7e7eb4fcccfdce6b5d0fbb472b` reached behavioral RED on
+Fedora: the trainer package compiled and failed its eight report-preservation
+cases plus negative/null generation and conflicting different-generation reports,
+exit 1 in 0.047 seconds. The HTTP payloads are source-derived with synthetic
+identities and timestamps; they are not live cluster captures. The minimal adapter
+fix is pending formatting and a new fixed-commit GREEN; CPU06 remains IN_PROGRESS.

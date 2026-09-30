@@ -88,13 +88,17 @@ func (a *Adapter) ObserveTrainJob(ctx context.Context, binding biz.TrainJobBindi
 			return biz.TrainJobObservation{}, ErrInvalidObservation
 		}
 		var target *biz.TrainingConditionStatus
+		var metadata *biz.TrainingConditionMetadata
 		switch condition.Type {
 		case "Suspended":
 			target = &observation.Suspended
+			metadata = &observation.SuspendedMetadata
 		case "Complete":
 			target = &observation.Complete
+			metadata = &observation.CompleteMetadata
 		case "Failed":
 			target = &observation.Failed
+			metadata = &observation.FailedMetadata
 		default:
 			continue
 		}
@@ -105,11 +109,15 @@ func (a *Adapter) ObserveTrainJob(ctx context.Context, binding biz.TrainJobBindi
 		if condition.Status != metav1.ConditionTrue && condition.Status != metav1.ConditionFalse && condition.Status != metav1.ConditionUnknown {
 			return biz.TrainJobObservation{}, ErrInvalidObservation
 		}
-		// Stale or unversioned status must not claim the current desired resource
-		// completed. Actual Pod exits and writer assessment are separate facts.
-		if condition.ObservedGeneration == observation.Generation {
-			*target = biz.TrainingConditionStatus(condition.Status)
+		generation, present, err := unstructured.NestedInt64(fields, "observedGeneration")
+		if err != nil || generation < 0 {
+			return biz.TrainJobObservation{}, ErrInvalidObservation
 		}
+		// Trainer may omit this field or copy it from a JobSet condition. Preserve
+		// the report without comparing generations from potentially different
+		// resources. Pod success and writer absence still need independent proof.
+		*target = biz.TrainingConditionStatus(condition.Status)
+		*metadata = biz.TrainingConditionMetadata{Present: true, ObservedGeneration: generation, HasObservedGeneration: present}
 	}
 	if observation.Complete == biz.TrainingConditionTrue && observation.Failed == biz.TrainingConditionTrue {
 		return biz.TrainJobObservation{}, ErrInvalidObservation
