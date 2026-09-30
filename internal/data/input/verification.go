@@ -45,6 +45,9 @@ func (r *Repository) RecordVerifiedCSV(ctx context.Context, expected biz.InputIm
 	if err != nil {
 		return biz.InputVersion{}, err
 	}
+	if version.State == biz.InputStateRejected {
+		return version, biz.ErrInputVerification
+	}
 	if version.State == biz.InputStateValidating {
 		row, err = queries.RecordVerifiedCSV(ctx, inputsql.RecordVerifiedCSVParams{
 			TenantID: command.TenantID, InputVersionID: command.InputVersionID, RequestID: command.RequestID,

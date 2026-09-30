@@ -128,13 +128,29 @@ func versionFromRow(row inputsql.ModeldevInputVersion) (biz.InputVersion, error)
 		return biz.InputVersion{}, biz.ErrPersistence
 	}
 	version := biz.InputVersion{Import: request, State: biz.InputState(row.State)}
+	if row.FailureCode.Valid != row.FailureObservedAt.Valid {
+		return biz.InputVersion{}, biz.ErrPersistence
+	}
+	if row.FailureCode.Valid {
+		failure := biz.InputValidationFailure{Code: biz.InputFailureCode(row.FailureCode.String), ObservedAt: row.FailureObservedAt.Time.UTC()}
+		if row.FailureObservedAt.InfinityModifier != pgtype.Finite || failure.ValidateFor(request) != nil {
+			return biz.InputVersion{}, biz.ErrPersistence
+		}
+		version.Failure = &failure
+	}
 	switch version.State {
-	case biz.InputStateValidating:
+	case biz.InputStateValidating, biz.InputStateRejected:
 		if row.VerifiedAt.Valid || row.VerifiedSchemaVersion.Valid || row.VerifiedRowCount.Valid || row.VerifiedFeatureCount.Valid {
 			return biz.InputVersion{}, biz.ErrPersistence
 		}
+		if version.State == biz.InputStateRejected && (version.Failure == nil || version.Failure.Code != biz.InputFailureContentRejected) {
+			return biz.InputVersion{}, biz.ErrPersistence
+		}
+		if version.State == biz.InputStateValidating && version.Failure != nil && version.Failure.Code != biz.InputFailureSourceUnavailable {
+			return biz.InputVersion{}, biz.ErrPersistence
+		}
 	case biz.InputStateReady:
-		if !row.VerifiedAt.Valid || row.VerifiedAt.InfinityModifier != pgtype.Finite || !row.VerifiedSchemaVersion.Valid || !row.VerifiedRowCount.Valid || !row.VerifiedFeatureCount.Valid {
+		if version.Failure != nil || !row.VerifiedAt.Valid || row.VerifiedAt.InfinityModifier != pgtype.Finite || !row.VerifiedSchemaVersion.Valid || !row.VerifiedRowCount.Valid || !row.VerifiedFeatureCount.Valid {
 			return biz.InputVersion{}, biz.ErrPersistence
 		}
 		proof := biz.VerifiedCSV{

@@ -75,6 +75,15 @@ const (
 	InputFailureSourceUnavailable InputFailureCode = "SOURCE_UNAVAILABLE"
 )
 
+func (failure InputValidationFailure) ValidateFor(request InputImport) error {
+	when := failure.ObservedAt.UTC()
+	if request.Validate() != nil || when.IsZero() || when.Year() < 1 || when.Year() > 9999 || when.Before(request.RequestedAt) ||
+		(failure.Code != InputFailureContentRejected && failure.Code != InputFailureSourceUnavailable) {
+		return ErrInputVerification
+	}
+	return nil
+}
+
 type InputVersion struct {
 	Import       InputImport
 	State        InputState

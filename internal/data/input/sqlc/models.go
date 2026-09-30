@@ -27,4 +27,6 @@ type ModeldevInputVersion struct {
 	VerifiedSchemaVersion pgtype.Text
 	VerifiedRowCount      pgtype.Int4
 	VerifiedFeatureCount  pgtype.Int4
+	FailureCode           pgtype.Text
+	FailureObservedAt     pgtype.Timestamptz
 }
