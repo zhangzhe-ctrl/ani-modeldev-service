@@ -15,8 +15,10 @@ import math
 import os
 from pathlib import Path
 import re
+import signal
 import stat
 import sys
+import time
 
 
 def checked_path(value):
@@ -82,6 +84,10 @@ def write_json(path, value):
     os.replace(temporary, path)
 
 
+def recipe_deadline(_signal, _frame):
+    raise TimeoutError("CPU03_RECIPE_DEADLINE: 30-second training budget expired")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", required=True)
@@ -89,6 +95,10 @@ def main():
     parser.add_argument("--expected-input-sha256", required=True)
     parser.add_argument("--expected-input-bytes", required=True, type=int)
     parser.add_argument("--learning-rate", default="0.01")
+    parser.add_argument(
+        "--recipe", choices=("success", "fail", "slow-stop"), default="success",
+        help="registered managed recipe; never an ordinary user training parameter",
+    )
     args = parser.parse_args()
 
     canonical_rate, optimizer_rate = learning_rate(args.learning_rate)
@@ -100,6 +110,9 @@ def main():
     input_bytes, input_sha256, feature_values, label_values = load_selected_input(
         data, args.expected_input_sha256, args.expected_input_bytes,
     )
+    if args.recipe == "slow-stop":
+        signal.signal(signal.SIGALRM, recipe_deadline)
+        signal.alarm(30)
 
     # Validate the entire selected input before importing the training runtime,
     # constructing tensors, or creating any output directory.
@@ -119,6 +132,15 @@ def main():
     criterion = nn.CrossEntropyLoss()
     with torch.no_grad():
         initial_loss = float(criterion(model(features), labels))
+
+    if args.recipe == "slow-stop":
+        print(json.dumps({
+            "schema": "ani.cpu03.recipe.v1",
+            "recipe": "slow-stop",
+            "max_steps": 48,
+            "step_delay_seconds": 0.2,
+            "deadline_seconds": 30,
+        }), flush=True)
 
     step = 0
     with (output / "metrics.jsonl").open("x", encoding="utf-8", buffering=1) as metrics:
@@ -142,6 +164,10 @@ def main():
                 line = json.dumps(entry)
                 metrics.write(line + "\n")
                 print(line, flush=True)
+                if args.recipe == "fail" and step == 5:
+                    raise RuntimeError("CPU03_RECIPE_FAILURE: failed after five real optimizer steps")
+                if args.recipe == "slow-stop":
+                    time.sleep(0.2)
 
     model.eval()
     with torch.no_grad():

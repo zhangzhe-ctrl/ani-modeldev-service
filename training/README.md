@@ -66,15 +66,23 @@ At `080320ea314e8d1ce885b18a1d488daabdc574b9`, all four module tests passed on
 Fedora in 42.886 seconds, exit 0; the selected learning rate produced different
 actual checkpoint tensors. Epochs and batch size remain fixed at 3 and 64.
 
-The next tests specify internal managed recipes required by the original CPU03
-task card, execution details 5–6. The proposed `--recipe fail` completes five real
+The recipe tests cover the internal managed recipes required by the original
+CPU03 task card, execution details 5–6. `--recipe fail` completes five real
 optimizer steps, then exits with `CPU03_RECIPE_FAILURE`, retaining only metrics.
 `--recipe slow-stop` keeps the normal 48-step computation, with a fixed 0.2-second
 delay after each real step and a 30-second total budget. It reports these limits
 as an `ani.cpu03.recipe.v1` stdout event. The test observes three actual optimizer
 events before SIGTERM, requires exit within ten seconds, and rejects successful
 checkpoint/candidate files. Test polling is bounded and targets only its own
-subprocess. These tests have not run; recipe implementation is still absent.
+subprocess. At `a3e321fbed242e6d64919a5a8db48a8d44edbf04`, both targeted tests
+failed on Fedora in 6.466 seconds, exit 1: valid inputs passed dependency setup,
+then the command rejected the absent `--recipe` argument before computation.
+The implementation now accepts the three registered recipes, with `success` as
+the default. Failure is raised after the fifth actual optimizer update and
+flushed metric. Slow-stop uses a fixed POSIX alarm beginning after input admission
+and before PyTorch import; its delay follows each real optimizer update. SIGTERM
+keeps its normal process termination semantics. The implementation awaits a new
+fixed commit and Fedora GREEN.
 
 These recipe names select registered internal test commands. They are not
 ordinary user parameters, free-form command options, or a second training API.
