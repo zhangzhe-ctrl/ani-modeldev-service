@@ -11,7 +11,7 @@ import (
 // Verifier uses an owner-configured S3 client. Endpoints and credentials never
 // come from a component-supplied object reference.
 type Verifier struct {
-	client *s3.Client
+	client       *s3.Client
 	connectionID string
 }
 
