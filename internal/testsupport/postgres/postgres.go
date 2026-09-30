@@ -114,6 +114,9 @@ func Prepare(t *testing.T) func() *pgxpool.Pool {
 	if _, err := adminPool.Exec(ctx, "GRANT INSERT, SELECT ON "+schemaSQL+".modeldev_pipeline_dispatches TO "+roleSQL); err != nil {
 		t.Fatal("CPU07_DB_PREFLIGHT: runtime dispatch-reservation grant failed; behavior NOT_RUN")
 	}
+	if _, err := adminPool.Exec(ctx, "GRANT INSERT, SELECT ON "+schemaSQL+".modeldev_pipeline_confirmed_runs TO "+roleSQL); err != nil {
+		t.Fatal("CPU07_DB_PREFLIGHT: runtime confirmed-run observation grant failed; behavior NOT_RUN")
+	}
 	if _, err := adminPool.Exec(ctx, "GRANT UPDATE (state, uncertain_at) ON "+schemaSQL+".modeldev_pipeline_dispatches TO "+roleSQL); err != nil {
 		t.Fatal("CPU07_DB_PREFLIGHT: runtime submission-uncertainty grant failed; behavior NOT_RUN")
 	}

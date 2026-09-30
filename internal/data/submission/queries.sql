@@ -41,6 +41,59 @@ WHERE tenant_id = sqlc.arg(tenant_id)::uuid
 RETURNING tenant_id, execution_id, operation_id, spec_hash, attempt_id,
     plan_canonical, plan_hash, state, reserved_at, uncertain_at;
 
+-- These immutable observations belong to one exact reservation, not to an
+-- authoritative Run binding. Ordering gives stable output, never priority.
+-- Readers combining this list with dispatch state must use one consistent
+-- snapshot; writers hold the shared execution identity lock.
+-- name: ListConfirmedPipelineRuns :many
+SELECT tenant_id, execution_id, attempt_id, plan_hash, run_id, first_observed_at
+FROM modeldev_pipeline_confirmed_runs
+WHERE tenant_id = sqlc.arg(tenant_id)::uuid
+  AND execution_id = sqlc.arg(execution_id)::uuid
+  AND attempt_id = sqlc.arg(attempt_id)::uuid
+  AND plan_hash = sqlc.arg(plan_hash)::text
+ORDER BY run_id;
+
+-- The caller has matched the original permit and complete frozen plan under
+-- the identity lock. A late observation survives close/deadline. Replaying the
+-- same Run never refreshes its first time; another Run is retained separately.
+-- name: InsertConfirmedPipelineRun :execrows
+INSERT INTO modeldev_pipeline_confirmed_runs (
+    tenant_id, execution_id, attempt_id, plan_hash, run_id, first_observed_at
+)
+SELECT tenant_id, execution_id, attempt_id, plan_hash,
+    sqlc.arg(run_id)::uuid, sqlc.arg(observed_at)::timestamptz
+FROM modeldev_pipeline_dispatches
+WHERE tenant_id = sqlc.arg(tenant_id)::uuid
+  AND execution_id = sqlc.arg(execution_id)::uuid
+  AND attempt_id = sqlc.arg(attempt_id)::uuid
+  AND plan_hash = sqlc.arg(plan_hash)::text
+  AND state IN ('SUBMITTING', 'SUBMISSION_UNCERTAIN', 'SUBMISSION_CONFIRMED')
+  AND sqlc.arg(observed_at)::timestamptz >= reserved_at
+ON CONFLICT (tenant_id, execution_id, attempt_id, run_id) DO NOTHING;
+
+-- In the same transaction as the retained handle, mark the original attempt's
+-- first confirmation without erasing an earlier uncertainty observation.
+-- name: MarkSubmissionConfirmed :one
+UPDATE modeldev_pipeline_dispatches AS dispatch
+SET state = 'SUBMISSION_CONFIRMED'
+WHERE dispatch.tenant_id = sqlc.arg(tenant_id)::uuid
+  AND dispatch.execution_id = sqlc.arg(execution_id)::uuid
+  AND dispatch.attempt_id = sqlc.arg(attempt_id)::uuid
+  AND dispatch.plan_hash = sqlc.arg(plan_hash)::text
+  AND dispatch.state IN ('SUBMITTING', 'SUBMISSION_UNCERTAIN')
+  AND EXISTS (
+      SELECT 1
+      FROM modeldev_pipeline_confirmed_runs AS observed
+      WHERE observed.tenant_id = dispatch.tenant_id
+        AND observed.execution_id = dispatch.execution_id
+        AND observed.attempt_id = dispatch.attempt_id
+        AND observed.plan_hash = dispatch.plan_hash
+  )
+RETURNING dispatch.tenant_id, dispatch.execution_id, dispatch.operation_id,
+    dispatch.spec_hash, dispatch.attempt_id, dispatch.plan_canonical,
+    dispatch.plan_hash, dispatch.state, dispatch.reserved_at, dispatch.uncertain_at;
+
 -- The caller holds the shared identity lock and has matched the original
 -- attempt and frozen plan. Close/deadline do not discard late observations.
 -- An already uncertain row is read back unchanged rather than updated again.
