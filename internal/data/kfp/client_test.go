@@ -77,8 +77,6 @@ func TestCreateRunResponseLostPreservesUncertaintyWithoutResending(t *testing.T)
 		_ = connection.Close()
 	}))
 	t.Cleanup(server.Close)
-	certificates := x509.NewCertPool()
-	certificates.AddCert(server.Certificate())
 	var tokenCalls atomic.Int32
 	provider := tokenProviderFunc(func(_ context.Context, tenant string, binding cpup01.EnvironmentBindingSnapshot) (string, error) {
 		tokenCalls.Add(1)
@@ -87,16 +85,7 @@ func TestCreateRunResponseLostPreservesUncertaintyWithoutResending(t *testing.T)
 		}
 		return "synthetic-fixture-token", nil
 	})
-	client, err := kfp.New(kfp.Config{
-		ConnectionRef: admission.Snapshot.Environment.KFPConnectionRef,
-		Endpoint:      server.URL,
-		PipelineRoot:  "s3://fixture-kfp-artifacts/managed-root",
-		RootCAs:       certificates,
-		Timeout:       3 * time.Second,
-	}, provider)
-	if err != nil {
-		t.Fatalf("construct candidate client: %v", err)
-	}
+	client := fixtureClient(t, server, provider)
 	observation, err := client.CreateRun(context.Background(), admission)
 	if err == nil || observation.State != biz.PipelineSubmissionUncertain || observation.RunID != "" {
 		t.Errorf("lost creation response must remain uncertain with no confirmed Run: %+v, %v", observation, err)

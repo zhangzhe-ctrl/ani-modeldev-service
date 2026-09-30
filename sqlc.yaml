@@ -12,7 +12,9 @@ sql:
         out: "internal/data/execution/sqlc"
         sql_package: "pgx/v5"
   - engine: "postgresql"
-    schema: "migrations/0004_input_import.up.sql"
+    schema:
+      - "migrations/0004_input_import.up.sql"
+      - "migrations/0005_input_scope_credential_reference.up.sql"
     queries: "internal/data/input/queries.sql"
     gen:
       go:

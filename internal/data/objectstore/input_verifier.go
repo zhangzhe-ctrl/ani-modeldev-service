@@ -55,6 +55,12 @@ func inspectCPUCSV(stream io.Reader) error {
 			return biz.ErrInputVerification
 		}
 		for _, raw := range row[:16] {
+			// The registered CPython CSV loader limits each decoded field to
+			// 128 Ki characters. A byte bound is conservative for UTF-8 and
+			// prevents a verified decimal from failing that loader's parsing.
+			if len(raw) > 128*1024 {
+				return biz.ErrInputVerification
+			}
 			text := strings.TrimSpace(raw)
 			if strings.ContainsAny(raw, "\r\n") || !decimalFeaturePattern.MatchString(text) {
 				return biz.ErrInputVerification
