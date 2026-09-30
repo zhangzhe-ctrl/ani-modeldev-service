@@ -39,6 +39,8 @@ publication persistence, or a BFF-authorized independent verifier Job.
 declared input must fit both the owner's read budget and the 32 MiB CSV ceiling.
 Blank physical lines, multiline numeric cells, hexadecimal floats, invalid
 records, missing or extra samples, and non-finite values are rejected. The
+decoded numeric field is bounded to 128 KiB before trimming, conservatively
+matching the registered CPython reader's 128 Ki-character field ceiling. The
 inspection must finish before actual length, SHA256 and EOF can produce a
 `VerifiedCSV` observation. It neither creates an input version nor marks READY.
 
@@ -48,3 +50,7 @@ at `94601750d6b00dca0c102a92869a2b4ce8781ccb`; additional blank-line and
 hexadecimal-float rejection was RED at
 `bf13d80251e070a712ea8c480d69b4edf3e15409`. These are synthetic SDK-boundary
 tests, not a real S3 import or persistent READY proof.
+
+Independent Spec review found the missing field-length boundary. Candidate
+`463db69` reproduced the invalid verified receipt on Fedora; the `ef0eebf`
+fix passed the complete objectstore module, including that rejection case.

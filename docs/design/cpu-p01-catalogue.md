@@ -1,18 +1,18 @@
-# CPU04 不可变 Release 文件读取
+# CPU04 不可变 Release 目录
 
 来源：原 `CPU04` 第 3、6 项、`CPU01`、v0.4 development D03/D05/D13、operations O08，
 以及当前 Goal 第 5、9、10 节。任务来源身份见 `.scratch/cpu-p01/`；本文件承接
 [持久化方案](cpu-p01-persistence.md) 的下一目录切片，不复制原任务包。
 
-本切片只读显式指定的 Release 文件。当前绑定、启用开关与 generation 的权威
-仍在 Governance；读取目录不会启用 Release，也不会生成 InputVersion、ENV
-身份或完整 ExecutionSnapshot。T02 校验导入与 CAS、T03 实际输入导入和
-ResolveAdmission 后续各自实现。
+本切片提供按固定身份读取和不可覆盖的文件导入适配器。当前绑定、启用开关与
+generation 的权威仍在 Governance；目录适配器不会启用 Release，也不会生成
+InputVersion、ENV 身份或完整 ExecutionSnapshot。T02 的受管授权入口和事实
+核验、T03 实际输入导入及 ResolveAdmission 由各自切片实现。
 
 ## 文件合同
 
 `contract/cpup01.ReleaseDocument` 是 `ani.modeldev.release.v1`。每个 Release
-在受管只读目录内对应 `<release_id>.json`，ID 为非零标准小写 UUID。新内容使用
+在受管目录内对应 `<release_id>.json`，ID 为非零标准小写 UUID。新内容使用
 新 Release ID，旧文件保留；目录没有 `latest`、默认 ID、READY 或 VERIFIED 字段。
 
 规范 JSON 的根字段按顺序为：`schema_version, release_id, preset_id, kind,
@@ -69,8 +69,9 @@ target jobs 按名称、required_files 按 relative_path 排序。argv 顺序不
 装配提供，不能来自普通用户请求。文件 I/O 与摘要不进入 Governance DB 事务。
 
 只读 reader 能保证旧 ID+旧摘要不会读成改过的内容；它不能跨进程发现管理员
-故意用同 ID 同时换文件与期望摘要。禁止同 ID 改字节、原子导入、受管权限、实际
-环境/镜像/Pipeline 核验和启用审计，必须由后续 T02 独立保证，不能冒称已实现。
+故意用同 ID 同时换文件与期望摘要。下述 ImportRelease 负责受管写入路径上的
+原子安装及同 ID 不覆盖；受管权限、实际环境/镜像/Pipeline 核验和启用审计，
+仍必须由后续 T02 独立保证，不能冒称已实现。
 
 ## 首条测试与当前状态
 
@@ -109,7 +110,7 @@ JSON/内容、同 ID 改字节、文内身份不符、软硬链接/FIFO/目录/�
 `241cec394a86ad3967bd3477d3eea9c677268f9b` 的完整合同/protobuf、目录全部测试
 及 verify-source 生成稳定性/全仓格式检查均 PASS / exit 0。整个 CPU04 仍 IN_PROGRESS。
 
-## 下一独立切片：不可变文件导入适配器
+## 不可变文件导入适配器
 
 依据 D03/O08，`catalogue.ImportRelease(ctx, trustedDirectory, raw, expectedDigest)`
 是 T02 将来复用的窄存储接口，返回 `ReleaseID, Digest, Created`。它不接收目录
@@ -117,7 +118,7 @@ JSON/内容、同 ID 改字节、文内身份不符、软硬链接/FIFO/目录/�
 T02 调用者须先完成真实 ENV、镜像、Runtime、PipelineVersion 及其证据核验；
 本 data adapter 尚未接产品命令或外部入口，不能由纯语法通过替代这些事实。
 
-拟实现的写入承诺：复用严格 ParseRelease 并核对实际摘要，在受信 no-follow
+写入承诺：复用严格 ParseRelease 并核对实际摘要，在受信 no-follow
 目录中创建本次私有临时文件，完整写入与 fsync 后以 Linux
 `renameat2(RENAME_NOREPLACE)` 原子安装到 `<ID>.json`，再 fsync 目录后返回。
 不支持该原子操作的文件系统须失败，不退回覆盖式 rename。相同 ID+摘要的
@@ -137,7 +138,7 @@ schema 和当前启用记录均不在本切片。
 格式与 x/sys direct 分类回传后，固定 `341ca00f685d865140cbb4386d4d3dbdec7b98d9`
 的首次 Import、目录全模块及完整合同/protobuf GREEN / test.exit 0。该版本的
 verify-source 生成内容稳定，最后全仓格式 gate 因并行输入模块未格式化而失败，
-不冒称全 gate PASS。同件 replay 暂未实现，下一独立测试要求 Created=false、
+不冒称全 gate PASS。该阶段的同件 replay 尚未实现，下一独立测试要求 Created=false、
 原 ID/digest 回执及完整旧文件保持。固定 `1d1d66acc646f64ffac0eee39e4600832ff702a1`
 已在 Fedora 得到有效 replay RED：首次真实 Import 成功后，原件重投错误返回
 RELEASE_CONFLICT，exit 1（0.008s）。候选修复在原目录文件描述符上复用 reader
@@ -147,8 +148,11 @@ stat 或旧进程内结果回放，也不因目录路径切换而验证另一目
 完整目录与合同/protobuf 测试均 GREEN / exit 0（catalogue 0.046s）；没有重复
 运行其他 owner 正在变更的全仓 gate。
 
-下一候选覆盖同 ID 异件拒绝、六并发同件仅一次 Created、四并发两种内容唯一
+固定 `daec8bd040b813e6b775e64b707e7b9cf19002a2` 的回归覆盖同 ID 异件拒绝、
+六并发同件仅一次 Created、四并发两种内容唯一
 赢家/同件回放、取消和非法候选无安装、不安全或损坏 existing 不得回放/覆盖、
 symlink 根目录拒绝。并发通过同时释放的 channel 与逐项等待结果完成，不用
-sleep 推测顺序。尚未运行新增测试；真实文件测试不证明断电恢复，
-更不证明 T02 的真实环境校验或授权入口已经交付。
+sleep 推测顺序。完整目录及合同/protobuf 均 PASS / exit 0（catalogue 0.197s），
+两项并发行为各 `-race -count=20` 均 PASS / exit 0（1.750s）。已有行为正确，
+没有制造 RED；唯一新增测试文件的 gofmt 已回传，格式固定版本复验待完成。
+真实文件测试不证明断电恢复，更不证明 T02 的真实环境校验或授权入口已经交付。
