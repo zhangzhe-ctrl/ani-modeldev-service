@@ -12,7 +12,7 @@ import (
 )
 
 const getInputVersion = `-- name: GetInputVersion :one
-SELECT tenant_id, input_version_id, request_id, actor, requested_at, storage_connection_id, bucket, approved_prefix, object_key, object_version_id, size_bytes, sha256, state FROM modeldev_input_versions
+SELECT tenant_id, input_version_id, request_id, actor, requested_at, storage_connection_id, bucket, approved_prefix, object_key, object_version_id, size_bytes, sha256, state, credential_reference FROM modeldev_input_versions
 WHERE tenant_id = $1::uuid
   AND input_version_id = $2::uuid
 `
@@ -39,6 +39,7 @@ func (q *Queries) GetInputVersion(ctx context.Context, arg GetInputVersionParams
 		&i.SizeBytes,
 		&i.Sha256,
 		&i.State,
+		&i.CredentialReference,
 	)
 	return i, err
 }
@@ -46,16 +47,16 @@ func (q *Queries) GetInputVersion(ctx context.Context, arg GetInputVersionParams
 const insertFrozenImport = `-- name: InsertFrozenImport :one
 INSERT INTO modeldev_input_versions (
     tenant_id, input_version_id, request_id, actor, requested_at,
-    storage_connection_id, bucket, approved_prefix, object_key,
+    storage_connection_id, bucket, approved_prefix, credential_reference, object_key,
     object_version_id, size_bytes, sha256
 ) VALUES (
     $1::uuid, $2::uuid,
     $3::uuid, $4, $5,
     $6, $7, $8,
-    $9, $10, $11, $12
+    $9, $10, $11, $12, $13
 )
 ON CONFLICT DO NOTHING
-RETURNING tenant_id, input_version_id, request_id, actor, requested_at, storage_connection_id, bucket, approved_prefix, object_key, object_version_id, size_bytes, sha256, state
+RETURNING tenant_id, input_version_id, request_id, actor, requested_at, storage_connection_id, bucket, approved_prefix, object_key, object_version_id, size_bytes, sha256, state, credential_reference
 `
 
 type InsertFrozenImportParams struct {
@@ -67,6 +68,7 @@ type InsertFrozenImportParams struct {
 	StorageConnectionID string
 	Bucket              string
 	ApprovedPrefix      string
+	CredentialReference string
 	ObjectKey           string
 	ObjectVersionID     string
 	SizeBytes           int64
@@ -83,6 +85,7 @@ func (q *Queries) InsertFrozenImport(ctx context.Context, arg InsertFrozenImport
 		arg.StorageConnectionID,
 		arg.Bucket,
 		arg.ApprovedPrefix,
+		arg.CredentialReference,
 		arg.ObjectKey,
 		arg.ObjectVersionID,
 		arg.SizeBytes,
@@ -103,6 +106,7 @@ func (q *Queries) InsertFrozenImport(ctx context.Context, arg InsertFrozenImport
 		&i.SizeBytes,
 		&i.Sha256,
 		&i.State,
+		&i.CredentialReference,
 	)
 	return i, err
 }

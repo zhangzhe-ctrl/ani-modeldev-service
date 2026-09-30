@@ -22,4 +22,5 @@ type ModeldevInputVersion struct {
 	SizeBytes           int64
 	Sha256              string
 	State               string
+	CredentialReference string
 }

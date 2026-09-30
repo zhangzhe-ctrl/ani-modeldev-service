@@ -17,7 +17,9 @@ func TestFreezeImportExactRequestReplayAfterReconnectReturnsOriginalVersion(t *t
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	first, err := input.New(writer).FreezeImport(ctx, command)
-	if err != nil { t.Fatalf("initial fixed import: %v", err) }
+	if err != nil {
+		t.Fatalf("initial fixed import: %v", err)
+	}
 	writer.Close()
 	retry := input.New(openPool())
 	replayed, err := retry.FreezeImport(ctx, command)

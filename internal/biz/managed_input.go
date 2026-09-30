@@ -61,6 +61,7 @@ func (request InputImport) Validate() error {
 		return ErrInvalidInput
 	}
 	object, scope := request.Object, request.Scope
+	if scope.CredentialReference!="" && !validInputText(scope.CredentialReference) { return ErrInvalidInput }
 	if !validInputText(scope.StorageConnectionID) || !validInputText(scope.Bucket) || object.StorageConnectionID != scope.StorageConnectionID || object.Bucket != scope.Bucket || !validInputKey(scope.ApprovedPrefix) || !validInputKey(object.Key) || !strings.HasPrefix(object.Key, scope.ApprovedPrefix+"/") {
 		return ErrInvalidInput
 	}

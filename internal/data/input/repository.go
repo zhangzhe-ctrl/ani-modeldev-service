@@ -39,19 +39,34 @@ func (r *Repository) FreezeImport(ctx context.Context, request biz.InputImport) 
 	}
 	// One immutable row is the complete import command. The autocommit INSERT
 	// must finish before this method can acknowledge the VALIDATING receipt.
-	row, err := inputsql.New(r.pool).InsertFrozenImport(ctx, inputsql.InsertFrozenImportParams{
+	command := inputsql.InsertFrozenImportParams{
 		TenantID: tenant, InputVersionID: inputID, RequestID: requestID,
 		Actor: request.Actor, RequestedAt: pgtype.Timestamptz{Time: request.RequestedAt.UTC(), Valid: true},
 		StorageConnectionID: request.Scope.StorageConnectionID, Bucket: request.Scope.Bucket, ApprovedPrefix: request.Scope.ApprovedPrefix,
+		CredentialReference: request.Scope.CredentialReference,
 		ObjectKey: request.Object.Key, ObjectVersionID: *request.Object.VersionID, SizeBytes: request.Object.SizeBytes, Sha256: request.Object.SHA256,
-	})
+	}
+	queries := inputsql.New(r.pool)
+	row, err := queries.InsertFrozenImport(ctx, command)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return biz.InputVersion{}, biz.ErrInputConflict
+		// ON CONFLICT waits for a competing insertion to finish. Immutable
+		// request fields can then be compared through this explicit tenant read.
+		row, err = queries.GetInputVersion(ctx, inputsql.GetInputVersionParams{TenantID:tenant,InputVersionID:inputID})
+		if errors.Is(err,pgx.ErrNoRows) { return biz.InputVersion{},biz.ErrInputConflict }
+		if err != nil { return biz.InputVersion{},biz.ErrPersistence }
+		if !sameImport(row,command) { return biz.InputVersion{},biz.ErrInputConflict }
 	}
 	if err != nil {
 		return biz.InputVersion{}, biz.ErrPersistence
 	}
 	return versionFromRow(row)
+}
+
+func sameImport(row inputsql.ModeldevInputVersion, command inputsql.InsertFrozenImportParams) bool {
+	return row.TenantID==command.TenantID && row.InputVersionID==command.InputVersionID && row.RequestID==command.RequestID &&
+		row.Actor==command.Actor && row.RequestedAt.Valid && row.RequestedAt.InfinityModifier==pgtype.Finite && row.RequestedAt.Time.Equal(command.RequestedAt.Time) &&
+		row.StorageConnectionID==command.StorageConnectionID && row.Bucket==command.Bucket && row.ApprovedPrefix==command.ApprovedPrefix && row.CredentialReference==command.CredentialReference &&
+		row.ObjectKey==command.ObjectKey && row.ObjectVersionID==command.ObjectVersionID && row.SizeBytes==command.SizeBytes && row.Sha256==command.Sha256
 }
 
 func (r *Repository) Get(ctx context.Context, tenantID, inputVersionID string) (biz.InputVersion, error) {
@@ -93,7 +108,7 @@ func versionFromRow(row inputsql.ModeldevInputVersion) (biz.InputVersion, error)
 	}
 	request := biz.InputImport{
 		TenantID: row.TenantID.String(), RequestID: row.RequestID.String(), InputVersionID: row.InputVersionID.String(), Actor: row.Actor, RequestedAt: row.RequestedAt.Time.UTC(),
-		Scope:  cpup01.StorageScope{StorageConnectionID: row.StorageConnectionID, Bucket: row.Bucket, ApprovedPrefix: row.ApprovedPrefix},
+		Scope:  cpup01.StorageScope{StorageConnectionID: row.StorageConnectionID, Bucket: row.Bucket, ApprovedPrefix: row.ApprovedPrefix,CredentialReference:row.CredentialReference},
 		Object: cpup01.FixedObjectRef{StorageConnectionID: row.StorageConnectionID, Bucket: row.Bucket, Key: row.ObjectKey, VersionID: &row.ObjectVersionID, SizeBytes: row.SizeBytes, SHA256: row.Sha256},
 	}
 	if request.Validate() != nil {
