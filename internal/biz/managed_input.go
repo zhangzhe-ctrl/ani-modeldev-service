@@ -58,12 +58,28 @@ type InputState string
 const (
 	InputStateValidating InputState = "VALIDATING"
 	InputStateReady      InputState = "READY"
+	InputStateRejected   InputState = "REJECTED"
+)
+
+// InputValidationFailure stores only a finite reason for the original fixed
+// object. It never includes storage response text, credentials or signed URLs.
+type InputValidationFailure struct {
+	Code       InputFailureCode
+	ObservedAt time.Time
+}
+
+type InputFailureCode string
+
+const (
+	InputFailureContentRejected   InputFailureCode = "CONTENT_REJECTED"
+	InputFailureSourceUnavailable InputFailureCode = "SOURCE_UNAVAILABLE"
 )
 
 type InputVersion struct {
 	Import       InputImport
 	State        InputState
 	Verification *VerifiedCSV
+	Failure      *InputValidationFailure
 }
 
 // Validate checks the immutable request's structure, not source permissions or
