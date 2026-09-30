@@ -5,11 +5,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"path"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 const SnapshotSchemaVersion = "ani.modeldev.execution-spec.v1"
@@ -139,12 +142,10 @@ type OutputContract struct {
 	CreateTarBundle bool `json:"create_tar_bundle"`
 }
 
-var errSnapshotValidationNotImplemented = errors.New("snapshot validation not implemented")
-
-// Canonical returns v1 canonical UTF-8 bytes. It never resolves current defaults
-// or performs network I/O. Admission remains unavailable until the separate
-// validation behavior is implemented and connected to this boundary.
+// Canonical validates and returns v1 canonical UTF-8 bytes. It never resolves
+// current defaults, changes caller-owned values, or performs network I/O.
 func (snapshot Snapshot) Canonical() ([]byte, error) {
+	if err := snapshot.Validate(); err != nil { return nil, err }
 	snapshot.Release.ReleaseID = strings.ToLower(snapshot.Release.ReleaseID)
 	snapshot.Release.PresetID = strings.ToLower(snapshot.Release.PresetID)
 	snapshot.Release.PipelineID = strings.ToLower(snapshot.Release.PipelineID)
@@ -152,7 +153,6 @@ func (snapshot Snapshot) Canonical() ([]byte, error) {
 	snapshot.Input.InputVersionID = strings.ToLower(snapshot.Input.InputVersionID)
 	snapshot.Program.ImageVersionID = strings.ToLower(snapshot.Program.ImageVersionID)
 	snapshot.Environment.BindingID = strings.ToLower(snapshot.Environment.BindingID)
-	snapshot.Environment.ClusterID = strings.ToLower(snapshot.Environment.ClusterID)
 	snapshot.Environment.NamespaceUID = strings.ToLower(snapshot.Environment.NamespaceUID)
 	snapshot.Environment.ExperimentID = strings.ToLower(snapshot.Environment.ExperimentID)
 	snapshot.Release.Runtime.TargetJobs = append([]string{}, snapshot.Release.Runtime.TargetJobs...)
@@ -192,5 +192,114 @@ func (snapshot Snapshot) Digest() (string, error) {
 // Validate checks the local contract only. A valid shape is not evidence that
 // an environment, immutable object, image, or Runtime actually exists.
 func (snapshot Snapshot) Validate() error {
-	return errSnapshotValidationNotImplemented
+	invalid := func(field string) error { return fmt.Errorf("%w: snapshot %s", ErrInvalidArgument, field) }
+	if snapshot.SchemaVersion != SnapshotSchemaVersion { return invalid("schema_version") }
+	if snapshot.Kind != "GENERAL_TRAINING" || snapshot.DeliveryMode != "SAVE_ARTIFACTS" { return invalid("capability") }
+	for _, value := range []string{snapshot.Release.ReleaseID, snapshot.Release.PresetID, snapshot.Release.PipelineID, snapshot.Release.PipelineVersionID, snapshot.Input.InputVersionID, snapshot.Program.ImageVersionID, snapshot.Environment.BindingID, snapshot.Environment.NamespaceUID, snapshot.Environment.ExperimentID} {
+		if !validUUID(value) { return invalid("fixed identity") }
+	}
+	for _, value := range []string{snapshot.Release.ReleaseDigest, snapshot.Release.PipelineIRSHA256, snapshot.Release.Runtime.ContentSHA256, snapshot.Input.Object.SHA256, snapshot.Environment.BindingDigest} {
+		if !snapshotSHA256Pattern.MatchString(value) { return invalid("content sha256") }
+	}
+	if snapshot.Release.AcceptedBindingGeneration == 0 { return invalid("binding generation") }
+	runtime := snapshot.Release.Runtime
+	if !validSnapshotDNSName(runtime.Name) || (runtime.Kind != "ClusterTrainingRuntime" && runtime.Kind != "TrainingRuntime") || runtime.APIGroup != "trainer.kubeflow.org" { return invalid("runtime reference") }
+	if len(runtime.TargetJobs) == 0 { return invalid("runtime targets") }
+	targets := make(map[string]bool, len(runtime.TargetJobs))
+	for _, target := range runtime.TargetJobs {
+		if !validSnapshotDNSLabel(target) || targets[target] { return invalid("runtime targets") }
+		targets[target] = true
+	}
+	input := snapshot.Input
+	if input.Format != "CSV" || input.SchemaVersion != "ani.cpu.csv.v1" || input.RowCount != 1024 || input.FeatureCount != 16 { return invalid("fixed CSV contract") }
+	object := input.Object
+	if !validSnapshotReference(object.StorageConnectionID) || !validSnapshotDNSName(object.Bucket) || !validSnapshotPath(object.Key) || object.SizeBytes <= 0 { return invalid("fixed input object") }
+	if (object.VersionID == nil) == (object.ImmutableCopy == nil) { return invalid("input immutability") }
+	if object.VersionID != nil && (!validSnapshotText(*object.VersionID) || strings.EqualFold(*object.VersionID, "null")) { return invalid("input version") }
+	if object.ImmutableCopy != nil && !*object.ImmutableCopy { return invalid("input immutable copy") }
+	program := snapshot.Program
+	if !validSnapshotImage(program.ImageDigest) { return invalid("image digest") }
+	if len(program.Command) == 0 { return invalid("command") }
+	for _, value := range program.Command { if !validSnapshotText(value) { return invalid("command") } }
+	for _, value := range program.ResolvedArgs { if !validSnapshotText(value) { return invalid("resolved args") } }
+	if len(program.ResolvedParameters) != 3 { return invalid("complete resolved parameters") }
+	// Reuse the accepted parameter grammar with this snapshot's real IDs.
+	// This is only a local validation value, never a submitted user intent.
+	parameterCheck := Intent{Name: "snapshot-validation", Kind: snapshot.Kind, PresetID: snapshot.Release.PresetID, DatasetVersionID: snapshot.Input.InputVersionID, ImageVersionID: &program.ImageVersionID, GeneralParameters: &program.ResolvedParameters}
+	if err := validateIntent(parameterCheck); err != nil { return invalid("resolved parameters") }
+	resources := snapshot.Resources
+	if resources.Nodes != 1 || resources.ProcessesPerNode != 1 || resources.RequestMillicpu <= 0 || resources.LimitMillicpu < resources.RequestMillicpu || resources.RequestMemoryBytes <= 0 || resources.LimitMemoryBytes < resources.RequestMemoryBytes { return invalid("CPU resources") }
+	environment := snapshot.Environment
+	if !validSnapshotReference(environment.ClusterID) || !validSnapshotDNSLabel(environment.NamespaceName) || !validSnapshotReference(environment.KFPConnectionRef) { return invalid("environment references") }
+	identities := environment.Identities
+	if !validSnapshotReference(identities.ModeldevControlIdentityRef) || !validSnapshotReference(identities.TenantProxyIdentity) { return invalid("control identity references") }
+	accounts := []string{identities.KFPStepServiceAccount, identities.TrainerServiceAccount, identities.VerifierServiceAccount}
+	seenAccounts := make(map[string]bool, len(accounts))
+	for _, account := range accounts {
+		if !validSnapshotDNSName(account) || seenAccounts[account] { return invalid("distinct workload service accounts") }
+		seenAccounts[account] = true
+	}
+	workspace := snapshot.Workspace
+	if (workspace.Mode != "EXECUTION_PVC" && workspace.Mode != "KFP_RUN_WORKSPACE") || !validSnapshotDNSName(workspace.StorageClass) || workspace.CapacityBytes <= 0 { return invalid("workspace contract") }
+	subpaths := []string{workspace.InputSubpath, workspace.TrainingSubpath, workspace.ReportsSubpath, workspace.PublicationSubpath}
+	for i, subpath := range subpaths {
+		if !validSnapshotPath(subpath) { return invalid("workspace subpath") }
+		for _, other := range subpaths[:i] {
+			if subpath == other || strings.HasPrefix(subpath, other+"/") || strings.HasPrefix(other, subpath+"/") { return invalid("overlapping workspace scopes") }
+		}
+	}
+	scope := snapshot.PublicationScope
+	if !validSnapshotReference(scope.StorageConnectionID) || !validSnapshotDNSName(scope.Bucket) || !validSnapshotPath(scope.ApprovedPrefix) || !validSnapshotReference(scope.CredentialReference) { return invalid("publication scope") }
+	output := snapshot.OutputContract
+	if output.SchemaVersion != "ani.cpu.output.v1" || output.OutputKind != "CHECKPOINT" || output.DeliveryMode != "SAVE_ARTIFACTS" { return invalid("output contract") }
+	roles := map[string]string{"model.pt": "CHECKPOINT", "model_config.json": "MODEL_CONFIG", "metrics.jsonl": "METRICS", "summary.json": "SUMMARY"}
+	if len(output.RequiredFiles) != len(roles) || output.MaxFileCount < uint32(len(roles)) || output.MaxTotalBytes <= 0 { return invalid("required output bounds") }
+	for _, file := range output.RequiredFiles {
+		role, exists := roles[file.RelativePath]
+		if !exists || role != file.Role || file.MaxSizeBytes <= 0 || file.MaxSizeBytes > output.MaxTotalBytes { return invalid("required output file") }
+		delete(roles, file.RelativePath)
+	}
+	deadline := snapshot.DeadlineAt.UTC()
+	if deadline.IsZero() || deadline.Year() < 1 || deadline.Year() > 9999 { return invalid("deadline_at") }
+	return nil
+}
+
+var snapshotSHA256Pattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+var snapshotDNSLabelPattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+var snapshotReferencePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]*$`)
+var snapshotImageNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._:/-]*$`)
+
+func validSnapshotText(value string) bool {
+	if len(value) == 0 || len(value) > 4096 || !utf8.ValidString(value) || strings.TrimSpace(value) != value { return false }
+	switch strings.ToUpper(value) {
+	case "UNKNOWN", "NOT_READY", "UNSET", "UNSPECIFIED":
+		return false
+	}
+	for _, character := range value { if unicode.IsControl(character) { return false } }
+	return true
+}
+
+func validSnapshotReference(value string) bool {
+	return validSnapshotText(value) && len(value) <= 512 && snapshotReferencePattern.MatchString(value) && !strings.Contains(value, "://")
+}
+
+func validSnapshotDNSLabel(value string) bool {
+	return validSnapshotText(value) && len(value) <= 63 && snapshotDNSLabelPattern.MatchString(value)
+}
+
+func validSnapshotDNSName(value string) bool {
+	if len(value) > 253 || !validSnapshotText(value) { return false }
+	for _, label := range strings.Split(value, ".") { if !validSnapshotDNSLabel(label) { return false } }
+	return true
+}
+
+func validSnapshotPath(value string) bool {
+	return validSnapshotText(value) && value != "." && value != ".." && !path.IsAbs(value) && path.Clean(value) == value && !strings.HasPrefix(value, "../") && !strings.ContainsAny(value, `\*?[]`)
+}
+
+func validSnapshotImage(value string) bool {
+	parts := strings.Split(value, "@sha256:")
+	if len(parts) != 2 || !snapshotSHA256Pattern.MatchString(parts[1]) { return false }
+	name := parts[0]
+	return validSnapshotText(name) && snapshotImageNamePattern.MatchString(name) && strings.Contains(name, "/") && !strings.HasPrefix(name, "/") && !strings.HasSuffix(name, "/") && !strings.Contains(name, "//")
 }

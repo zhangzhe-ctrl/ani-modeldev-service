@@ -44,7 +44,9 @@ GENERAL_TRAINING；delivery_mode 固定 SAVE_ARTIFACTS。所有非可选字段�
 | output_contract | schema_version, output_kind, delivery_mode, required_files, max_file_count, max_total_bytes, create_tar_bundle |
 | required_file | role, relative_path, max_size_bytes |
 
-UUID 规范化为小写；SHA256 必须是 64 位小写十六进制；image_digest 是完整
+Release/preset/Pipeline/InputVersion/image/binding/Namespace UID/Experiment 的
+UUID 规范化为小写；cluster_id 是 ENV 的稳定标识，按引用原字符串保存，不能要求
+环境为通过本地校验另造 UUID。SHA256 必须是 64 位小写十六进制；image_digest 是完整
 `registry/repository@sha256:<64位摘要>`，不得是浮动 tag。所有 int64 及 uint64
 写成规范十进制 JSON 字符串（与 ProtoJSON 一致），uint32 写成无前导零数字。
 deadline 转 UTC RFC3339Nano，零小数秒省略，非零小数秒去尾零。
@@ -99,6 +101,9 @@ evidence/cpu01-snapshot-green-0fd3ae0.txt。model.pt 替换后规范向量已修
 路径升序（metrics.jsonl 在 model.pt 前）；Fedora Python hashlib 独立计算得到
 `972dee14e65202d5d4da7da199cf5f37139b535701a0cb1b3de4d8ef8a5170b9`。
 新测试保存该精确摘要，并对 Validate/Canonical/Digest 三个公共边界加入无效
-固定配置反例。Validate 仍明确返回未实现；等待此负向 slice 的 Fedora RED，
-再实现本地校验并接入 Canonical。
-本阶段不得用于产品受理或标记 CPU01 CODE_READY。
+固定配置反例。固定 0a93b04 已在 Fedora 取得预期 RED，证据为
+evidence/cpu01-snapshot-validation-red-0a93b04.txt。
+现已实现本地结构校验并接入 Canonical/Digest；任何非法快照均应返回
+INVALID_ARGUMENT，不产生规范字节或摘要。错误只写固定字段类别，不回显配置值。
+CPU04 可以复用这一纯本地边界，仍须验证受理 envelope 与可信外部事实。
+此候选等待 Fedora GREEN，不能因本地源码完成标记 CPU01 CODE_READY。

@@ -13,10 +13,51 @@ import json
 import math
 import os
 from pathlib import Path
+import re
+import stat
 import sys
 
-import torch
-from torch import nn
+
+def checked_path(value):
+    path = Path(os.path.abspath(value))
+    for component in (*reversed(path.parents), path):
+        if component.is_symlink():
+            raise ValueError("symbolic links are not allowed in workload paths")
+    return path
+
+
+def load_selected_input(path, expected_sha256, expected_bytes):
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
+        raise ValueError("expected input SHA256 must be 64 lowercase hexadecimal characters")
+    if not 0 < expected_bytes <= 32 * 1024 * 1024:
+        raise ValueError("expected input size must be between 1 byte and 32 MiB")
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as stream:
+        identity = os.fstat(stream.fileno())
+        if not stat.S_ISREG(identity.st_mode):
+            raise ValueError("selected input must be a regular file")
+        if identity.st_size != expected_bytes:
+            raise ValueError("selected input size does not match the frozen input")
+        contents = stream.read(expected_bytes + 1)
+    digest = hashlib.sha256(contents).hexdigest()
+    if len(contents) != expected_bytes or digest != expected_sha256:
+        raise ValueError("selected input bytes do not match the frozen input")
+
+    rows = list(csv.reader(io.StringIO(contents.decode("utf-8"), newline=""), strict=True))
+    if len(rows) != 1025:
+        raise ValueError("fixed CPU input requires a header and exactly 1024 samples")
+    if rows[0] != [f"x{i}" for i in range(16)] + ["label"]:
+        raise ValueError("fixed CPU input requires exactly x0 through x15 and label")
+    features, labels = [], []
+    for row in rows[1:]:
+        if len(row) != 17 or row[-1] not in ("0", "1"):
+            raise ValueError("each sample requires 16 features and a binary integer label")
+        values = [float(value) for value in row[:-1]]
+        if any(not math.isfinite(value) or abs(value) > 3.4028234663852886e38 for value in values):
+            raise ValueError("features must be finite float32 values")
+        features.append(values)
+        labels.append(int(row[-1]))
+    return contents, digest, features, labels
 
 
 def write_json(path, value):
@@ -33,18 +74,23 @@ def main():
     parser.add_argument("--expected-input-bytes", required=True, type=int)
     args = parser.parse_args()
 
-    # This first behavior slice consumes valid input. Rejection of a mismatched
-    # expected digest/size is the next RED/GREEN cycle, before this is deployable.
-    input_bytes = Path(args.data).read_bytes()
-    input_sha256 = hashlib.sha256(input_bytes).hexdigest()
-    rows = list(csv.DictReader(io.StringIO(input_bytes.decode("utf-8"), newline="")))
-    features = torch.tensor(
-        [[float(row[f"x{i}"]) for i in range(16)] for row in rows],
-        dtype=torch.float32,
-        device="cpu",
+    if os.environ.get("WORLD_SIZE", "1") != "1":
+        raise ValueError("the fixed CPU recipe requires WORLD_SIZE=1")
+    data = checked_path(args.data)
+    output = checked_path(args.output)
+    if output.exists():
+        raise FileExistsError("refusing to overwrite an existing output path")
+    input_bytes, input_sha256, feature_values, label_values = load_selected_input(
+        data, args.expected_input_sha256, args.expected_input_bytes,
     )
-    labels = torch.tensor([int(row["label"]) for row in rows], dtype=torch.long, device="cpu")
-    output = Path(args.output)
+
+    # Validate the entire selected input before importing the training runtime,
+    # constructing tensors, or creating any output directory.
+    import torch
+    from torch import nn
+
+    features = torch.tensor(feature_values, dtype=torch.float32, device="cpu")
+    labels = torch.tensor(label_values, dtype=torch.long, device="cpu")
     output.mkdir(parents=True)
 
     torch.set_num_threads(1)
@@ -95,7 +141,7 @@ def main():
         "dtype": "float32",
     })
     write_json(output / "summary.json", {
-        "samples": len(rows),
+        "samples": len(feature_values),
         "epochs": 3,
         "batch_size": 64,
         "steps": step,
