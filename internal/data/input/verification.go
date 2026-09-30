@@ -48,10 +48,10 @@ func (r *Repository) RecordVerifiedCSV(ctx context.Context, expected biz.InputIm
 	if version.State == biz.InputStateValidating {
 		row, err = queries.RecordVerifiedCSV(ctx, inputsql.RecordVerifiedCSVParams{
 			TenantID: command.TenantID, InputVersionID: command.InputVersionID, RequestID: command.RequestID,
-			VerifiedAt: pgtype.Timestamptz{Time: verified.VerifiedAt.UTC().Truncate(time.Microsecond), Valid: true},
+			VerifiedAt:            pgtype.Timestamptz{Time: verified.VerifiedAt.UTC().Truncate(time.Microsecond), Valid: true},
 			VerifiedSchemaVersion: pgtype.Text{String: verified.SchemaVersion, Valid: true},
-			VerifiedRowCount: pgtype.Int4{Int32: int32(verified.RowCount), Valid: true},
-			VerifiedFeatureCount: pgtype.Int4{Int32: int32(verified.FeatureCount), Valid: true},
+			VerifiedRowCount:      pgtype.Int4{Int32: int32(verified.RowCount), Valid: true},
+			VerifiedFeatureCount:  pgtype.Int4{Int32: int32(verified.FeatureCount), Valid: true},
 		})
 		if err != nil {
 			return biz.InputVersion{}, biz.ErrPersistence

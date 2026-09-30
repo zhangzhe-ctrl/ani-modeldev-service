@@ -71,7 +71,7 @@ func importCommand(request biz.InputImport) (inputsql.InsertFrozenImportParams, 
 		Actor: request.Actor, RequestedAt: pgtype.Timestamptz{Time: request.RequestedAt.UTC(), Valid: true},
 		StorageConnectionID: request.Scope.StorageConnectionID, Bucket: request.Scope.Bucket, ApprovedPrefix: request.Scope.ApprovedPrefix,
 		CredentialReference: request.Scope.CredentialReference,
-		ObjectKey: request.Object.Key, ObjectVersionID: *request.Object.VersionID, SizeBytes: request.Object.SizeBytes, Sha256: request.Object.SHA256,
+		ObjectKey:           request.Object.Key, ObjectVersionID: *request.Object.VersionID, SizeBytes: request.Object.SizeBytes, Sha256: request.Object.SHA256,
 	}, nil
 }
 
@@ -139,7 +139,7 @@ func versionFromRow(row inputsql.ModeldevInputVersion) (biz.InputVersion, error)
 		}
 		proof := biz.VerifiedCSV{
 			VerifiedObject: biz.VerifiedObject{Object: request.Object, VerifiedAt: row.VerifiedAt.Time.UTC()},
-			SchemaVersion: row.VerifiedSchemaVersion.String, RowCount: uint32(row.VerifiedRowCount.Int32), FeatureCount: uint32(row.VerifiedFeatureCount.Int32),
+			SchemaVersion:  row.VerifiedSchemaVersion.String, RowCount: uint32(row.VerifiedRowCount.Int32), FeatureCount: uint32(row.VerifiedFeatureCount.Int32),
 		}
 		if proof.ValidateFor(request) != nil {
 			return biz.InputVersion{}, biz.ErrPersistence
