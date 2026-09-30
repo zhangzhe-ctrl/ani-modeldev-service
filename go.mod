@@ -3,6 +3,7 @@ module github.com/zhangzhe-ctrl/ani-modeldev-service
 go 1.25.7
 
 require (
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.113.4
 	github.com/go-kratos/kratos/contrib/otel/v3 v3.0.0-20260515082355-1ddb58e407c5
 	github.com/go-kratos/kratos/v3 v3.0.0
 	github.com/jackc/pgx/v5 v5.11.0
