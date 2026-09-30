@@ -162,9 +162,19 @@ func TestCreateRunConfirmsOnlyCompleteMatchingOfficialResponse(t *testing.T) {
 		contentType string
 		redirect    bool
 		confirmed   bool
+		expectedRunID string
 	}{
 		{name: "complete official response", body: response, confirmed: true},
 		{name: "created run may already report failed computation", body: strings.Replace(response, `"state":"PENDING"`, `"state":"FAILED"`, 1), confirmed: true},
+		{name: "uppercase Run UUID is returned lowercase", body: strings.Replace(response, "55555555-6666-4777-8888-999999999999", "ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDEF", 1), confirmed: true, expectedRunID: "abcdefab-cdef-4abc-8def-abcdefabcdef"},
+		{name: "JSON with charset", body: response, contentType: "application/json; charset=UTF-8", confirmed: true},
+		{name: "additional output structures", body: strings.TrimSuffix(response, "}")+`,"extra":[1,{"ok":true},null]}`, confirmed: true},
+		{name: "null response", body: `null`},
+		{name: "null service account", body: strings.Replace(response, `"service_account":"cpu-managed-step"`, `"service_account":null`, 1)},
+		{name: "null error is not confirmation", body: strings.TrimSuffix(response, "}")+`,"error":null}`},
+		{name: "zero Run UUID", body: strings.Replace(response, "55555555-6666-4777-8888-999999999999", "00000000-0000-0000-0000-000000000000", 1)},
+		{name: "invalid UTF8 in output", body: strings.TrimSuffix(response, "}") + ",\"extra\":\"\xff\"}"},
+		{name: "excessive JSON depth", body: strings.TrimSuffix(response, "}")+`,"extra":`+strings.Repeat("[",34)+"0"+strings.Repeat("]",34)+"}"},
 		{name: "conversion error with run ID", body: `{"run_id":"55555555-6666-4777-8888-999999999999","experiment_id":"44444444-4444-4444-8444-444444444444","error":{"code":13,"message":"synthetic-sensitive-error"}}`},
 		{name: "error in otherwise complete response", body: strings.TrimSuffix(response, "}") + `,"error":{"code":13,"message":"synthetic-sensitive-error"}}`},
 		{name: "missing run ID", body: strings.Replace(response, `"run_id":"55555555-6666-4777-8888-999999999999",`, "", 1)},
@@ -223,7 +233,9 @@ func TestCreateRunConfirmsOnlyCompleteMatchingOfficialResponse(t *testing.T) {
 			}))
 			observation, err := client.CreateRun(context.Background(), fixtureAdmission(t))
 			if test.confirmed {
-				if err != nil || observation.State != biz.PipelineSubmissionConfirmed || observation.RunID != "55555555-6666-4777-8888-999999999999" {
+				expectedRunID := test.expectedRunID
+				if expectedRunID == "" { expectedRunID = "55555555-6666-4777-8888-999999999999" }
+				if err != nil || observation.State != biz.PipelineSubmissionConfirmed || observation.RunID != expectedRunID {
 					t.Errorf("matching official response was not confirmed: %+v, %v", observation, err)
 				}
 			} else if err == nil || observation.State != biz.PipelineSubmissionUncertain || observation.RunID != "" {

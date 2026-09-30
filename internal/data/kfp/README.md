@@ -3,7 +3,8 @@
 This package is an unwired first TDD slice. Fixed commit `ffa993b` first produced
 Fedora behavior RED against an explicit `KFP_CREATE_RUN_NOT_IMPLEMENTED` stub.
 The candidate implementation sends once and confirms only a bounded, complete
-response matching the frozen request. Validation of this behavior is in progress.
+response matching the frozen request. HTTP fixture checks and race passed at
+`241cec3`; they do not establish real KFP or production integration.
 It has no durable submission
 worker, Run authority binding, training creation permit, or product entry point.
 
@@ -56,5 +57,6 @@ checks run only on Fedora at an immutable source SHA. Lost-response behavior
 passed at `f16bcde`, including race. Second response behavior RED at `ff3329c`
 failed only the two expected complete-response cases (pending and already failed
 computation); the 27 uncertain-response cases and original disconnect case
-passed. Response validation GREEN is pending. Constructor/preflight negative
-tests and real provider/wiring remain follow-on verification.
+passed. Response validation GREEN and race passed at `241cec3` (two main tests,
+29 response cases). Constructor/preflight negative tests and real
+provider/wiring remain follow-on verification.
