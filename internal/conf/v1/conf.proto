@@ -8,6 +8,19 @@ import "google/protobuf/duration.proto";
 
 message Bootstrap {
   Server server = 1;
+  // Absent keeps the unready runtime shell. Presence requires every input and
+  // assembles the real Governance command listener without plaintext fallback.
+  GovernanceCommand command = 2;
+}
+
+message GovernanceCommand {
+  // A mounted secret file containing the restricted runtime PostgreSQL URL.
+  // Connection values and private keys are never stored in ordinary YAML.
+  string database_url_file = 1;
+  string client_ca_file = 2;
+  string certificate_file = 3;
+  string private_key_file = 4;
+  string governance_dns_name = 5;
 }
 
 message Server {
