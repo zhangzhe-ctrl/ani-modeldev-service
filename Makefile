@@ -5,7 +5,7 @@ GO ?= go
 TOOLS_DIR := $(CURDIR)/.tools/bin
 BUF := $(TOOLS_DIR)/buf
 GOVULNCHECK := $(TOOLS_DIR)/govulncheck
-CYCLONEDX_GOMOD := $(TOOLS_DIR)/cyclonedx-gomod
+CYCLONEDX_GOMOD = $(TOOLS_DIR)/cyclonedx-gomod-$(CYCLONEDX_GOMOD_VERSION)-linux-amd64
 GITLEAKS := $(TOOLS_DIR)/gitleaks
 SQLC := $(TOOLS_DIR)/sqlc
 
@@ -55,10 +55,10 @@ check-govulncheck: $(GOVULNCHECK)
 	test "$$(go version -m $(GOVULNCHECK) | awk '$$1 == "mod" {print $$2 "@" $$3; exit}')" = "$(GOVULNCHECK_MODULE)"
 
 $(CYCLONEDX_GOMOD):
-	mkdir -p $(TOOLS_DIR)
-	GOBIN=$(TOOLS_DIR) $(GO) install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@$(CYCLONEDX_GOMOD_VERSION)
+	./scripts/install-cyclonedx install "$@"
 
 check-cyclonedx: $(CYCLONEDX_GOMOD)
+	./scripts/install-cyclonedx check "$(CYCLONEDX_GOMOD)"
 	test "$$($(CYCLONEDX_GOMOD) version | awk -F '\t' '$$1 == "Version:" {print $$2}')" = "$(CYCLONEDX_GOMOD_VERSION)"
 	test "$$(go version -m $(CYCLONEDX_GOMOD) | awk '$$1 == "mod" {print $$2 "@" $$3; exit}')" = "$(CYCLONEDX_GOMOD_MODULE)"
 

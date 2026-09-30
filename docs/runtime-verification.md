@@ -62,9 +62,23 @@ tracked files except the prior SBOM. This prevents both a self-reference and
 accidental discovery of a parent Git repository through `TMPDIR`.
 
 The committed SBOM targets the Linux/amd64 runtime graph and excludes test-only
-dependencies. Byte reproducibility is claimed only for the same source snapshot
-and recorded CycloneDX binary; its own binary hashes intentionally make output
-from a separately built scanner distinguishable.
+dependencies. Fedora and CI install the same official CycloneDX v1.12.0
+Linux/amd64 release executable with `scripts/install-cyclonedx`; these SBOM gates
+require a Linux/amd64 host, `curl`, `tar`, and `sha256sum`. The script pins both
+the release archive and extracted executable SHA-256, and `check-cyclonedx`
+checks the binary hash before executing it, then retains the version and Go
+module identity checks. The dedicated versioned tool path leaves an existing
+Go-installed `cyclonedx-gomod` untouched; a mismatching cached binary is rejected.
+
+The pins were checked against the
+[official v1.12.0 release](https://github.com/CycloneDX/cyclonedx-gomod/releases/tag/v1.12.0)
+and its `cyclonedx-gomod_1.12.0_checksums.txt`. The archive SHA-256 is
+`004b9f5cc595b797fb5423e2ae4c97bcf0f18c712ed2faee1640b09e5efd6d15`;
+the executable SHA-256 is
+`2238adac4b5e36926d388461e72ef1ae8caaf4ac11c221ac5fab4e76d7a29861`.
+Tool updates must review and change both pins and the Makefile version together.
+Byte reproducibility requires the same source snapshot and pinned executable;
+the full SBOM comparison retains all generator and dependency hashes.
 
 For a newly generated repository, first commit the generated source, then run
 `make supply-chain-tools` and `make audit`, review the result, and commit

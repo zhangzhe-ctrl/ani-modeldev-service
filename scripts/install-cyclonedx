@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# Reviewed against the v1.12.0 release's checksums and downloaded executable.
+# Keep the archive and executable pins together when updating the tool.
+readonly VERSION=v1.12.0
+readonly ARCHIVE=cyclonedx-gomod_1.12.0_linux_amd64.tar.gz
+readonly ARCHIVE_SHA256=004b9f5cc595b797fb5423e2ae4c97bcf0f18c712ed2faee1640b09e5efd6d15
+readonly BINARY_SHA256=2238adac4b5e36926d388461e72ef1ae8caaf4ac11c221ac5fab4e76d7a29861
+readonly RELEASE_URL=https://github.com/CycloneDX/cyclonedx-gomod/releases/download/$VERSION
+
+die() {
+  printf 'install-cyclonedx: %s\n' "$*" >&2
+  exit 1
+}
+
+check_hash() {
+  local path=$1 expected=$2
+  [[ -f $path && ! -L $path ]] || die "regular file required: $path"
+  local actual
+  actual=$(sha256sum -- "$path" | awk '{print $1}')
+  [[ $actual == "$expected" ]] || die "SHA-256 mismatch for $path: expected $expected, got $actual"
+}
+
+check_binary() {
+  check_hash "$1" "$BINARY_SHA256"
+  [[ -x $1 ]] || die "executable required: $1"
+  printf 'verified CycloneDX %s Linux/amd64 binary SHA-256 %s\n' "$VERSION" "$BINARY_SHA256"
+}
+
+[[ $# -eq 2 ]] || die "usage: scripts/install-cyclonedx <install|check> <destination>"
+mode=$1
+destination=$2
+case $mode in
+  install|check) ;;
+  *) die "unknown mode: $mode" ;;
+esac
+[[ $(uname -s) == Linux && $(uname -m) == x86_64 ]] || \
+  die "the reproducible SBOM tool requires a Linux/amd64 host"
+command -v sha256sum >/dev/null 2>&1 || die "sha256sum is required"
+
+# Validate bytes before callers execute the file, including reused installs.
+if [[ $mode == check || -e $destination || -L $destination ]]; then
+  check_binary "$destination"
+  exit 0
+fi
+
+command -v curl >/dev/null 2>&1 || die "curl is required"
+command -v tar >/dev/null 2>&1 || die "tar is required"
+destination_dir=$(dirname -- "$destination")
+mkdir -p -- "$destination_dir"
+temporary_root=$(mktemp -d "$destination_dir/.cyclonedx-install.XXXXXX")
+trap 'rm -rf -- "$temporary_root"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+curl --fail --show-error --silent --location --proto '=https' --proto-redir '=https' \
+  --retry 3 --connect-timeout 30 --max-time 300 \
+  "$RELEASE_URL/$ARCHIVE" -o "$temporary_root/$ARCHIVE"
+check_hash "$temporary_root/$ARCHIVE" "$ARCHIVE_SHA256"
+# Stream only the named member so archive paths and modes cannot affect tools.
+tar -xOzf "$temporary_root/$ARCHIVE" cyclonedx-gomod > "$temporary_root/cyclonedx-gomod"
+check_hash "$temporary_root/cyclonedx-gomod" "$BINARY_SHA256"
+chmod 0755 "$temporary_root/cyclonedx-gomod"
+# A concurrent installation may have won. Never replace an existing tool.
+mv -T --no-clobber -- "$temporary_root/cyclonedx-gomod" "$destination"
+check_binary "$destination"
