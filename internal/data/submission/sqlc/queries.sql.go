@@ -72,6 +72,43 @@ func (q *Queries) GetPipelineDispatch(ctx context.Context, arg GetPipelineDispat
 	return i, err
 }
 
+const getSubmissionObservationTime = `-- name: GetSubmissionObservationTime :one
+SELECT attempt_id, plan_hash, reserved_at,
+    clock_timestamp()::timestamptz AS observed_at
+FROM modeldev_pipeline_dispatches
+WHERE tenant_id = $1::uuid
+  AND execution_id = $2::uuid
+`
+
+type GetSubmissionObservationTimeParams struct {
+	TenantID    pgtype.UUID
+	ExecutionID pgtype.UUID
+}
+
+type GetSubmissionObservationTimeRow struct {
+	AttemptID  pgtype.UUID
+	PlanHash   string
+	ReservedAt pgtype.Timestamptz
+	ObservedAt pgtype.Timestamptz
+}
+
+// Sample this database's clock after the outbound call. The adapter compares
+// the returned immutable attempt/hash with the original permit and requires
+// observed_at >= reserved_at. Keeping the tenant-scoped row distinguishes a
+// missing reservation from a conflicting attempt without a second lookup.
+// This read neither authorizes a send nor locks across network work.
+func (q *Queries) GetSubmissionObservationTime(ctx context.Context, arg GetSubmissionObservationTimeParams) (GetSubmissionObservationTimeRow, error) {
+	row := q.db.QueryRow(ctx, getSubmissionObservationTime, arg.TenantID, arg.ExecutionID)
+	var i GetSubmissionObservationTimeRow
+	err := row.Scan(
+		&i.AttemptID,
+		&i.PlanHash,
+		&i.ReservedAt,
+		&i.ObservedAt,
+	)
+	return i, err
+}
+
 const insertConfirmedPipelineRun = `-- name: InsertConfirmedPipelineRun :execrows
 INSERT INTO modeldev_pipeline_confirmed_runs (
     tenant_id, execution_id, attempt_id, plan_hash, run_id, first_observed_at
