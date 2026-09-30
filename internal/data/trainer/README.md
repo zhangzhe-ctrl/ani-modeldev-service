@@ -22,15 +22,16 @@ Pinned upstream design source:
 
 The test uses only read requests. It is not a second training entrypoint and is
 not wired to product transports. Namespace UID, exact TrainJob UID and owner
-annotations belong to the binding/reuse checks in this adapter; subsequent
-test slices must reject mismatches before returning usable observations.
+annotations belong to the binding/reuse checks in this adapter. The first
+implementation validates these bindings before returning observations; dedicated
+negative test slices are still required before claiming the adapter is ready.
 The annotations `modeldev.ani.io/tenant-id`, `modeldev.ani.io/execution-id` and
 `modeldev.ani.io/execution-spec-sha256` are the proposed ModelDev-owned resource
 binding keys. The full 64-character spec hash is an annotation, not a label.
 
-Initial production method is an explicit `CPU06_NOT_IMPLEMENTED` stub. The
-first test has not run and RED is NOT_RUN. Missing SDK dependencies or formatting
-are tool prerequisites, not behavior RED. Root owns go.mod/go.sum updates; all
+The initial production method was an explicit `CPU06_NOT_IMPLEMENTED` stub.
+Missing SDK dependencies or formatting are tool prerequisites, not behavior RED.
+Root owns go.mod/go.sum updates; all
 dependency resolution, gofmt and tests run on Fedora against fixed Git source,
 and generated/format changes return for review and a new fixed commit.
 
@@ -40,7 +41,24 @@ and the three owned Go files' gofmt with exit 0. `GOPROXY=https://proxy.golang.o
 and `GOSUMDB=sum.golang.org` remained enabled. Resolved module sums, generated
 file SHA256s and the exact command are archived in the CPU06 run evidence.
 The generated go.mod/go.sum and formatting were reviewed and returned locally;
-the behavior test remains NOT_RUN until this material is fixed in a new commit.
+this material was subsequently fixed in a new commit.
+
+The named observer test at `af2407b2eb6a7a90b07a0f51b879b6be966c3bd2` first
+hit a cgo `/tmp` quota failure before compilation completed. That attempt is an
+environment failure, not RED. A second attempt used task-owned TMPDIR as well as
+GOTMPDIR and completed compilation; the test failed in 0.006 seconds, exit 1,
+with `observe bound TrainJob: CPU06_NOT_IMPLEMENTED`.
+
+The local first implementation now performs real namespace and TrainJob GETs via
+the official client, checks names/namespace, Namespace UID, exact TrainJob UID,
+tenant/execution ownership and execution-spec annotation, and preserves each
+controller condition separately. Invalid metadata or conflicting terminal
+conditions fail closed; missing/stale/unversioned conditions remain Unknown.
+Annotation comparison establishes resource correlation, not an independent hash
+of the entire rendered CRD spec. Full create-intent/spec reconciliation and Pod
+exit/writer history remain future slices. No product transport is wired, no create
+operation exists yet, and this is IN_PROGRESS rather than CODE_READY. GREEN and
+focused binding-negative RED/GREEN await fixed commits; tests were not weakened.
 
 The latest consumed ENV record still lacks a usable Trainer CRD/Runtime and
 application-identity handoff. Server-side dry-run and real resource observation
