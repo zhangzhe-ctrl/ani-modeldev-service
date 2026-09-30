@@ -2,14 +2,8 @@ package commandtest
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"errors"
-	"math/big"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +17,7 @@ import (
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/execution"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/server"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/service"
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/testsupport/commandtls"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/testsupport/postgres"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -34,7 +29,7 @@ import (
 
 func TestGovernanceCloseCommitsBeforeACKAndReplaysAfterServerRestart(t *testing.T) {
 	openPool := postgres.Prepare(t)
-	certificates := newCommandCertificates(t)
+	certificates := commandtls.New(t)
 	request := validCloseRequest()
 	writer := openPool()
 	repository := execution.New(writer)
@@ -86,49 +81,34 @@ func assertCloseResponse(t *testing.T, response *modeldevv1.ApplyCloseIntentResp
 	}
 }
 
-type commandCertificates struct {
-	roots              *x509.CertPool
-	server, governance tls.Certificate
+func startCommandServer(t *testing.T, repository biz.ExecutionRepository, certificates commandtls.Certificates) (modeldevv1.ModelDevCommandServiceClient, func()) {
+	t.Helper()
+	address, stopServer := startCommandListener(t, repository, certificates)
+	connection := commandConnection(t, address, commandClientTLS(certificates))
+	stop := func() {
+		_ = connection.Close()
+		stopServer()
+	}
+	return modeldevv1.NewModelDevCommandServiceClient(connection), stop
 }
 
-// All private keys exist only in the Fedora test process. These certificates
-// are module fixtures, never evidence of a deployed ENV identity.
-func newCommandCertificates(t *testing.T) commandCertificates {
-	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	now := time.Now().UTC()
-	ca := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "CPU command test CA"}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
-	der, err := x509.CreateCertificate(rand.Reader, ca, ca, &key.PublicKey, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ca, err = x509.ParseCertificate(der)
-	if err != nil {
-		t.Fatal(err)
-	}
-	roots := x509.NewCertPool()
-	roots.AddCert(ca)
-	issue := func(serial int64, name string, usage x509.ExtKeyUsage) tls.Certificate {
-		leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-		if err != nil {
-			t.Fatal(err)
-		}
-		leaf := &x509.Certificate{SerialNumber: big.NewInt(serial), DNSNames: []string{name}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Hour), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{usage}}
-		encoded, err := x509.CreateCertificate(rand.Reader, leaf, ca, &leafKey.PublicKey, key)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return tls.Certificate{Certificate: [][]byte{encoded}, PrivateKey: leafKey}
-	}
-	return commandCertificates{roots: roots, server: issue(2, "modeldev.test", x509.ExtKeyUsageServerAuth), governance: issue(3, "ani-governance", x509.ExtKeyUsageClientAuth)}
+func commandClientTLS(certificates commandtls.Certificates) *tls.Config {
+	return &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: certificates.Roots, ServerName: commandtls.ServerDNSName, Certificates: []tls.Certificate{certificates.Governance}}
 }
 
-func startCommandServer(t *testing.T, repository biz.ExecutionRepository, certificates commandCertificates) (modeldevv1.ModelDevCommandServiceClient, func()) {
+func commandConnection(t *testing.T, address string, tlsConfig *tls.Config) *grpc.ClientConn {
 	t.Helper()
-	s, err := server.NewGovernanceCommandServer(&conf.Server_GRPC{Network: "tcp", Addr: "127.0.0.1:0", Timeout: durationpb.New(5 * time.Second)}, server.CommandTLS{Certificate: certificates.server, ClientCAs: certificates.roots, GovernanceDNSName: "ani-governance"}, service.NewCommand(repository))
+	connection, err := grpc.NewClient(address, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
+	if err != nil {
+		t.Fatalf("TLS client fixture: %v", err)
+	}
+	t.Cleanup(func() { _ = connection.Close() })
+	return connection
+}
+
+func startCommandListener(t *testing.T, repository biz.ExecutionRepository, certificates commandtls.Certificates) (string, func()) {
+	t.Helper()
+	s, err := server.NewGovernanceCommandServer(&conf.Server_GRPC{Network: "tcp", Addr: "127.0.0.1:0", Timeout: durationpb.New(5 * time.Second)}, server.CommandTLS{Certificate: certificates.Server, ClientCAs: certificates.Roots, GovernanceDNSName: commandtls.GovernanceDNSName}, service.NewCommand(repository))
 	if err != nil {
 		t.Fatalf("TLS server fixture: %v", err)
 	}
@@ -138,21 +118,16 @@ func startCommandServer(t *testing.T, repository biz.ExecutionRepository, certif
 	}
 	done := make(chan error, 1)
 	go func() { done <- s.Start(context.Background()) }()
-	connection, err := grpc.NewClient(endpoint.Host, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS13, RootCAs: certificates.roots, ServerName: "modeldev.test", Certificates: []tls.Certificate{certificates.governance}})))
-	if err != nil {
-		t.Fatalf("TLS client fixture: %v", err)
-	}
 	stopped := false
 	stop := func() {
 		if stopped {
 			return
 		}
 		stopped = true
-		connection.Close()
 		stopCommandServer(t, s, done)
 	}
 	t.Cleanup(stop)
-	return modeldevv1.NewModelDevCommandServiceClient(connection), stop
+	return endpoint.Host, stop
 }
 
 func stopCommandServer(t *testing.T, s *kratosgrpc.Server, done <-chan error) {
