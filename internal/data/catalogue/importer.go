@@ -71,16 +71,24 @@ func ImportRelease(ctx context.Context, directory string, raw []byte, expectedDi
 	// Never replace an existing ID, including on filesystems lacking this flag.
 	if err := unix.Renameat2(root, temporaryName, root, document.ReleaseID+".json", unix.RENAME_NOREPLACE); err != nil {
 		if errors.Is(err, unix.EEXIST) {
-			if _,readErr:=readReleaseAt(ctx,root,document.ReleaseID,digest);readErr!=nil {
-				if err:=ctx.Err();err!=nil {return ImportResult{},err}
-				if errors.Is(readErr,ErrInvalidRelease) {return ImportResult{},ErrReleaseConflict}
-				return ImportResult{},ErrCatalogueUnavailable
+			if _, readErr := readReleaseAt(ctx, root, document.ReleaseID, digest); readErr != nil {
+				if err := ctx.Err(); err != nil {
+					return ImportResult{}, err
+				}
+				if errors.Is(readErr, ErrInvalidRelease) {
+					return ImportResult{}, ErrReleaseConflict
+				}
+				return ImportResult{}, ErrCatalogueUnavailable
 			}
 			// A previous caller may have lost its response after rename. Recheck
 			// actual bytes and sync this directory before acknowledging replay.
-			if unix.Fsync(root)!=nil {return ImportResult{},ErrCatalogueUnavailable}
-			if err:=ctx.Err();err!=nil {return ImportResult{},err}
-			return ImportResult{ReleaseID:document.ReleaseID,Digest:digest,Created:false},nil
+			if unix.Fsync(root) != nil {
+				return ImportResult{}, ErrCatalogueUnavailable
+			}
+			if err := ctx.Err(); err != nil {
+				return ImportResult{}, err
+			}
+			return ImportResult{ReleaseID: document.ReleaseID, Digest: digest, Created: false}, nil
 		}
 		return ImportResult{}, ErrCatalogueUnavailable
 	}

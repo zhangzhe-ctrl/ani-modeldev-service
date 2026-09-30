@@ -36,13 +36,15 @@ func ReadRelease(ctx context.Context, directory, releaseID, expectedDigest strin
 		return cpup01.ReleaseDocument{}, ErrCatalogueUnavailable
 	}
 	defer syscall.Close(root)
-	return readReleaseAt(ctx,root,releaseID,expectedDigest)
+	return readReleaseAt(ctx, root, releaseID, expectedDigest)
 }
 
 // readReleaseAt keeps import replay validation on the same trusted directory
 // descriptor used for the atomic install, even if its pathname is replaced.
-func readReleaseAt(ctx context.Context,root int,releaseID,expectedDigest string) (cpup01.ReleaseDocument,error) {
-	if err:=ctx.Err();err!=nil {return cpup01.ReleaseDocument{},err}
+func readReleaseAt(ctx context.Context, root int, releaseID, expectedDigest string) (cpup01.ReleaseDocument, error) {
+	if err := ctx.Err(); err != nil {
+		return cpup01.ReleaseDocument{}, err
+	}
 	name := releaseID + ".json"
 	fd, err := syscall.Openat(root, name, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
 	if err != nil {
