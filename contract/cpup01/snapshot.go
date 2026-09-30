@@ -204,19 +204,8 @@ func (snapshot Snapshot) Validate() error {
 	if snapshot.Release.AcceptedBindingGeneration == 0 {
 		return invalid("binding generation")
 	}
-	runtime := snapshot.Release.Runtime
-	if !validSnapshotDNSName(runtime.Name) || (runtime.Kind != "ClusterTrainingRuntime" && runtime.Kind != "TrainingRuntime") || runtime.APIGroup != "trainer.kubeflow.org" {
-		return invalid("runtime reference")
-	}
-	if len(runtime.TargetJobs) == 0 {
-		return invalid("runtime targets")
-	}
-	targets := make(map[string]bool, len(runtime.TargetJobs))
-	for _, target := range runtime.TargetJobs {
-		if !validSnapshotDNSLabel(target) || targets[target] {
-			return invalid("runtime targets")
-		}
-		targets[target] = true
+	if field := invalidRuntimeRef(snapshot.Release.Runtime); field != "" {
+		return invalid(field)
 	}
 	input := snapshot.Input
 	if input.Format != "CSV" || input.SchemaVersion != "ani.cpu.csv.v1" || input.RowCount != 1024 || input.FeatureCount != 16 {
@@ -261,9 +250,8 @@ func (snapshot Snapshot) Validate() error {
 	if err := validateIntent(parameterCheck); err != nil {
 		return invalid("resolved parameters")
 	}
-	resources := snapshot.Resources
-	if resources.Nodes != 1 || resources.ProcessesPerNode != 1 || resources.RequestMillicpu <= 0 || resources.LimitMillicpu < resources.RequestMillicpu || resources.RequestMemoryBytes <= 0 || resources.LimitMemoryBytes < resources.RequestMemoryBytes {
-		return invalid("CPU resources")
+	if field := invalidCPUResources(snapshot.Resources); field != "" {
+		return invalid(field)
 	}
 	environment := snapshot.Environment
 	if !validSnapshotReference(environment.ClusterID) || !validSnapshotDNSLabel(environment.NamespaceName) || !validSnapshotReference(environment.KFPConnectionRef) {
@@ -281,39 +269,15 @@ func (snapshot Snapshot) Validate() error {
 		}
 		seenAccounts[account] = true
 	}
-	workspace := snapshot.Workspace
-	if (workspace.Mode != "EXECUTION_PVC" && workspace.Mode != "KFP_RUN_WORKSPACE") || !validSnapshotDNSName(workspace.StorageClass) || workspace.CapacityBytes <= 0 {
-		return invalid("workspace contract")
-	}
-	subpaths := []string{workspace.InputSubpath, workspace.TrainingSubpath, workspace.ReportsSubpath, workspace.PublicationSubpath}
-	for i, subpath := range subpaths {
-		if !validSnapshotPath(subpath) {
-			return invalid("workspace subpath")
-		}
-		for _, other := range subpaths[:i] {
-			if subpath == other || strings.HasPrefix(subpath, other+"/") || strings.HasPrefix(other, subpath+"/") {
-				return invalid("overlapping workspace scopes")
-			}
-		}
+	if field := invalidWorkspaceContract(snapshot.Workspace); field != "" {
+		return invalid(field)
 	}
 	scope := snapshot.PublicationScope
 	if !validSnapshotReference(scope.StorageConnectionID) || !validSnapshotDNSName(scope.Bucket) || !validSnapshotPath(scope.ApprovedPrefix) || !validSnapshotReference(scope.CredentialReference) {
 		return invalid("publication scope")
 	}
-	output := snapshot.OutputContract
-	if output.SchemaVersion != "ani.cpu.output.v1" || output.OutputKind != "CHECKPOINT" || output.DeliveryMode != "SAVE_ARTIFACTS" {
-		return invalid("output contract")
-	}
-	roles := map[string]string{"model.pt": "CHECKPOINT", "model_config.json": "MODEL_CONFIG", "metrics.jsonl": "METRICS", "summary.json": "SUMMARY"}
-	if len(output.RequiredFiles) != len(roles) || output.MaxFileCount < uint32(len(roles)) || output.MaxTotalBytes <= 0 {
-		return invalid("required output bounds")
-	}
-	for _, file := range output.RequiredFiles {
-		role, exists := roles[file.RelativePath]
-		if !exists || role != file.Role || file.MaxSizeBytes <= 0 || file.MaxSizeBytes > output.MaxTotalBytes {
-			return invalid("required output file")
-		}
-		delete(roles, file.RelativePath)
+	if field := invalidOutputContract(snapshot.OutputContract); field != "" {
+		return invalid(field)
 	}
 	deadline := snapshot.DeadlineAt.UTC()
 	if deadline.IsZero() || deadline.Year() < 1 || deadline.Year() > 9999 {

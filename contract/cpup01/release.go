@@ -1,8 +1,20 @@
 package cpup01
 
-import "errors"
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"slices"
+	"sort"
+	"strings"
+	"unicode/utf8"
+)
 
 const ReleaseSchemaVersion = "ani.modeldev.release.v1"
+const MaxReleaseBytes = 64 * 1024
 
 // ReleaseDocument is a versioned catalogue file, not an accepted execution or
 // a current binding. Loading it proves no environment or publication readiness.
@@ -42,8 +54,105 @@ type ReleaseArgument struct {
 	Source string `json:"source,omitempty"`
 }
 
-// ParseRelease will accept only canonical v1 JSON and return its actual byte
-// digest. The explicit stub is the first catalogue-read TDD candidate.
+// ParseRelease accepts only canonical v1 JSON and returns its actual byte digest.
+// Structural validity does not verify remote facts or authorize enabling it.
 func ParseRelease(raw []byte) (ReleaseDocument, string, error) {
-	return ReleaseDocument{}, "", errors.New("RELEASE_NOT_IMPLEMENTED")
+	invalid := func(field string) (ReleaseDocument, string, error) {
+		return ReleaseDocument{}, "", fmt.Errorf("%w: release %s", ErrInvalidArgument, field)
+	}
+	if len(raw) == 0 || len(raw) > MaxReleaseBytes || !utf8.Valid(raw) || !validUnicodeEscapes(raw) {
+		return invalid("encoding or size")
+	}
+	var document ReleaseDocument
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&document); err != nil {
+		return invalid("JSON")
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return invalid("trailing JSON")
+	}
+	if field := invalidReleaseDocument(document); field != "" {
+		return invalid(field)
+	}
+	// Exact re-encoding also rejects duplicate keys, nulls, alternate key case,
+	// omitted required zero-valued fields and noncanonical integer spellings.
+	document.ReleaseID = strings.ToLower(document.ReleaseID)
+	document.PresetID = strings.ToLower(document.PresetID)
+	document.PipelineID = strings.ToLower(document.PipelineID)
+	document.PipelineVersionID = strings.ToLower(document.PipelineVersionID)
+	document.Program.ImageVersionID = strings.ToLower(document.Program.ImageVersionID)
+	sort.Strings(document.Runtime.TargetJobs)
+	document.Program.DefaultParameters = canonicalParameters(document.Program.DefaultParameters)
+	sort.Slice(document.OutputContract.RequiredFiles, func(i, j int) bool {
+		return document.OutputContract.RequiredFiles[i].RelativePath < document.OutputContract.RequiredFiles[j].RelativePath
+	})
+	canonical, err := encodeCanonicalJSON(document)
+	if err != nil || !bytes.Equal(raw, canonical) {
+		return invalid("noncanonical bytes")
+	}
+	digest := sha256.Sum256(raw)
+	return document, hex.EncodeToString(digest[:]), nil
+}
+
+func invalidReleaseDocument(document ReleaseDocument) string {
+	if document.SchemaVersion != ReleaseSchemaVersion {
+		return "schema_version"
+	}
+	if document.Kind != "GENERAL_TRAINING" || document.DeliveryMode != "SAVE_ARTIFACTS" {
+		return "capability"
+	}
+	for _, value := range []string{document.ReleaseID, document.PresetID, document.PipelineID, document.PipelineVersionID, document.Program.ImageVersionID} {
+		if !validUUID(value) {
+			return "fixed identity"
+		}
+	}
+	if !snapshotSHA256Pattern.MatchString(document.PipelineIRSHA256) || !snapshotSHA256Pattern.MatchString(document.Runtime.ContentSHA256) {
+		return "content sha256"
+	}
+	if field := invalidRuntimeRef(document.Runtime); field != "" {
+		return field
+	}
+	program := document.Program
+	if !validSnapshotImage(program.ImageDigest) {
+		return "image digest"
+	}
+	if !slices.Equal(program.Command, []string{"/opt/venv/bin/python", "-I", "/opt/cpu03/train_mlp.py"}) {
+		return "command"
+	}
+	arguments := []ReleaseArgument{
+		{Literal: "--data"}, {Source: "INPUT_PATH"},
+		{Literal: "--output"}, {Source: "OUTPUT_PATH"},
+		{Literal: "--expected-input-sha256"}, {Source: "INPUT_SHA256"},
+		{Literal: "--expected-input-bytes"}, {Source: "INPUT_BYTES"},
+		{Literal: "--learning-rate"}, {Source: "LEARNING_RATE"},
+	}
+	if len(program.ArgsTemplate) != len(arguments) && len(program.ArgsTemplate) != len(arguments)+2 {
+		return "args template"
+	}
+	if !slices.Equal(program.ArgsTemplate[:len(arguments)], arguments) {
+		return "args template"
+	}
+	if len(program.ArgsTemplate) > len(arguments) {
+		flag, recipe := program.ArgsTemplate[len(arguments)], program.ArgsTemplate[len(arguments)+1]
+		if flag != (ReleaseArgument{Literal: "--recipe"}) || recipe.Source != "" || (recipe.Literal != "success" && recipe.Literal != "fail" && recipe.Literal != "slow-stop") {
+			return "managed recipe"
+		}
+	}
+	if program.ParameterContractVersion != "ani.cpu.mlp.parameters.v1" || len(program.DefaultParameters) != 3 || validateRegisteredParameters(program.DefaultParameters) != nil {
+		return "parameter defaults"
+	}
+	if field := invalidCPUResources(document.Resources); field != "" {
+		return field
+	}
+	if field := invalidWorkspaceContract(document.Workspace); field != "" {
+		return field
+	}
+	if field := invalidOutputContract(document.OutputContract); field != "" {
+		return field
+	}
+	if document.ExecutionTimeoutSeconds == 0 {
+		return "execution timeout"
+	}
+	return ""
 }

@@ -79,7 +79,14 @@ target jobs 按名称、required_files 按 relative_path 排序。argv 顺序不
 版本并重新读取旧版本；调用者修改先前返回值不能改变旧文件或后续结果。测试不
 导入 Snapshot fixture、不制造 READY 输入、不连接 ENV，也不模拟文件系统。
 
-当前只有类型、显式 `RELEASE_NOT_IMPLEMENTED` stub 与首测试候选，尚未执行 RED；
-不是 CODE_READY。下一步由 root 固定候选 commit 并推送，Fedora 对该 SHA 运行
-该测试取得行为 RED，再实现并取得新固定 SHA 的 GREEN。后续严格解析、同 ID
+首 test/stub 候选固定为 `c5911e13efd69f495d2e7833e81cbedbb80cb55f`，在 Fedora
+独占新 worktree 已取得有效行为 RED：真实文件准备成功后，旧版本读取返回
+`RELEASE_NOT_IMPLEMENTED`，go test exit 1；没有编译、依赖或准备失败。
+证据为本轮 `cpu04-catalogue-red-c5911e13efd69f495d2e7833e81cbedbb80cb55f`。
+
+读取实现候选已加入严格字节解析、显式 ID/digest 核对与有界文件读取。经 root
+授权，Runtime/CPU resources/Workspace/Output 的既有局部校验机械提取为共享
+私有函数，保持 Snapshot 的原字段错误；参数 grammar 从 Intent 机械提取为
+共享函数，保留 Intent presence 规则，不构造伪 Snapshot 或伪 Dataset ID。
+尚未取得新固定 SHA 的 GREEN，不是 CODE_READY。后续严格解析、同 ID
 改字节、缺失文件、路径和取消等负向分小步加入，不能由首条正向测试推导已覆盖。

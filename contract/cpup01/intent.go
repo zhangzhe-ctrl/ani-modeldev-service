@@ -129,11 +129,16 @@ func validateIntent(intent Intent) error {
 	if intent.GeneralParameters == nil {
 		return nil
 	}
-	if len(*intent.GeneralParameters) > 3 {
+	return validateRegisteredParameters(*intent.GeneralParameters)
+}
+
+func validateRegisteredParameters(parameters []Parameter) error {
+	invalid := func(field string) error { return fmt.Errorf("%w: %s", ErrInvalidArgument, field) }
+	if len(parameters) > 3 {
 		return invalid("general_parameters")
 	}
 	seen := make(map[string]bool)
-	for _, parameter := range *intent.GeneralParameters {
+	for _, parameter := range parameters {
 		if seen[parameter.Name] {
 			return invalid("duplicate parameter")
 		}
