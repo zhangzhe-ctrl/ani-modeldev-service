@@ -70,15 +70,33 @@ type AdmissionInputReader interface {
 	Get(context.Context, string, string) (InputVersion, error)
 }
 
+// AdmissionFactsReader returns managed facts for one explicit tenant/Release
+// combination. Governance's current binding generation never selects this data.
+// The reader fixes actual configured bytes; it does not certify ENV readiness.
+type AdmissionFactsReader interface {
+	ReadAdmissionFacts(context.Context, string, string, string) (TenantAdmissionFacts, error)
+}
+
 // AdmissionResolver owns fixed-fact composition, not authentication, current
 // pointers, environment discovery, command identity allocation or persistence.
 type AdmissionResolver struct {
 	releases AdmissionReleaseReader
 	inputs   AdmissionInputReader
+	facts    AdmissionFactsReader
 }
 
 func NewAdmissionResolver(releases AdmissionReleaseReader, inputs AdmissionInputReader) *AdmissionResolver {
 	return &AdmissionResolver{releases: releases, inputs: inputs}
+}
+
+// NewManagedAdmissionResolver binds a real managed facts owner. Callers of its
+// managed entry point cannot supply environment or storage facts in a request.
+func NewManagedAdmissionResolver(releases AdmissionReleaseReader, inputs AdmissionInputReader, facts AdmissionFactsReader) *AdmissionResolver {
+	return &AdmissionResolver{releases: releases, inputs: inputs, facts: facts}
+}
+
+func (resolver *AdmissionResolver) ResolveManaged(ctx context.Context, request AdmissionResolutionRequest) (AdmissionResolution, error) {
+	return AdmissionResolution{}, errors.New("managed admission resolution not implemented")
 }
 
 func (resolver *AdmissionResolver) Resolve(ctx context.Context, request AdmissionResolutionRequest, facts TenantAdmissionFacts) (AdmissionResolution, error) {
