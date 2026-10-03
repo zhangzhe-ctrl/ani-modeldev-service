@@ -66,7 +66,7 @@ func TestGovernanceDeliveryContractProvider(t *testing.T) {
 			Snapshot: snapshot, IntentHash: intentHash, ExecutionSpecHash: specHash,
 			AcceptedAt: fixture.request.AcceptedAt.AsTime(),
 		},
-		Target: governanceDeliveryIdentity{OperationID: uuid.NewString(), ExecutionID: uuid.NewString()},
+		Target:  governanceDeliveryIdentity{OperationID: uuid.NewString(), ExecutionID: uuid.NewString()},
 		Control: governanceDeliveryIdentity{OperationID: uuid.NewString(), ExecutionID: uuid.NewString()},
 	}
 	handshake.TLS.CAFile = filepath.Join(directory, "ca.pem")
@@ -90,7 +90,7 @@ func TestGovernanceDeliveryContractProvider(t *testing.T) {
 		t.Fatal("GOVERNANCE_DELIVERY_PREFLIGHT: valid command cannot encode through shared codec")
 	}
 	request := &modeldevv1.AcceptExecutionRequest{
-		Identity: &trainingv1.ExecutionIdentity{OperationId: control.OperationID, ExecutionId: control.ExecutionID, ExecutionSpecHash: control.SpecHash},
+		Identity:         &trainingv1.ExecutionIdentity{OperationId: control.OperationID, ExecutionId: control.ExecutionID, ExecutionSpecHash: control.SpecHash},
 		ResourceTenantId: control.TenantID, AdmittedActorId: control.Actor, IntentHash: control.IntentHash,
 		Intent: wireIntent, Snapshot: wireSnapshot, AcceptedAt: timestamppb.New(control.AcceptedAt),
 	}
@@ -99,9 +99,9 @@ func TestGovernanceDeliveryContractProvider(t *testing.T) {
 	))
 	receipt, err := modeldevv1.NewModelDevCommandServiceClient(connection).AcceptExecution(commandContext, request)
 	wantStates := &modeldevv1.ExecutionStates{
-		ComputeState: modeldevv1.ComputeState_COMPUTE_STATE_ACCEPTED,
+		ComputeState:  modeldevv1.ComputeState_COMPUTE_STATE_ACCEPTED,
 		DeliveryState: modeldevv1.DeliveryState_DELIVERY_STATE_PENDING,
-		CloseState: modeldevv1.CloseState_CLOSE_STATE_OPEN,
+		CloseState:    modeldevv1.CloseState_CLOSE_STATE_OPEN,
 		ResourceState: modeldevv1.ResourceState_RESOURCE_STATE_NOT_APPLICABLE,
 	}
 	if err != nil || receipt == nil || !proto.Equal(receipt.Identity, request.Identity) || receipt.Replayed || receipt.Revision != 1 ||
@@ -171,13 +171,13 @@ type governanceDeliveryIdentity struct {
 }
 
 type governanceDeliveryFrozen struct {
-	ResourceTenantID string `json:"resource_tenant_id"`
-	Actor string `json:"actor"`
-	Intent cpup01.Intent `json:"intent"`
-	Snapshot cpup01.Snapshot `json:"snapshot"`
-	IntentHash string `json:"intent_hash"`
-	ExecutionSpecHash string `json:"execution_spec_hash"`
-	AcceptedAt time.Time `json:"accepted_at"`
+	ResourceTenantID  string          `json:"resource_tenant_id"`
+	Actor             string          `json:"actor"`
+	Intent            cpup01.Intent   `json:"intent"`
+	Snapshot          cpup01.Snapshot `json:"snapshot"`
+	IntentHash        string          `json:"intent_hash"`
+	ExecutionSpecHash string          `json:"execution_spec_hash"`
+	AcceptedAt        time.Time       `json:"accepted_at"`
 }
 
 func (f governanceDeliveryFrozen) envelope(identity governanceDeliveryIdentity) cpup01.AdmissionEnvelope {
@@ -188,15 +188,15 @@ func (f governanceDeliveryFrozen) envelope(identity governanceDeliveryIdentity) 
 }
 
 type governanceDeliveryHandshake struct {
-	Schema string `json:"schema"`
+	Schema  string `json:"schema"`
 	Address string `json:"address"`
-	TLS struct {
-		CAFile string `json:"ca_file"`
+	TLS     struct {
+		CAFile   string `json:"ca_file"`
 		CertFile string `json:"cert_file"`
-		KeyFile string `json:"key_file"`
+		KeyFile  string `json:"key_file"`
 	} `json:"tls"`
-	Frozen governanceDeliveryFrozen `json:"frozen"`
-	Target governanceDeliveryIdentity `json:"target"`
+	Frozen  governanceDeliveryFrozen   `json:"frozen"`
+	Target  governanceDeliveryIdentity `json:"target"`
 	Control governanceDeliveryIdentity `json:"control"`
 }
 
