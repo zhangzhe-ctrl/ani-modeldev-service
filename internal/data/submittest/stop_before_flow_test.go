@@ -7,9 +7,12 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jackc/pgx/v5/pgxpool"
 	modeldevv1 "github.com/zhangzhe-ctrl/ani-modeldev-service/api/ani/modeldev/v1"
@@ -34,14 +37,28 @@ import (
 
 func TestMainFlowStopBeforeAdmissionClosesLateAdmissionWithoutCreating(t *testing.T) {
 	f := newCompleteFixture(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	startup := os.Getenv("ANI_MODELDEV_MAINFLOW_STARTUP")
+	limit := 30 * time.Second
+	if startup != "" { limit = 6 * time.Minute }
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
 	open := postgres.Prepare(t)
 	pool := open()
-	generation := applyOwnerStop(t, ctx, f, pool)
-	pool.Close()
-	pool = open()
-	acceptThroughCommandRPC(t, ctx, execution.New(pool), f.request.Admission)
+	var generation uint64
+	if startup != "" {
+		store := s3.New(s3.Options{Region: "us-east-1", Credentials: aws.CredentialsProviderFunc(func(context.Context) (aws.Credentials, error) { return aws.Credentials{AccessKeyID: "synthetic-key", SecretAccessKey: "synthetic-secret"}, nil }), BaseEndpoint: aws.String(f.storage.URL), UsePathStyle: true, HTTPClient: f.storage.Client(), RetryMaxAttempts: 1, RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired, ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired})
+		resolver, selection, intent := prepareMainFlowAdmission(t, ctx, f, pool, store)
+		query := startMainFlowQuery(t, open(), store, f.request.Admission, resolver)
+		awaitBusinessAdmission(t, ctx, f, query, execution.New(pool), selection, intent)
+		close, err := execution.New(pool).GetCloseIntent(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
+		if err != nil || close.OperationID != f.request.Admission.OperationID || close.SpecHash != f.request.Admission.SpecHash || close.Generation != 1 || close.SourceGeneration != 1 || close.Reason != biz.CloseReasonUserStop { t.Fatalf("BFF_STOP_BEFORE_NOT_IMPLEMENTED: late admission has no original stop tombstone: %+v %v", close, err) }
+		generation = close.Generation
+	} else {
+		generation = applyOwnerStop(t, ctx, f, pool)
+		pool.Close()
+		pool = open()
+		acceptThroughCommandRPC(t, ctx, execution.New(pool), f.request.Admission)
+	}
 	pool.Close()
 	pool = open()
 	worker, runs := assembleRecoveryOwner(t, f, pool)
@@ -54,7 +71,7 @@ func TestMainFlowStopBeforeAdmissionClosesLateAdmissionWithoutCreating(t *testin
 	}
 	batch, err := worker.ReconcileOnce(ctx)
 	closed, readErr := lifecycle.New(pool).GetRuntime(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
-	if err != nil || readErr != nil || batch.Closed != 1 || closed.ClosedAt == nil || closed.CloseGeneration != generation || closed.CloseReason != "USER_STOP" {
+	if err != nil || readErr != nil || batch.Closed != 1 || closed.ClosedAt == nil || closed.CloseGeneration != generation || closed.CloseReason != "USER_STOP" || closed.CloseEvidence == nil || !closed.CloseEvidence.NoDispatch {
 		t.Fatalf("STOP_BEFORE_CLOSE_NOT_IMPLEMENTED: recovered late admission was not durably closed: batch=%+v runtime=%+v err=%v read=%v", batch, closed, err, readErr)
 	}
 	visible, err := execution.New(pool).Get(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
@@ -76,6 +93,15 @@ func TestMainFlowStopBeforeAdmissionClosesLateAdmissionWithoutCreating(t *testin
 		t.Fatalf("closed late admission was reopened: %+v %v", batch, err)
 	}
 	t.Log("STOP_BEFORE_CLOSE: mTLS tombstone survived reconnect, late admission closed with zero KFP/TrainJob creation")
+	if startup != "" {
+		writeOwnerCloseSignal(t, startup, "closed.json", map[string]any{"operation_id": f.request.Admission.OperationID, "execution_id": f.request.Admission.ExecutionID, "close_generation": closed.CloseGeneration})
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			if _, err := os.Stat(filepath.Join(filepath.Dir(startup), "stop")); err == nil { return }
+			select { case <-ctx.Done(): t.Fatal("BFF_STOP_BEFORE_NOT_IMPLEMENTED: BFF did not acknowledge CLOSED query"); case <-ticker.C: }
+		}
+	}
 }
 
 func applyOwnerStop(t *testing.T, ctx context.Context, f *completeFixture, pool *pgxpool.Pool) uint64 {

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	modeldevv1 "github.com/zhangzhe-ctrl/ani-modeldev-service/api/ani/modeldev/v1"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/execution"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/lifecycle"
@@ -20,6 +21,10 @@ import (
 )
 
 func TestMainFlowLateRunRecoveryFindsOriginalAndClosesWithoutRecreating(t *testing.T) {
+	for _, bound := range []bool{false, true} {
+		name := "before-managed-begin"
+		if bound { name = "already-bound-before-response" }
+		t.Run(name, func(t *testing.T) {
 	f := newCompleteFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -80,6 +85,12 @@ func TestMainFlowLateRunRecoveryFindsOriginalAndClosesWithoutRecreating(t *testi
 	case <-ctx.Done():
 		t.Fatal("original CreateRun never reached external API")
 	}
+	if bound {
+		visible.Store(true)
+		_, client, _, _, _ := bootstrapFixtureWithPool(t, f, pool)
+		if _, err := client.BeginExecution(bootstrapCall(ctx, f, "synthetic-bound-prepare"), &modeldevv1.BeginExecutionRequest{Context: f.stepContext("prepare")}); err != nil { t.Fatalf("real Begin could not bind the in-flight Run: %v", err) }
+		visible.Store(false)
+	}
 	generation := applyOwnerStop(t, ctx, f, pool)
 	close(release)
 	if err := <-submitted; !errors.Is(err, biz.ErrPipelineSubmissionUncertain) {
@@ -118,8 +129,9 @@ func TestMainFlowLateRunRecoveryFindsOriginalAndClosesWithoutRecreating(t *testi
 	if err != nil || readErr != nil || batch.Closed != 1 || closed.ClosedAt == nil || closed.CloseGeneration != generation || closed.CloseEvidence == nil || closed.CloseEvidence.RunID != completeRunID {
 		t.Fatalf("LATE_RUN_CLOSE_NOT_IMPLEMENTED: original late run not found/stopped/closed: %+v %+v %v %v", batch, closed, err, readErr)
 	}
-	if _, err := submission.New(pool).GetRunAuthority(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID); !errors.Is(err, biz.ErrExecutionNotFound) {
-		t.Fatalf("owner close recovery granted late managed-step authority: %v", err)
+	gotAuthority, authorityErr := submission.New(pool).GetRunAuthority(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
+	if (!bound && !errors.Is(authorityErr, biz.ErrExecutionNotFound)) || (bound && (authorityErr != nil || gotAuthority.RunID != completeRunID || gotAuthority.AttemptID != original.AttemptID)) {
+		t.Fatalf("owner close recovery changed managed-step authority: %+v %v", gotAuthority, authorityErr)
 	}
 	recovered, err := submission.New(pool).Get(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
 	if err != nil || recovered.AttemptID != original.AttemptID || recovered.PlanHash != original.PlanHash || len(recovered.ConfirmedRuns) != 1 || recovered.ConfirmedRuns[0].RunID != completeRunID {
@@ -139,4 +151,6 @@ func TestMainFlowLateRunRecoveryFindsOriginalAndClosesWithoutRecreating(t *testi
 		t.Fatalf("recovery recreated or failed to stop: train=%d run=%d stops=%d", creates, runCreates, runStops)
 	}
 	t.Log("LATE_RUN_CLOSE: close during CreateRun, lost response, durable NEEDS_REVIEW, restart, strict original Run recovery and CLOSED without another creation")
+		})
+	}
 }
