@@ -332,6 +332,7 @@ func runCompleteMainFlow(t *testing.T, rejectedInput bool) {
 		query = startMainFlowQuery(t, pool, store, original.Admission)
 	}
 	assertQueryAccess(t, ctx, query, original.Admission)
+	assertActualTrainingLogs(t, ctx, query, f)
 	listed, err := query.ListExecutionArtifacts(queryCall(ctx, original.Admission, modeldevv1.ModelDevQueryService_ListExecutionArtifacts_FullMethodName), &modeldevv1.ListExecutionArtifactsRequest{ExecutionId: original.ExecutionID})
 	if err != nil || len(listed.GetArtifacts()) != len(stored.Publication.Files) {
 		t.Fatal("published artifact query failed")
