@@ -108,11 +108,16 @@ func TestResolveAdmissionRPCUsesPinnedFactsAndDurableReadyInput(t *testing.T) {
 
 func startAdmissionClient(t *testing.T, fixture resolutionFixture, resolver *biz.AdmissionResolver) modeldevv1.ModelDevAdmissionServiceClient {
 	t.Helper()
+	return modeldevv1.NewModelDevAdmissionServiceClient(startAdmissionConnection(t, fixture, service.NewAdmission(resolver)))
+}
+
+func startAdmissionConnection(t *testing.T, fixture resolutionFixture, admission modeldevv1.ModelDevAdmissionServiceServer) *grpc.ClientConn {
+	t.Helper()
 	certificates := commandtls.New(t)
 	s, err := server.NewGovernanceCommandServer(
 		&conf.Server_GRPC{Network: "tcp", Addr: "127.0.0.1:0", Timeout: durationpb.New(5 * time.Second)},
 		server.CommandTLS{Certificate: certificates.Server, ClientCAs: certificates.Roots, GovernanceDNSName: commandtls.GovernanceDNSName},
-		service.NewCommand(execution.New(fixture.openPool())), service.NewAdmission(resolver),
+		service.NewCommand(execution.New(fixture.openPool())), admission,
 	)
 	if err != nil {
 		t.Fatalf("ADMISSION_RPC_PREFLIGHT: TLS server construction failed; behavior NOT_RUN: %v", err)
@@ -154,5 +159,5 @@ func startAdmissionClient(t *testing.T, fixture resolutionFixture, resolver *biz
 			t.Fatalf("ADMISSION_RPC_PREFLIGHT: mTLS channel did not become ready; behavior NOT_RUN: %v", ctx.Err())
 		}
 	}
-	return modeldevv1.NewModelDevAdmissionServiceClient(connection)
+	return connection
 }
