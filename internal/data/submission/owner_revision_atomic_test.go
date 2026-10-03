@@ -280,6 +280,10 @@ func TestOwnerRevisionRollsBackWithDeferredCommitFailures(t *testing.T) {
 		}
 		assertDispatchReplay(t, ctx, submission.New(openPool()), request, reserved.Dispatch)
 		original.OwnerRevision = 2
+		original.States = biz.ExecutionStates{
+			Compute: biz.ComputeStateSubmitting, Delivery: biz.DeliveryStatePending,
+			Resource: biz.ResourceStateNotApplicable, Close: biz.CloseStateOpen,
+		}
 
 		remove = postgres.RejectConfirmedRunCommit(t, writer)
 		at := reserved.Dispatch.ReservedAt.Add(time.Microsecond)
@@ -303,6 +307,10 @@ func TestOwnerRevisionRollsBackWithDeferredCommitFailures(t *testing.T) {
 			t.Fatalf("recovered Run replay changed facts or revision: %v", err)
 		}
 		original.OwnerRevision = 3
+		original.States = biz.ExecutionStates{
+			Compute: biz.ComputeStateSubmissionConfirmed, Delivery: biz.DeliveryStatePending,
+			Resource: biz.ResourceStateNotApplicable, Close: biz.CloseStateOpen,
+		}
 
 		remove = postgres.RejectCloseCommit(t, writer)
 		stop := dispatchCloseIntent(request)
@@ -329,6 +337,10 @@ func TestOwnerRevisionRollsBackWithDeferredCommitFailures(t *testing.T) {
 		wantDispatch.OwnerRevision = 4
 		assertDispatchReplay(t, ctx, submission.New(openPool()), request, wantDispatch)
 		original.OwnerRevision, original.Close = 4, &wantClose
+		original.States = biz.ExecutionStates{
+			Compute: biz.ComputeStateSubmissionConfirmed, Delivery: biz.DeliveryStatePending,
+			Resource: biz.ResourceStateNotApplicable, Close: biz.CloseStateClosing,
+		}
 		stored, err = execution.New(openPool()).Get(ctx, request.Admission.TenantID, request.Admission.ExecutionID)
 		if err != nil || !reflect.DeepEqual(stored, original) {
 			t.Fatalf("recovered writes did not retain one exact committed aggregate: %v", err)
@@ -410,6 +422,10 @@ func TestOwnerRevisionGetReturnsFactsFromOneDatabaseSnapshot(t *testing.T) {
 			}
 			wantExecution := accepted.Execution
 			wantExecution.OwnerRevision = 2
+			wantExecution.States = biz.ExecutionStates{
+				Compute: biz.ComputeStateSubmitting, Delivery: biz.DeliveryStatePending,
+				Resource: biz.ResourceStateNotApplicable, Close: biz.CloseStateOpen,
+			}
 			query := "-- name: GetExecution :one\n"
 			if reader == "Submission.Get" {
 				query = "-- name: GetPipelineDispatch :one\n"
@@ -475,6 +491,10 @@ func TestOwnerRevisionGetReturnsFactsFromOneDatabaseSnapshot(t *testing.T) {
 			// These are separate new reads; they prove later visibility, not the
 			// consistency of the blocked call asserted immediately above.
 			wantExecution.OwnerRevision, wantExecution.Close = 4, &closed.CloseRecord
+			wantExecution.States = biz.ExecutionStates{
+				Compute: biz.ComputeStateSubmissionConfirmed, Delivery: biz.DeliveryStatePending,
+				Resource: biz.ResourceStateNotApplicable, Close: biz.CloseStateClosing,
+			}
 			latest, err := execution.New(openPool()).Get(ctx, request.Admission.TenantID, request.Admission.ExecutionID)
 			if err != nil || !reflect.DeepEqual(latest, wantExecution) {
 				t.Fatalf("new execution read did not see both committed writers: %v", err)

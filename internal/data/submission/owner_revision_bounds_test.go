@@ -66,6 +66,10 @@ func TestOwnerRevisionMaximumIsExactAndAllExistingFactsReplay(t *testing.T) {
 	}
 	wantExecution := accepted.Execution
 	wantExecution.OwnerRevision, wantExecution.Close = revisionBoundsMax, &wantClose
+	wantExecution.States = biz.ExecutionStates{
+		Compute: biz.ComputeStateSubmissionConfirmed, Delivery: biz.DeliveryStatePending,
+		Resource: biz.ResourceStateNotApplicable, Close: biz.CloseStateClosing,
+	}
 	wantDispatch := confirmed.Dispatch
 	wantDispatch.OwnerRevision = revisionBoundsMax
 	storedExecution, err := execution.New(observer).Get(ctx, request.Admission.TenantID, request.Admission.ExecutionID)

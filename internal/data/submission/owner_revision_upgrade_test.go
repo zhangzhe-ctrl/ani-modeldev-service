@@ -58,6 +58,26 @@ func TestOwnerRevisionUpgradeFromOldWriter(t *testing.T) {
 	if !reflect.DeepEqual(after, before) {
 		t.Fatal("REVISION_UPGRADE_BEHAVIOR: migration changed old column identity, bytes, timestamps, generations or related rows")
 	}
+	// The fixed old writer has no States field. Expected views follow the
+	// independently checked history of each seed case, not the current projector.
+	baselineStates := map[string]biz.ExecutionStates{
+		"admission-only": {
+			Compute: biz.ComputeStateAccepted, Delivery: biz.DeliveryStatePending,
+			Resource: biz.ResourceStateNotApplicable, Close: biz.CloseStateOpen,
+		},
+		"multiple-closes": {
+			Compute: biz.ComputeStateAccepted, Delivery: biz.DeliveryStatePending,
+			Resource: biz.ResourceStateNotApplicable, Close: biz.CloseStateClosing,
+		},
+		"uncertain-and-not-sent": {
+			Compute: biz.ComputeStateSubmissionUncertain, Delivery: biz.DeliveryStatePending,
+			Resource: biz.ResourceStateNotApplicable, Close: biz.CloseStateOpen,
+		},
+		"confirmed-multiple-runs": {
+			Compute: biz.ComputeStateSubmissionConfirmed, Delivery: biz.DeliveryStatePending,
+			Resource: biz.ResourceStateNotApplicable, Close: biz.CloseStateOpen,
+		},
+	}
 	for _, seed := range old.Cases {
 		t.Run(seed.Name, func(t *testing.T) {
 			pool := fixture.OpenRuntimePool(t)
@@ -70,16 +90,20 @@ func TestOwnerRevisionUpgradeFromOldWriter(t *testing.T) {
 					t.Fatal("REVISION_UPGRADE_BEHAVIOR: migration invented a close-only admission")
 				}
 			} else {
+				states, ok := baselineStates[seed.Name]
+				if !ok {
+					t.Fatal("REVISION_UPGRADE_PREFLIGHT: old admitted case has no explicit state expectation; behavior NOT_RUN")
+				}
 				got, err := writer.Get(ctx, seed.Request.Admission.TenantID, seed.Request.Admission.ExecutionID)
 				if err != nil {
 					t.Fatal("REVISION_UPGRADE_BEHAVIOR: upgraded admission unreadable")
 				}
-				assertUpgradedExecution(t, got, *seed.Execution, 1)
+				assertUpgradedExecution(t, got, *seed.Execution, 1, states)
 				replay, err := writer.Accept(ctx, seed.Request.Admission)
 				if err != nil || !replay.Replayed {
 					t.Fatal("REVISION_UPGRADE_BEHAVIOR: original admission was not replayed")
 				}
-				assertUpgradedExecution(t, replay.Execution, *seed.Execution, 1)
+				assertUpgradedExecution(t, replay.Execution, *seed.Execution, 1, states)
 			}
 			for _, close := range seed.Closes {
 				replay, err := writer.ApplyCloseIntent(ctx, close.CloseIntent)
@@ -190,11 +214,12 @@ func advanceUpgradedCase(t *testing.T, ctx context.Context, writer *execution.Re
 	}
 }
 
-func assertUpgradedExecution(t *testing.T, got, old biz.Execution, revision uint64) {
+func assertUpgradedExecution(t *testing.T, got, old biz.Execution, revision uint64, states biz.ExecutionStates) {
 	t.Helper()
 	old.OwnerRevision = revision
+	old.States = states
 	if !reflect.DeepEqual(got, old) {
-		t.Fatal("REVISION_UPGRADE_BEHAVIOR: complete original admission/close or expected owner revision changed")
+		t.Fatal("REVISION_UPGRADE_BEHAVIOR: complete original admission/close, expected owner revision or states changed")
 	}
 }
 
