@@ -34,6 +34,7 @@ func TestConfirmedRunSurvivesReconnectAfterCloseWithoutAnotherPermit(t *testing.
 	uncertainAt := first.Dispatch.ReservedAt.Add(time.Microsecond)
 	uncertain, err := repository.MarkSubmissionUncertain(ctx, *first.SendPermit, uncertainAt)
 	wantUncertain := first.Dispatch
+	wantUncertain.OwnerRevision = 3
 	wantUncertain.State = biz.PipelineDispatchUncertain
 	wantUncertain.UncertainAt = &uncertainAt
 	if err != nil || !reflect.DeepEqual(uncertain, wantUncertain) {
@@ -54,6 +55,7 @@ func TestConfirmedRunSurvivesReconnectAfterCloseWithoutAnotherPermit(t *testing.
 	}
 	observedAt := uncertainAt.Add(time.Microsecond)
 	expected := wantUncertain
+	expected.OwnerRevision = 5 // Uncertainty, then close, then the first Run.
 	expected.State = biz.PipelineDispatchConfirmed
 	expected.ConfirmedRuns = []biz.PipelineConfirmedRun{{RunID: observation.RunID, FirstObservedAt: observedAt}}
 	receipt, err := repository.RecordSubmissionConfirmed(ctx, *first.SendPermit, observation, observedAt)

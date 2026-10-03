@@ -143,7 +143,7 @@ func TestUncertaintyAcceptsCanonicalUUIDAndUTCOffsetAliases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("legal typed UUID/time aliases rejected: %v", err)
 	}
-	want := expectedUncertainty(first.Dispatch, first.Dispatch.ReservedAt)
+	want := expectedUncertainty(first.Dispatch, 3, first.Dispatch.ReservedAt)
 	if !reflect.DeepEqual(got, want) || got.UncertainAt.Location() != time.UTC {
 		t.Fatal("uncertainty did not retain canonical UUIDs and the exact UTC instant")
 	}
@@ -207,7 +207,7 @@ func TestConcurrentUncertaintyObserversKeepOneFirstCommittedObservation(t *testi
 				if !original.UncertainAt.Equal(observedTimes[0]) && !original.UncertainAt.Equal(observedTimes[1]) {
 					t.Fatal("concurrent observers invented another observation timestamp")
 				}
-				if !reflect.DeepEqual(original, expectedUncertainty(first.Dispatch, *original.UncertainAt)) {
+				if !reflect.DeepEqual(original, expectedUncertainty(first.Dispatch, 3, *original.UncertainAt)) {
 					t.Fatal("concurrent observation replaced the original attempt or frozen plan")
 				}
 				visible, err := submission.New(openPool()).Get(ctx, request.Admission.TenantID, request.Admission.ExecutionID)
@@ -273,15 +273,24 @@ func TestConcurrentCloseAndUncertaintyBothRemainDurable(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("concurrent uncertainty did not finish")
 	}
-	if closed.err != nil || observed.err != nil || closed.receipt.Replayed || closed.receipt.State != biz.CloseStateClosing || !reflect.DeepEqual(observed.dispatch, expectedUncertainty(first.Dispatch, observedAt)) {
+	if !((observed.dispatch.OwnerRevision == 3 && closed.receipt.OwnerRevision == 4) ||
+		(observed.dispatch.OwnerRevision == 4 && closed.receipt.OwnerRevision == 3)) {
+		t.Fatalf("close and uncertainty must occupy distinct revisions 3 and 4: close=%d uncertainty=%d", closed.receipt.OwnerRevision, observed.dispatch.OwnerRevision)
+	}
+	want := expectedUncertainty(first.Dispatch, 3, observedAt)
+	if closed.receipt.OwnerRevision == 3 {
+		want.OwnerRevision = 4
+	}
+	if closed.err != nil || observed.err != nil || closed.receipt.Replayed || closed.receipt.State != biz.CloseStateClosing || !reflect.DeepEqual(observed.dispatch, want) {
 		t.Fatalf("both original facts must commit: close=%v uncertainty=%v", closed.err, observed.err)
 	}
 	admitted, err := execution.New(openPool()).Get(ctx, request.Admission.TenantID, request.Admission.ExecutionID)
-	if err != nil || admitted.Close == nil || !reflect.DeepEqual(*admitted.Close, closed.receipt.CloseRecord) {
+	if err != nil || admitted.OwnerRevision != 4 || admitted.Close == nil || !reflect.DeepEqual(*admitted.Close, closed.receipt.CloseRecord) {
 		t.Fatalf("uncertainty lost or reopened the concurrent close: %v", err)
 	}
 	assertSameDispatchAdmission(t, admitted.Admission, request.Admission)
-	assertDispatchReplay(t, ctx, submission.New(openPool()), request, observed.dispatch)
+	want.OwnerRevision = 4
+	assertDispatchReplay(t, ctx, submission.New(openPool()), request, want)
 }
 
 func reserveUncertaintyAttempt(t *testing.T, ctx context.Context, pool *pgxpool.Pool, request biz.PipelineDispatchRequest) biz.PipelineDispatchReservation {
@@ -297,14 +306,15 @@ func reserveUncertaintyAttempt(t *testing.T, ctx context.Context, pool *pgxpool.
 func markOriginalUncertain(t *testing.T, ctx context.Context, repository *submission.Repository, first biz.PipelineDispatchReservation, observedAt time.Time) biz.PipelineDispatch {
 	t.Helper()
 	got, err := repository.MarkSubmissionUncertain(ctx, *first.SendPermit, observedAt)
-	if err != nil || !reflect.DeepEqual(got, expectedUncertainty(first.Dispatch, observedAt)) {
+	if err != nil || !reflect.DeepEqual(got, expectedUncertainty(first.Dispatch, 3, observedAt)) {
 		t.Fatalf("valid original observation changed immutable facts: %v", err)
 	}
 	return got
 }
 
-func expectedUncertainty(original biz.PipelineDispatch, observedAt time.Time) biz.PipelineDispatch {
+func expectedUncertainty(original biz.PipelineDispatch, ownerRevision uint64, observedAt time.Time) biz.PipelineDispatch {
 	observedAt = observedAt.UTC()
+	original.OwnerRevision = ownerRevision
 	original.State = biz.PipelineDispatchUncertain
 	original.UncertainAt = &observedAt
 	return original

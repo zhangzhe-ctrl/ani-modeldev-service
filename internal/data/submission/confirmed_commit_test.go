@@ -32,6 +32,7 @@ func TestConfirmedRunCommitFailureReturnsNoReceiptOrPartialFacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("real close fixture failed; confirmed commit behavior NOT_RUN: %v", err)
 	}
+	original.OwnerRevision = 4 // Admission, reservation, uncertainty, close.
 
 	trace := &confirmedCommitTrace{}
 	config := fixturePool.Config()
@@ -59,7 +60,7 @@ func TestConfirmedRunCommitFailureReturnsNoReceiptOrPartialFacts(t *testing.T) {
 	assertDispatchReplay(t, ctx, reconnected, request, original)
 	removeCommitFailure()
 	receipt, err := reconnected.RecordSubmissionConfirmed(ctx, *first.SendPermit, observation, observedAt)
-	want := expectedConfirmation(original, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: observedAt})
+	want := expectedConfirmation(original, 5, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: observedAt})
 	if err != nil || receipt.ConflictingRuns || !reflect.DeepEqual(receipt.Dispatch, want) {
 		t.Fatalf("original observation did not commit after the isolated failure was removed: %v", err)
 	}

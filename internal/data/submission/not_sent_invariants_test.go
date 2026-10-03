@@ -24,17 +24,19 @@ func TestNotSentThenUncertainThenConfirmedRetainsFirstObservations(t *testing.T)
 	uncertainAt := first.Dispatch.ReservedAt.Add(4 * time.Microsecond)
 	confirmedAt := first.Dispatch.ReservedAt.Add(6 * time.Microsecond)
 	want := first.Dispatch
+	want.OwnerRevision = 3
 	want.State, want.NotSentAt = biz.PipelineDispatchNotSent, &notSentAt
 	got, err := repository.MarkSubmissionNotSent(ctx, permit, notSentAt)
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("first local no-send observation changed original facts: %v", err)
 	}
 	want.State, want.UncertainAt = biz.PipelineDispatchUncertain, &uncertainAt
+	want.OwnerRevision = 4
 	got, err = repository.MarkSubmissionUncertain(ctx, permit, uncertainAt)
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("uncertainty lost the original no-send time or attempt: %v", err)
 	}
-	want = expectedConfirmation(want, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: confirmedAt})
+	want = expectedConfirmation(want, 5, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: confirmedAt})
 	confirmed, err := repository.RecordSubmissionConfirmed(ctx, permit, confirmedObservation(confirmedRunID), confirmedAt)
 	if err != nil || confirmed.ConflictingRuns || !reflect.DeepEqual(confirmed.Dispatch, want) {
 		t.Fatalf("confirmation lost either earlier observation or its Run: %v", err)
@@ -78,8 +80,9 @@ func TestNotSentAfterStrongerObservationKeepsStateAndFirstTimes(t *testing.T) {
 			// A later delivery may carry an earlier valid observation time.
 			notSentAt := first.Dispatch.ReservedAt.Add(2 * time.Microsecond)
 			want := first.Dispatch
+			want.OwnerRevision = 3
 			if confirmedFirst {
-				want = expectedConfirmation(want, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: strongerAt})
+				want = expectedConfirmation(want, 3, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: strongerAt})
 				got, err := repository.RecordSubmissionConfirmed(ctx, permit, confirmedObservation(confirmedRunID), strongerAt)
 				if err != nil || got.ConflictingRuns || !reflect.DeepEqual(got.Dispatch, want) {
 					t.Fatalf("first confirmation did not retain the original Run: %v", err)
@@ -92,6 +95,7 @@ func TestNotSentAfterStrongerObservationKeepsStateAndFirstTimes(t *testing.T) {
 				}
 			}
 			want.NotSentAt = &notSentAt
+			want.OwnerRevision = 4
 			got, err := repository.MarkSubmissionNotSent(ctx, permit, notSentAt)
 			if err != nil || !reflect.DeepEqual(got, want) {
 				t.Fatalf("late no-send observation downgraded or erased stronger facts: %v", err)
@@ -133,9 +137,11 @@ func TestConcurrentNotSentAndConfirmedRetainBothOriginalFacts(t *testing.T) {
 	notSentAt := first.Dispatch.ReservedAt.Add(time.Microsecond)
 	confirmedAt := first.Dispatch.ReservedAt.Add(2 * time.Microsecond)
 	wantNotSent := first.Dispatch
+	wantNotSent.OwnerRevision = 3
 	wantNotSent.State, wantNotSent.NotSentAt = biz.PipelineDispatchNotSent, &notSentAt
-	wantConfirmed := expectedConfirmation(first.Dispatch, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: confirmedAt})
+	wantConfirmed := expectedConfirmation(first.Dispatch, 3, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: confirmedAt})
 	wantBoth := wantConfirmed
+	wantBoth.OwnerRevision = 4
 	wantBoth.NotSentAt = &notSentAt
 	type result struct {
 		notSent         bool

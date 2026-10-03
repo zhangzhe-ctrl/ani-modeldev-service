@@ -69,6 +69,7 @@ func TestReservedDispatchAfterCloseReplaysOnlyOriginalFact(t *testing.T) {
 	if _, err := admissions.ApplyCloseIntent(ctx, dispatchCloseIntent(request)); err != nil {
 		t.Fatalf("close after reservation: %v", err)
 	}
+	original.OwnerRevision = 3
 	assertDispatchReplay(t, ctx, submission.New(openPool()), request, original)
 }
 

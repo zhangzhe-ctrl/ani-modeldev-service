@@ -46,6 +46,10 @@ func TestSubmissionUncertaintySurvivesReconnectWithoutAnotherPermit(t *testing.T
 			// from reservation/commit time, and has database timestamp precision.
 			observedAt := first.Dispatch.ReservedAt.Add(time.Microsecond)
 			expected := first.Dispatch
+			expected.OwnerRevision = 3
+			if closeBeforeObservation {
+				expected.OwnerRevision = 4
+			}
 			expected.State = biz.PipelineDispatchUncertain
 			expected.UncertainAt = &observedAt
 			marked, err := repository.MarkSubmissionUncertain(ctx, *first.SendPermit, observedAt)

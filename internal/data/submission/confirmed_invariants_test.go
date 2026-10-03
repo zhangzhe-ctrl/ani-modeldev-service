@@ -65,7 +65,7 @@ func TestConfirmationRejectsInvalidOrMismatchedObservationWithoutMutation(t *tes
 			got, err := repository.RecordSubmissionConfirmed(ctx, invalid.permit, invalid.observation, invalid.at)
 			assertConfirmationRejected(t, got, err, testCase.want)
 			assertDispatchReplay(t, ctx, repository, request, first.Dispatch)
-			original := expectedConfirmation(first.Dispatch, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: valid.at})
+			original := expectedConfirmation(first.Dispatch, 3, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: valid.at})
 			got, err = repository.RecordSubmissionConfirmed(ctx, valid.permit, valid.observation, valid.at)
 			if err != nil || got.ConflictingRuns || !reflect.DeepEqual(got.Dispatch, original) {
 				t.Fatalf("valid original confirmation failed: %v", err)
@@ -139,7 +139,10 @@ func TestConfirmationAliasesAndLateUncertaintyPreserveOriginalObservations(t *te
 			observation := confirmedObservation(strings.ToUpper(runID))
 			offsetTime := observedAt.In(time.FixedZone("fixture-offset", 8*60*60))
 			got, err := repository.RecordSubmissionConfirmed(ctx, alias, observation, offsetTime)
-			want := expectedConfirmation(original, biz.PipelineConfirmedRun{RunID: runID, FirstObservedAt: observedAt})
+			want := expectedConfirmation(original, 3, biz.PipelineConfirmedRun{RunID: runID, FirstObservedAt: observedAt})
+			if priorUncertainty {
+				want.OwnerRevision = 4
+			}
 			if err != nil || got.ConflictingRuns || !reflect.DeepEqual(got.Dispatch, want) {
 				t.Fatalf("canonical UUID and UTC instant were not retained: %v", err)
 			}
@@ -204,7 +207,7 @@ func TestConcurrentConfirmationsRetainSameOrConflictingRuns(t *testing.T) {
 			}
 			var want biz.PipelineDispatch
 			if differentRuns {
-				want = expectedConfirmation(first.Dispatch,
+				want = expectedConfirmation(first.Dispatch, 4,
 					biz.PipelineConfirmedRun{RunID: runIDs[0], FirstObservedAt: times[0]},
 					biz.PipelineConfirmedRun{RunID: runIDs[1], FirstObservedAt: times[1]})
 				conflicts := 0
@@ -223,7 +226,7 @@ func TestConcurrentConfirmationsRetainSameOrConflictingRuns(t *testing.T) {
 						if run.RunID == runIDs[1] {
 							index = 1
 						}
-						if !reflect.DeepEqual(receipt.Dispatch, expectedConfirmation(first.Dispatch, biz.PipelineConfirmedRun{RunID: runIDs[index], FirstObservedAt: times[index]})) {
+						if !reflect.DeepEqual(receipt.Dispatch, expectedConfirmation(first.Dispatch, 3, biz.PipelineConfirmedRun{RunID: runIDs[index], FirstObservedAt: times[index]})) {
 							t.Fatal("first confirmation changed the original attempt or Run")
 						}
 					}
@@ -239,7 +242,7 @@ func TestConcurrentConfirmationsRetainSameOrConflictingRuns(t *testing.T) {
 				if !at.Equal(times[0]) && !at.Equal(times[1]) {
 					t.Fatal("same Run race invented another first observation time")
 				}
-				want = expectedConfirmation(first.Dispatch, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: at})
+				want = expectedConfirmation(first.Dispatch, 3, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: at})
 				for _, receipt := range receipts {
 					if receipt.ConflictingRuns || !reflect.DeepEqual(receipt.Dispatch, want) {
 						t.Fatal("same Run race refreshed the first time or falsely reported conflicting Runs")
@@ -299,15 +302,23 @@ func TestConcurrentCloseAndConfirmedRunBothRemainDurable(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("concurrent confirmation did not finish")
 	}
-	want := expectedConfirmation(first.Dispatch, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: observedAt})
+	if !((confirmation.receipt.Dispatch.OwnerRevision == 3 && closeFact.receipt.OwnerRevision == 4) ||
+		(confirmation.receipt.Dispatch.OwnerRevision == 4 && closeFact.receipt.OwnerRevision == 3)) {
+		t.Fatalf("close and Run must occupy distinct revisions 3 and 4: close=%d Run=%d", closeFact.receipt.OwnerRevision, confirmation.receipt.Dispatch.OwnerRevision)
+	}
+	want := expectedConfirmation(first.Dispatch, 3, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: observedAt})
+	if closeFact.receipt.OwnerRevision == 3 {
+		want.OwnerRevision = 4
+	}
 	if closeFact.err != nil || closeFact.receipt.Replayed || closeFact.receipt.State != biz.CloseStateClosing || confirmation.err != nil || confirmation.receipt.ConflictingRuns || !reflect.DeepEqual(confirmation.receipt.Dispatch, want) {
 		t.Fatalf("both original facts must commit: close=%v confirmation=%v", closeFact.err, confirmation.err)
 	}
 	admitted, err := execution.New(openPool()).Get(ctx, request.Admission.TenantID, request.Admission.ExecutionID)
-	if err != nil || admitted.Close == nil || !reflect.DeepEqual(*admitted.Close, closeFact.receipt.CloseRecord) {
+	if err != nil || admitted.OwnerRevision != 4 || admitted.Close == nil || !reflect.DeepEqual(*admitted.Close, closeFact.receipt.CloseRecord) {
 		t.Fatalf("confirmation lost or reopened the concurrent close: %v", err)
 	}
 	assertSameDispatchAdmission(t, admitted.Admission, request.Admission)
+	want.OwnerRevision = 4
 	assertDispatchReplay(t, ctx, submission.New(openPool()), request, want)
 }
 
@@ -323,8 +334,8 @@ func TestConfirmedRunObservationsKeepOriginalTenantScope(t *testing.T) {
 	first := reserveUncertaintyAttempt(t, ctx, openPool(), request)
 	second := reserveUncertaintyAttempt(t, ctx, openPool(), other)
 	firstTime, secondTime := first.Dispatch.ReservedAt.Add(time.Microsecond), second.Dispatch.ReservedAt.Add(time.Microsecond)
-	wantFirst := expectedConfirmation(first.Dispatch, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: firstTime})
-	wantSecond := expectedConfirmation(second.Dispatch, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: secondTime})
+	wantFirst := expectedConfirmation(first.Dispatch, 3, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: firstTime})
+	wantSecond := expectedConfirmation(second.Dispatch, 3, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: secondTime})
 	// A Run UUID alone is not a global ownership claim. Each internal
 	// observation stays attached to its original tenant/attempt/frozen plan.
 	for _, testCase := range []struct {
@@ -368,7 +379,7 @@ func TestConfirmedRunAfterDatabaseDeadlineRetainsOriginalAttempt(t *testing.T) {
 	waitForDatabaseDeadline(t, ctx, observer, request.Admission.Snapshot.DeadlineAt)
 	observedAt := databaseTime(t, ctx, observer)
 	got, err := submission.New(openPool()).RecordSubmissionConfirmed(ctx, *first.SendPermit, confirmedObservation(confirmedRunID), observedAt)
-	want := expectedConfirmation(first.Dispatch, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: observedAt})
+	want := expectedConfirmation(first.Dispatch, 3, biz.PipelineConfirmedRun{RunID: confirmedRunID, FirstObservedAt: observedAt})
 	if err != nil || got.ConflictingRuns || !reflect.DeepEqual(got.Dispatch, want) {
 		t.Fatalf("expired deadline discarded the original attempt's late handle: %v", err)
 	}
@@ -379,7 +390,8 @@ func confirmedObservation(runID string) biz.PipelineSubmissionObservation {
 	return biz.PipelineSubmissionObservation{State: biz.PipelineSubmissionConfirmed, RunID: runID}
 }
 
-func expectedConfirmation(original biz.PipelineDispatch, runs ...biz.PipelineConfirmedRun) biz.PipelineDispatch {
+func expectedConfirmation(original biz.PipelineDispatch, ownerRevision uint64, runs ...biz.PipelineConfirmedRun) biz.PipelineDispatch {
+	original.OwnerRevision = ownerRevision
 	original.State = biz.PipelineDispatchConfirmed
 	original.ConfirmedRuns = runs
 	return original
