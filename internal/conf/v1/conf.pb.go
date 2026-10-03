@@ -85,8 +85,11 @@ type GovernanceCommand struct {
 	CertificateFile   string `protobuf:"bytes,3,opt,name=certificate_file,json=certificateFile,proto3" json:"certificate_file,omitempty"`
 	PrivateKeyFile    string `protobuf:"bytes,4,opt,name=private_key_file,json=privateKeyFile,proto3" json:"private_key_file,omitempty"`
 	GovernanceDnsName string `protobuf:"bytes,5,opt,name=governance_dns_name,json=governanceDnsName,proto3" json:"governance_dns_name,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Presence enables candidate resolution from explicitly pinned mounted
+	// materials. It does not establish environment or business readiness.
+	AdmissionResolution *AdmissionResolution `protobuf:"bytes,6,opt,name=admission_resolution,json=admissionResolution,proto3" json:"admission_resolution,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *GovernanceCommand) Reset() {
@@ -154,6 +157,117 @@ func (x *GovernanceCommand) GetGovernanceDnsName() string {
 	return ""
 }
 
+func (x *GovernanceCommand) GetAdmissionResolution() *AdmissionResolution {
+	if x != nil {
+		return x.AdmissionResolution
+	}
+	return nil
+}
+
+type AdmissionResolution struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	CatalogueDirectory string                 `protobuf:"bytes,1,opt,name=catalogue_directory,json=catalogueDirectory,proto3" json:"catalogue_directory,omitempty"`
+	FactsFiles         []*AdmissionFactsFile  `protobuf:"bytes,2,rep,name=facts_files,json=factsFiles,proto3" json:"facts_files,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *AdmissionResolution) Reset() {
+	*x = AdmissionResolution{}
+	mi := &file_conf_v1_conf_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdmissionResolution) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdmissionResolution) ProtoMessage() {}
+
+func (x *AdmissionResolution) ProtoReflect() protoreflect.Message {
+	mi := &file_conf_v1_conf_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdmissionResolution.ProtoReflect.Descriptor instead.
+func (*AdmissionResolution) Descriptor() ([]byte, []int) {
+	return file_conf_v1_conf_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *AdmissionResolution) GetCatalogueDirectory() string {
+	if x != nil {
+		return x.CatalogueDirectory
+	}
+	return ""
+}
+
+func (x *AdmissionResolution) GetFactsFiles() []*AdmissionFactsFile {
+	if x != nil {
+		return x.FactsFiles
+	}
+	return nil
+}
+
+type AdmissionFactsFile struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Sha256        string                 `protobuf:"bytes,2,opt,name=sha256,proto3" json:"sha256,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AdmissionFactsFile) Reset() {
+	*x = AdmissionFactsFile{}
+	mi := &file_conf_v1_conf_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdmissionFactsFile) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdmissionFactsFile) ProtoMessage() {}
+
+func (x *AdmissionFactsFile) ProtoReflect() protoreflect.Message {
+	mi := &file_conf_v1_conf_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdmissionFactsFile.ProtoReflect.Descriptor instead.
+func (*AdmissionFactsFile) Descriptor() ([]byte, []int) {
+	return file_conf_v1_conf_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *AdmissionFactsFile) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *AdmissionFactsFile) GetSha256() string {
+	if x != nil {
+		return x.Sha256
+	}
+	return ""
+}
+
 type Server struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Grpc            *Server_GRPC           `protobuf:"bytes,1,opt,name=grpc,proto3" json:"grpc,omitempty"`
@@ -165,7 +279,7 @@ type Server struct {
 
 func (x *Server) Reset() {
 	*x = Server{}
-	mi := &file_conf_v1_conf_proto_msgTypes[2]
+	mi := &file_conf_v1_conf_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -177,7 +291,7 @@ func (x *Server) String() string {
 func (*Server) ProtoMessage() {}
 
 func (x *Server) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_v1_conf_proto_msgTypes[2]
+	mi := &file_conf_v1_conf_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -190,7 +304,7 @@ func (x *Server) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Server.ProtoReflect.Descriptor instead.
 func (*Server) Descriptor() ([]byte, []int) {
-	return file_conf_v1_conf_proto_rawDescGZIP(), []int{2}
+	return file_conf_v1_conf_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Server) GetGrpc() *Server_GRPC {
@@ -225,7 +339,7 @@ type Server_GRPC struct {
 
 func (x *Server_GRPC) Reset() {
 	*x = Server_GRPC{}
-	mi := &file_conf_v1_conf_proto_msgTypes[3]
+	mi := &file_conf_v1_conf_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -237,7 +351,7 @@ func (x *Server_GRPC) String() string {
 func (*Server_GRPC) ProtoMessage() {}
 
 func (x *Server_GRPC) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_v1_conf_proto_msgTypes[3]
+	mi := &file_conf_v1_conf_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -250,7 +364,7 @@ func (x *Server_GRPC) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Server_GRPC.ProtoReflect.Descriptor instead.
 func (*Server_GRPC) Descriptor() ([]byte, []int) {
-	return file_conf_v1_conf_proto_rawDescGZIP(), []int{2, 0}
+	return file_conf_v1_conf_proto_rawDescGZIP(), []int{4, 0}
 }
 
 func (x *Server_GRPC) GetNetwork() string {
@@ -285,7 +399,7 @@ type Server_Admin struct {
 
 func (x *Server_Admin) Reset() {
 	*x = Server_Admin{}
-	mi := &file_conf_v1_conf_proto_msgTypes[4]
+	mi := &file_conf_v1_conf_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -297,7 +411,7 @@ func (x *Server_Admin) String() string {
 func (*Server_Admin) ProtoMessage() {}
 
 func (x *Server_Admin) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_v1_conf_proto_msgTypes[4]
+	mi := &file_conf_v1_conf_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -310,7 +424,7 @@ func (x *Server_Admin) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Server_Admin.ProtoReflect.Descriptor instead.
 func (*Server_Admin) Descriptor() ([]byte, []int) {
-	return file_conf_v1_conf_proto_rawDescGZIP(), []int{2, 1}
+	return file_conf_v1_conf_proto_rawDescGZIP(), []int{4, 1}
 }
 
 func (x *Server_Admin) GetNetwork() string {
@@ -341,13 +455,21 @@ const file_conf_v1_conf_proto_rawDesc = "" +
 	"\x12conf/v1/conf.proto\x12\aconf.v1\x1a\x1egoogle/protobuf/duration.proto\"j\n" +
 	"\tBootstrap\x12'\n" +
 	"\x06server\x18\x01 \x01(\v2\x0f.conf.v1.ServerR\x06server\x124\n" +
-	"\acommand\x18\x02 \x01(\v2\x1a.conf.v1.GovernanceCommandR\acommand\"\xea\x01\n" +
+	"\acommand\x18\x02 \x01(\v2\x1a.conf.v1.GovernanceCommandR\acommand\"\xbb\x02\n" +
 	"\x11GovernanceCommand\x12*\n" +
 	"\x11database_url_file\x18\x01 \x01(\tR\x0fdatabaseUrlFile\x12$\n" +
 	"\x0eclient_ca_file\x18\x02 \x01(\tR\fclientCaFile\x12)\n" +
 	"\x10certificate_file\x18\x03 \x01(\tR\x0fcertificateFile\x12(\n" +
 	"\x10private_key_file\x18\x04 \x01(\tR\x0eprivateKeyFile\x12.\n" +
-	"\x13governance_dns_name\x18\x05 \x01(\tR\x11governanceDnsName\"\xfc\x02\n" +
+	"\x13governance_dns_name\x18\x05 \x01(\tR\x11governanceDnsName\x12O\n" +
+	"\x14admission_resolution\x18\x06 \x01(\v2\x1c.conf.v1.AdmissionResolutionR\x13admissionResolution\"\x84\x01\n" +
+	"\x13AdmissionResolution\x12/\n" +
+	"\x13catalogue_directory\x18\x01 \x01(\tR\x12catalogueDirectory\x12<\n" +
+	"\vfacts_files\x18\x02 \x03(\v2\x1b.conf.v1.AdmissionFactsFileR\n" +
+	"factsFiles\"@\n" +
+	"\x12AdmissionFactsFile\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
+	"\x06sha256\x18\x02 \x01(\tR\x06sha256\"\xfc\x02\n" +
 	"\x06Server\x12(\n" +
 	"\x04grpc\x18\x01 \x01(\v2\x14.conf.v1.Server.GRPCR\x04grpc\x12+\n" +
 	"\x05admin\x18\x02 \x01(\v2\x15.conf.v1.Server.AdminR\x05admin\x12D\n" +
@@ -373,28 +495,32 @@ func file_conf_v1_conf_proto_rawDescGZIP() []byte {
 	return file_conf_v1_conf_proto_rawDescData
 }
 
-var file_conf_v1_conf_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_conf_v1_conf_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_conf_v1_conf_proto_goTypes = []any{
 	(*Bootstrap)(nil),           // 0: conf.v1.Bootstrap
 	(*GovernanceCommand)(nil),   // 1: conf.v1.GovernanceCommand
-	(*Server)(nil),              // 2: conf.v1.Server
-	(*Server_GRPC)(nil),         // 3: conf.v1.Server.GRPC
-	(*Server_Admin)(nil),        // 4: conf.v1.Server.Admin
-	(*durationpb.Duration)(nil), // 5: google.protobuf.Duration
+	(*AdmissionResolution)(nil), // 2: conf.v1.AdmissionResolution
+	(*AdmissionFactsFile)(nil),  // 3: conf.v1.AdmissionFactsFile
+	(*Server)(nil),              // 4: conf.v1.Server
+	(*Server_GRPC)(nil),         // 5: conf.v1.Server.GRPC
+	(*Server_Admin)(nil),        // 6: conf.v1.Server.Admin
+	(*durationpb.Duration)(nil), // 7: google.protobuf.Duration
 }
 var file_conf_v1_conf_proto_depIdxs = []int32{
-	2, // 0: conf.v1.Bootstrap.server:type_name -> conf.v1.Server
+	4, // 0: conf.v1.Bootstrap.server:type_name -> conf.v1.Server
 	1, // 1: conf.v1.Bootstrap.command:type_name -> conf.v1.GovernanceCommand
-	3, // 2: conf.v1.Server.grpc:type_name -> conf.v1.Server.GRPC
-	4, // 3: conf.v1.Server.admin:type_name -> conf.v1.Server.Admin
-	5, // 4: conf.v1.Server.shutdown_timeout:type_name -> google.protobuf.Duration
-	5, // 5: conf.v1.Server.GRPC.timeout:type_name -> google.protobuf.Duration
-	5, // 6: conf.v1.Server.Admin.timeout:type_name -> google.protobuf.Duration
-	7, // [7:7] is the sub-list for method output_type
-	7, // [7:7] is the sub-list for method input_type
-	7, // [7:7] is the sub-list for extension type_name
-	7, // [7:7] is the sub-list for extension extendee
-	0, // [0:7] is the sub-list for field type_name
+	2, // 2: conf.v1.GovernanceCommand.admission_resolution:type_name -> conf.v1.AdmissionResolution
+	3, // 3: conf.v1.AdmissionResolution.facts_files:type_name -> conf.v1.AdmissionFactsFile
+	5, // 4: conf.v1.Server.grpc:type_name -> conf.v1.Server.GRPC
+	6, // 5: conf.v1.Server.admin:type_name -> conf.v1.Server.Admin
+	7, // 6: conf.v1.Server.shutdown_timeout:type_name -> google.protobuf.Duration
+	7, // 7: conf.v1.Server.GRPC.timeout:type_name -> google.protobuf.Duration
+	7, // 8: conf.v1.Server.Admin.timeout:type_name -> google.protobuf.Duration
+	9, // [9:9] is the sub-list for method output_type
+	9, // [9:9] is the sub-list for method input_type
+	9, // [9:9] is the sub-list for extension type_name
+	9, // [9:9] is the sub-list for extension extendee
+	0, // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_conf_v1_conf_proto_init() }
@@ -408,7 +534,7 @@ func file_conf_v1_conf_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_conf_v1_conf_proto_rawDesc), len(file_conf_v1_conf_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
