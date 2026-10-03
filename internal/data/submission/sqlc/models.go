@@ -65,3 +65,18 @@ type ModeldevPipelineDispatch struct {
 	UncertainAt   pgtype.Timestamptz
 	NotSentAt     pgtype.Timestamptz
 }
+
+type ModeldevRunAuthority struct {
+	TenantID      pgtype.UUID
+	ExecutionID   pgtype.UUID
+	OperationID   pgtype.UUID
+	SpecHash      string
+	AttemptID     pgtype.UUID
+	PlanHash      string
+	RunID         pgtype.UUID
+	NamespaceName string
+	NamespaceUid  pgtype.UUID
+	WorkflowName  string
+	WorkflowUid   string
+	BoundAt       pgtype.Timestamptz
+}

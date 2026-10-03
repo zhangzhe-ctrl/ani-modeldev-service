@@ -116,6 +116,66 @@ func (q *Queries) GetPipelineDispatch(ctx context.Context, arg GetPipelineDispat
 	return i, err
 }
 
+const getRunAuthorityRow = `-- name: GetRunAuthorityRow :one
+SELECT authority.tenant_id, authority.execution_id, authority.operation_id,
+    authority.spec_hash, authority.attempt_id, authority.plan_hash,
+    authority.run_id, authority.namespace_name, authority.namespace_uid,
+    authority.workflow_name, authority.workflow_uid, authority.bound_at,
+    identity.owner_revision
+FROM modeldev_run_authorities AS authority
+JOIN modeldev_execution_identities AS identity
+  ON identity.tenant_id = authority.tenant_id
+ AND identity.execution_id = authority.execution_id
+ AND identity.operation_id = authority.operation_id
+ AND identity.spec_hash = authority.spec_hash
+WHERE authority.tenant_id = $1::uuid
+  AND authority.execution_id = $2::uuid
+`
+
+type GetRunAuthorityRowParams struct {
+	TenantID    pgtype.UUID
+	ExecutionID pgtype.UUID
+}
+
+type GetRunAuthorityRowRow struct {
+	TenantID      pgtype.UUID
+	ExecutionID   pgtype.UUID
+	OperationID   pgtype.UUID
+	SpecHash      string
+	AttemptID     pgtype.UUID
+	PlanHash      string
+	RunID         pgtype.UUID
+	NamespaceName string
+	NamespaceUid  pgtype.UUID
+	WorkflowName  string
+	WorkflowUid   string
+	BoundAt       pgtype.Timestamptz
+	OwnerRevision pgtype.Numeric
+}
+
+// Call under the identity lock or in a repeatable-read aggregate snapshot.
+// The joined revision is current; it is not the version at first binding.
+func (q *Queries) GetRunAuthorityRow(ctx context.Context, arg GetRunAuthorityRowParams) (GetRunAuthorityRowRow, error) {
+	row := q.db.QueryRow(ctx, getRunAuthorityRow, arg.TenantID, arg.ExecutionID)
+	var i GetRunAuthorityRowRow
+	err := row.Scan(
+		&i.TenantID,
+		&i.ExecutionID,
+		&i.OperationID,
+		&i.SpecHash,
+		&i.AttemptID,
+		&i.PlanHash,
+		&i.RunID,
+		&i.NamespaceName,
+		&i.NamespaceUid,
+		&i.WorkflowName,
+		&i.WorkflowUid,
+		&i.BoundAt,
+		&i.OwnerRevision,
+	)
+	return i, err
+}
+
 const getSubmissionObservationTime = `-- name: GetSubmissionObservationTime :one
 SELECT attempt_id, plan_hash, reserved_at,
     clock_timestamp()::timestamptz AS observed_at
@@ -255,6 +315,77 @@ func (q *Queries) InsertPipelineDispatch(ctx context.Context, arg InsertPipeline
 		&i.NotSentAt,
 	)
 	return i, err
+}
+
+const insertRunAuthority = `-- name: InsertRunAuthority :execrows
+WITH binding_clock AS MATERIALIZED (
+    SELECT clock_timestamp()::timestamptz AS bound_at
+)
+INSERT INTO modeldev_run_authorities (
+    tenant_id, execution_id, operation_id, spec_hash, attempt_id, plan_hash,
+    run_id, namespace_name, namespace_uid, workflow_name, workflow_uid, bound_at
+)
+SELECT identity.tenant_id, identity.execution_id, identity.operation_id,
+    identity.spec_hash, dispatch.attempt_id, dispatch.plan_hash,
+    $1::uuid, $2::text,
+    $3::uuid, $4::text,
+    $5::text, binding_clock.bound_at
+FROM modeldev_execution_identities AS identity
+JOIN modeldev_pipeline_dispatches AS dispatch
+  ON dispatch.tenant_id = identity.tenant_id
+ AND dispatch.execution_id = identity.execution_id
+ AND dispatch.operation_id = identity.operation_id
+ AND dispatch.spec_hash = identity.spec_hash
+CROSS JOIN binding_clock
+WHERE identity.tenant_id = $6::uuid
+  AND identity.execution_id = $7::uuid
+  AND identity.operation_id = $8::uuid
+  AND identity.spec_hash = $9::text
+  AND dispatch.attempt_id = $10::uuid
+  AND dispatch.plan_hash = $11::text
+  AND identity.close_generation = 0
+  AND binding_clock.bound_at >= dispatch.reserved_at
+  AND binding_clock.bound_at < $12::timestamptz
+`
+
+type InsertRunAuthorityParams struct {
+	RunID         pgtype.UUID
+	NamespaceName string
+	NamespaceUid  pgtype.UUID
+	WorkflowName  string
+	WorkflowUid   string
+	TenantID      pgtype.UUID
+	ExecutionID   pgtype.UUID
+	OperationID   pgtype.UUID
+	SpecHash      string
+	AttemptID     pgtype.UUID
+	PlanHash      string
+	DeadlineAt    pgtype.Timestamptz
+}
+
+// Caller holds the shared identity lock and has checked the complete original
+// plan and admission. Sample the database clock after that lock, once, for both
+// eligibility and bound_at. No confirmed-response observation substitutes for
+// the authenticated upstream association supplied to the domain adapter.
+func (q *Queries) InsertRunAuthority(ctx context.Context, arg InsertRunAuthorityParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertRunAuthority,
+		arg.RunID,
+		arg.NamespaceName,
+		arg.NamespaceUid,
+		arg.WorkflowName,
+		arg.WorkflowUid,
+		arg.TenantID,
+		arg.ExecutionID,
+		arg.OperationID,
+		arg.SpecHash,
+		arg.AttemptID,
+		arg.PlanHash,
+		arg.DeadlineAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const listConfirmedPipelineRuns = `-- name: ListConfirmedPipelineRuns :many

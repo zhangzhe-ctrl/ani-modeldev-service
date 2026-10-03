@@ -44,8 +44,8 @@ func TestRunAuthorityBindsOnceAfterRealSubmissionAndSurvivesReconnect(t *testing
 		OperationID: request.Admission.OperationID, SpecHash: request.Admission.SpecHash,
 		AttemptID: permit.AttemptID, PlanHash: permit.PlanHash, RunID: confirmedRunID,
 		NamespaceName: request.Admission.Snapshot.Environment.NamespaceName,
-		NamespaceUID: request.Admission.Snapshot.Environment.NamespaceUID,
-		WorkflowName: "cpu07-authority-fixture", WorkflowUID: "cccccccc-dddd-4eee-8fff-111111111111",
+		NamespaceUID:  request.Admission.Snapshot.Environment.NamespaceUID,
+		WorkflowName:  "cpu07-authority-fixture", WorkflowUID: "cccccccc-dddd-4eee-8fff-111111111111",
 	}
 	t.Log("CPU07_AUTHORITY_PREFLIGHT PASS: real Admission, reservation and confirmed Run committed; external Run/Workflow identity is a synthetic boundary")
 	first, err := writer.BindRunAuthority(ctx, candidate)
@@ -107,9 +107,9 @@ func TestRunAuthorityBindsOnceAfterRealSubmissionAndSurvivesReconnect(t *testing
 
 func TestRunAuthorityCannotBindAfterCloseOrAcrossFrozenScope(t *testing.T) {
 	for _, test := range []struct {
-		name string
-		close bool
-		otherTenant bool
+		name           string
+		close          bool
+		otherTenant    bool
 		otherNamespace bool
 	}{
 		{name: "closed before Begin", close: true},
@@ -135,8 +135,8 @@ func TestRunAuthorityCannotBindAfterCloseOrAcrossFrozenScope(t *testing.T) {
 				OperationID: request.Admission.OperationID, SpecHash: request.Admission.SpecHash,
 				AttemptID: reserved.Dispatch.AttemptID, PlanHash: reserved.Dispatch.PlanHash, RunID: confirmedRunID,
 				NamespaceName: request.Admission.Snapshot.Environment.NamespaceName,
-				NamespaceUID: request.Admission.Snapshot.Environment.NamespaceUID,
-				WorkflowName: "authority-refusal-fixture", WorkflowUID: "cccccccc-dddd-4eee-8fff-111111111111",
+				NamespaceUID:  request.Admission.Snapshot.Environment.NamespaceUID,
+				WorkflowName:  "authority-refusal-fixture", WorkflowUID: "cccccccc-dddd-4eee-8fff-111111111111",
 			}
 			var expected error
 			if test.close {
