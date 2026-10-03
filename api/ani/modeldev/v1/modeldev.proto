@@ -57,6 +57,12 @@ enum ComputeState {
   COMPUTE_STATE_SUCCEEDED = 7;
   COMPUTE_STATE_FAILED = 8;
   COMPUTE_STATE_CANCELED = 9;
+  // The original attempt has a local no-send observation and no stronger
+  // submission observation. This state does not grant permission to resend.
+  COMPUTE_STATE_SUBMISSION_NOT_SENT = 10;
+  // One or more Run creation observations are retained. This establishes
+  // neither Run authority nor queued/running computation, even for one Run.
+  COMPUTE_STATE_SUBMISSION_CONFIRMED = 11;
 }
 
 enum DeliveryState {
@@ -451,8 +457,12 @@ message AcceptExecutionRequest {
 
 message AcceptExecutionResponse {
   ani.training.v1.ExecutionIdentity identity = 1;
+  // Whether this Admission already existed, not whether its states changed.
   bool replayed = 2;
   ExecutionStates states = 3;
+  // Nonzero committed execution-aggregate version from the same transaction
+  // as states. Replays observe the current version without advancing it.
+  // New facts fail atomically at uint64 maximum; existing facts remain readable.
   uint64 revision = 4;
 }
 
