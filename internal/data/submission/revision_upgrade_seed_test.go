@@ -35,12 +35,12 @@ type revisionSeedManifest struct {
 // file. The request preserves the originally authored input; the other fields
 // preserve facts actually returned by old repositories after successful commit.
 type revisionSeedCase struct {
-	Name       string                      `json:"name"`
-	Request    biz.PipelineDispatchRequest `json:"request"`
-	Closes     []biz.CloseRecord            `json:"closes"`
-	Permit     *biz.PipelineSendPermit      `json:"permit,omitempty"`
-	Execution  *biz.Execution               `json:"execution,omitempty"`
-	Dispatch   *biz.PipelineDispatch        `json:"dispatch,omitempty"`
+	Name      string                      `json:"name"`
+	Request   biz.PipelineDispatchRequest `json:"request"`
+	Closes    []biz.CloseRecord           `json:"closes"`
+	Permit    *biz.PipelineSendPermit     `json:"permit,omitempty"`
+	Execution *biz.Execution              `json:"execution,omitempty"`
+	Dispatch  *biz.PipelineDispatch       `json:"dispatch,omitempty"`
 }
 
 func TestSeedRevisionUpgradeOldWriter(t *testing.T) {
