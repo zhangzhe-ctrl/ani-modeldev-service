@@ -81,9 +81,9 @@ func runCompleteMainFlow(t *testing.T, rejectedInput bool) {
 		// This separate pool keeps one real BFF endpoint alive while the
 		// training-side repository below disconnects and recovers its facts.
 		if resolver != nil {
-			businessQuery = startMainFlowQuery(t, open(), store, f.request.Admission, resolver)
+			businessQuery = startMainFlowQueryWithLogs(t, open(), store, f.request.Admission, newMainFlowTrainingLogReader(t, f), resolver)
 		} else {
-			businessQuery = startMainFlowQuery(t, open(), store, f.request.Admission)
+			businessQuery = startMainFlowQueryWithLogs(t, open(), store, f.request.Admission, newMainFlowTrainingLogReader(t, f))
 		}
 		awaitBusinessAdmission(t, ctx, f, businessQuery, admissions, selection, intent)
 	} else {
@@ -329,7 +329,7 @@ func runCompleteMainFlow(t *testing.T, rejectedInput bool) {
 	// lived grants. No S3 credentials or original training mount enter verifier.
 	query := businessQuery
 	if query == nil {
-		query = startMainFlowQuery(t, pool, store, original.Admission)
+		query = startMainFlowQueryWithLogs(t, pool, store, original.Admission, newMainFlowTrainingLogReader(t, f))
 	}
 	assertQueryAccess(t, ctx, query, original.Admission)
 	assertActualTrainingLogs(t, ctx, query, f)

@@ -4,14 +4,26 @@ package submittest_test
 
 import (
     "context"
+    "encoding/pem"
     "strings"
     "testing"
 
     "github.com/google/uuid"
     modeldevv1 "github.com/zhangzhe-ctrl/ani-modeldev-service/api/ani/modeldev/v1"
+    "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
+    "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/traininglogs"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
+    coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
+    "k8s.io/client-go/rest"
 )
+
+func newMainFlowTrainingLogReader(t *testing.T, f *completeFixture) biz.TrainingLogReader {
+    t.Helper()
+    client, err := coreclient.NewForConfig(&rest.Config{Host: f.kube.URL, BearerToken: "synthetic-kube-owner", TLSClientConfig: rest.TLSClientConfig{CAData: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.kube.Certificate().Raw})}})
+    if err != nil { t.Fatal(err) }
+    return traininglogs.New(client)
+}
 
 func assertActualTrainingLogs(t *testing.T, ctx context.Context, client modeldevv1.ModelDevQueryServiceClient, f *completeFixture) {
     t.Helper()

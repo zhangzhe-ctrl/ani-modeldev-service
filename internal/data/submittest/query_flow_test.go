@@ -38,10 +38,14 @@ type mainFlowQuery struct {
 }
 
 func startMainFlowQuery(t *testing.T, pool *pgxpool.Pool, store *s3.Client, admission biz.Admission, resolvers ...modeldevv1.ModelDevAdmissionServiceServer) *mainFlowQuery {
+	return startMainFlowQueryWithLogs(t, pool, store, admission, nil, resolvers...)
+}
+
+func startMainFlowQueryWithLogs(t *testing.T, pool *pgxpool.Pool, store *s3.Client, admission biz.Admission, logs biz.TrainingLogReader, resolvers ...modeldevv1.ModelDevAdmissionServiceServer) *mainFlowQuery {
 	t.Helper()
 	certs := commandtls.NewForServer(t, "ani-modeldev-service")
 	repository := execution.New(pool)
-	handler := service.NewQuery(repository, objectstore.NewDownloadSigner(store, admission.Snapshot.PublicationScope.StorageConnectionID))
+	handler := service.NewQuery(repository, objectstore.NewDownloadSigner(store, admission.Snapshot.PublicationScope.StorageConnectionID), logs)
 	var resolver modeldevv1.ModelDevAdmissionServiceServer
 	if len(resolvers) > 0 {
 		resolver = resolvers[0]
