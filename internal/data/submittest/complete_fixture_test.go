@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -219,6 +220,36 @@ func (f *completeFixture) kubeRequest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		f.t.Error("unexpected Kubernetes mutation")
 		w.WriteHeader(405)
+		return
+	}
+	if r.URL.Path == "/api/v1/namespaces/"+ns+"/pods/actual-training-pod/log" {
+		if r.URL.Query().Get("container") != "node" || r.URL.Query().Get("timestamps") != "true" || (r.URL.Query().Get("follow") != "" && r.URL.Query().Get("follow") != "false") || (r.URL.Query().Get("previous") != "" && r.URL.Query().Get("previous") != "false") {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		tail, tailErr := strconv.Atoi(r.URL.Query().Get("tailLines"))
+		limit, limitErr := strconv.Atoi(r.URL.Query().Get("limitBytes"))
+		if tailErr != nil || limitErr != nil || tail < 1 || tail > 1001 || limit < 1 || limit > 65537 {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		// Only the actual container stdout is exposed. Kubernetes supplies its
+		// timestamp envelope; the test substitute preserves the original text.
+		lines := strings.Split(strings.TrimSuffix(string(f.trainingLog), "\n"), "\n")
+		if len(lines) > tail { lines = lines[len(lines)-tail:] }
+		var body strings.Builder
+		for _, line := range lines {
+			if line == "" { continue }
+			var record struct { Timestamp string `json:"timestamp"` }
+			_ = json.Unmarshal([]byte(line), &record)
+			stamp := record.Timestamp
+			if _, err := time.Parse(time.RFC3339Nano, stamp); err != nil { stamp = time.Now().UTC().Format(time.RFC3339Nano) }
+			body.WriteString(stamp + " " + line + "\n")
+		}
+		raw := []byte(body.String())
+		if len(raw) > limit { raw = raw[:limit] }
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write(raw)
 		return
 	}
 	if object := f.objects[r.URL.Path]; object != nil {

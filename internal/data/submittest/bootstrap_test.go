@@ -13,6 +13,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/jackc/pgx/v5/pgxpool"
 	modeldevv1 "github.com/zhangzhe-ctrl/ani-modeldev-service/api/ani/modeldev/v1"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
@@ -98,6 +99,11 @@ func bootstrapFixture(t *testing.T) (*completeFixture, modeldevv1.ModelDevStepSe
 	t.Helper()
 	f := newCompleteFixture(t)
 	pool := postgres.Prepare(t)()
+	return bootstrapFixtureWithPool(t, f, pool)
+}
+
+func bootstrapFixtureWithPool(t *testing.T, f *completeFixture, pool *pgxpool.Pool) (*completeFixture, modeldevv1.ModelDevStepServiceClient, *lifecycle.Repository, dynamic.Interface, *s3.Client) {
+	t.Helper()
 	admissions, dispatch, facts := execution.New(pool), submission.New(pool), lifecycle.New(pool)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -121,23 +127,27 @@ func bootstrapFixture(t *testing.T) (*completeFixture, modeldevv1.ModelDevStepSe
 	if err != nil {
 		t.Fatal(err)
 	}
-	identity, err := stepidentity.New(kube, "ani-modeldev-managed-step")
-	if err != nil {
-		t.Fatal(err)
-	}
 	store := s3.New(s3.Options{Region: "us-east-1", Credentials: aws.CredentialsProviderFunc(func(context.Context) (aws.Credentials, error) {
 		return aws.Credentials{AccessKeyID: "synthetic-key", SecretAccessKey: "synthetic-secret"}, nil
 	}), BaseEndpoint: aws.String(f.storage.URL), UsePathStyle: true, HTTPClient: f.storage.Client(), RetryMaxAttempts: 1, RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired, ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired})
+	return f, newFixtureRuntimeClient(t, f, pool, kube, store, runs), facts, kube, store
+}
+
+func newFixtureRuntimeClient(t *testing.T, f *completeFixture, pool *pgxpool.Pool, kube dynamic.Interface, store *s3.Client, runs *kfp.Client) modeldevv1.ModelDevStepServiceClient {
+	t.Helper()
+	identity, err := stepidentity.New(kube, "ani-modeldev-managed-step")
+	if err != nil { t.Fatal(err) }
+	dispatch := submission.New(pool)
 	proof := runtimeproof.New(kube, runs, objectstore.NewVerifier(store, f.request.Admission.Snapshot.PublicationScope.StorageConnectionID, 64<<20), dispatch)
-	steps, err := biz.NewManagedSteps(dispatch, admissions, identity, runs)
+	steps, err := biz.NewManagedSteps(dispatch, execution.New(pool), identity, runs)
 	if err != nil {
 		t.Fatal(err)
 	}
-	managed, err := biz.NewManagedRuntime(steps, facts, trainer.New(kube), proof, proof)
+	managed, err := biz.NewManagedRuntime(steps, lifecycle.New(pool), trainer.New(kube), proof, proof)
 	if err != nil {
 		t.Fatal(err)
 	}
 	client, stop := startMainFlowStepHandler(t, service.NewRuntimeStep(steps, managed))
 	t.Cleanup(stop)
-	return f, client, facts, kube, store
+	return client
 }
