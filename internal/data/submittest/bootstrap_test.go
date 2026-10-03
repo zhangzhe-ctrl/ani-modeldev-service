@@ -104,21 +104,39 @@ func bootstrapFixture(t *testing.T) (*completeFixture, modeldevv1.ModelDevStepSe
 	acceptThroughCommandRPC(t, ctx, admissions, f.request.Admission)
 	roots := x509.NewCertPool()
 	roots.AddCert(f.kfp.Certificate())
-	runs, err := kfp.New(kfp.Config{ConnectionRef: f.request.Admission.Snapshot.Environment.KFPConnectionRef, Endpoint: f.kfp.URL, RootCAs: roots, Timeout: 5*time.Second}, tokenProviderFunc(func(context.Context, string, cpup01.EnvironmentBindingSnapshot) (string, error) { return "synthetic-kfp-owner", nil }))
-	if err != nil { t.Fatal(err) }
+	runs, err := kfp.New(kfp.Config{ConnectionRef: f.request.Admission.Snapshot.Environment.KFPConnectionRef, Endpoint: f.kfp.URL, RootCAs: roots, Timeout: 5 * time.Second}, tokenProviderFunc(func(context.Context, string, cpup01.EnvironmentBindingSnapshot) (string, error) {
+		return "synthetic-kfp-owner", nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
 	submitter, err := biz.NewPipelineSubmitter(dispatch, runs, 3*time.Second)
-	if err != nil { t.Fatal(err) }
-	if _, err = submitter.Submit(ctx, f.request); err != nil { t.Fatal(err) }
-	kube, err := dynamic.NewForConfig(&rest.Config{Host: f.kube.URL, BearerToken: "synthetic-kube-owner", Timeout: 10*time.Second, TLSClientConfig: rest.TLSClientConfig{CAData: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.kube.Certificate().Raw})}})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = submitter.Submit(ctx, f.request); err != nil {
+		t.Fatal(err)
+	}
+	kube, err := dynamic.NewForConfig(&rest.Config{Host: f.kube.URL, BearerToken: "synthetic-kube-owner", Timeout: 10 * time.Second, TLSClientConfig: rest.TLSClientConfig{CAData: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.kube.Certificate().Raw})}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	identity, err := stepidentity.New(kube, "ani-modeldev-managed-step")
-	if err != nil { t.Fatal(err) }
-	store := s3.New(s3.Options{Region: "us-east-1", Credentials: aws.CredentialsProviderFunc(func(context.Context) (aws.Credentials, error) { return aws.Credentials{AccessKeyID: "synthetic-key", SecretAccessKey: "synthetic-secret"}, nil }), BaseEndpoint: aws.String(f.storage.URL), UsePathStyle: true, HTTPClient: f.storage.Client(), RetryMaxAttempts: 1, RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired, ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := s3.New(s3.Options{Region: "us-east-1", Credentials: aws.CredentialsProviderFunc(func(context.Context) (aws.Credentials, error) {
+		return aws.Credentials{AccessKeyID: "synthetic-key", SecretAccessKey: "synthetic-secret"}, nil
+	}), BaseEndpoint: aws.String(f.storage.URL), UsePathStyle: true, HTTPClient: f.storage.Client(), RetryMaxAttempts: 1, RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired, ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired})
 	proof := runtimeproof.New(kube, runs, objectstore.NewVerifier(store, f.request.Admission.Snapshot.PublicationScope.StorageConnectionID, 64<<20), dispatch)
 	steps, err := biz.NewManagedSteps(dispatch, admissions, identity, runs)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	managed, err := biz.NewManagedRuntime(steps, facts, trainer.New(kube), proof, proof)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	client, stop := startMainFlowStepHandler(t, service.NewRuntimeStep(steps, managed))
 	t.Cleanup(stop)
 	return f, client, facts, kube, store
