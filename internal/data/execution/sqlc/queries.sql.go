@@ -343,6 +343,42 @@ func (q *Queries) InsertExecutionIdentity(ctx context.Context, arg InsertExecuti
 	return err
 }
 
+const listTenantExecutionIDs = `-- name: ListTenantExecutionIDs :many
+SELECT execution_id
+FROM modeldev_executions
+WHERE tenant_id = $1::uuid
+  AND execution_id > $2::uuid
+ORDER BY execution_id
+LIMIT 128
+`
+
+type ListTenantExecutionIDsParams struct {
+	TenantID         pgtype.UUID
+	AfterExecutionID pgtype.UUID
+}
+
+// A bounded scan within one tenant and snapshot. State filters use the same
+// validated aggregate projection as GetExecution before filling a page.
+func (q *Queries) ListTenantExecutionIDs(ctx context.Context, arg ListTenantExecutionIDsParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listTenantExecutionIDs, arg.TenantID, arg.AfterExecutionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var execution_id pgtype.UUID
+		if err := rows.Scan(&execution_id); err != nil {
+			return nil, err
+		}
+		items = append(items, execution_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockExecutionIdentity = `-- name: LockExecutionIdentity :one
 SELECT tenant_id, execution_id, operation_id, spec_hash, close_generation, owner_revision
 FROM modeldev_execution_identities

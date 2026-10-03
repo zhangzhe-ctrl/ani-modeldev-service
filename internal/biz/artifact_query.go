@@ -25,11 +25,11 @@ type ArtifactQueryRepository interface {
 }
 
 type ExecutionQuery struct {
-	AfterID string
-	Limit int
-	Compute ComputeState
+	AfterID  string
+	Limit    int
+	Compute  ComputeState
 	Delivery DeliveryState
-	Close CloseState
+	Close    CloseState
 }
 
 func (query ExecutionQuery) Matches(states ExecutionStates) bool {

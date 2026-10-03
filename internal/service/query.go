@@ -128,31 +128,45 @@ func (query *Query) ListExecutions(ctx context.Context, request *modeldevv1.List
 		if len(page.ProtoReflect().GetUnknown()) != 0 || page.PageSize > 100 || (page.PageToken != "" && !queryID(page.PageToken)) {
 			return nil, status.Error(codes.InvalidArgument, "invalid execution page")
 		}
-		if page.PageSize > 0 { filter.Limit = int(page.PageSize) }
+		if page.PageSize > 0 {
+			filter.Limit = int(page.PageSize)
+		}
 		filter.AfterID = page.PageToken
 	}
 	if request.ComputeState != nil {
 		name, known := modeldevv1.ComputeState_name[int32(*request.ComputeState)]
-		if !known || *request.ComputeState == 0 { return nil, status.Error(codes.InvalidArgument, "invalid compute filter") }
+		if !known || *request.ComputeState == 0 {
+			return nil, status.Error(codes.InvalidArgument, "invalid compute filter")
+		}
 		filter.Compute = biz.ComputeState(strings.TrimPrefix(name, "COMPUTE_STATE_"))
 	}
 	if request.DeliveryState != nil {
 		name, known := modeldevv1.DeliveryState_name[int32(*request.DeliveryState)]
-		if !known || *request.DeliveryState == 0 { return nil, status.Error(codes.InvalidArgument, "invalid delivery filter") }
+		if !known || *request.DeliveryState == 0 {
+			return nil, status.Error(codes.InvalidArgument, "invalid delivery filter")
+		}
 		filter.Delivery = biz.DeliveryState(strings.TrimPrefix(name, "DELIVERY_STATE_"))
 	}
 	if request.CloseState != nil {
 		name, known := modeldevv1.CloseState_name[int32(*request.CloseState)]
-		if !known || *request.CloseState == 0 { return nil, status.Error(codes.InvalidArgument, "invalid close filter") }
+		if !known || *request.CloseState == 0 {
+			return nil, status.Error(codes.InvalidArgument, "invalid close filter")
+		}
 		filter.Close = biz.CloseState(strings.TrimPrefix(name, "CLOSE_STATE_"))
 	}
-	if query == nil || query.repository == nil { return nil, queryError(biz.ErrPersistence, scope.RequestID) }
+	if query == nil || query.repository == nil {
+		return nil, queryError(biz.ErrPersistence, scope.RequestID)
+	}
 	records, next, err := query.repository.ListQueryRecords(ctx, scope.TenantID, filter)
-	if err != nil { return nil, queryError(err, scope.RequestID) }
+	if err != nil {
+		return nil, queryError(err, scope.RequestID)
+	}
 	response := &modeldevv1.ListExecutionsResponse{NextPageToken: next}
 	for _, record := range records {
 		view, err := executionView(record)
-		if err != nil { return nil, queryError(err, scope.RequestID) }
+		if err != nil {
+			return nil, queryError(err, scope.RequestID)
+		}
 		response.Executions = append(response.Executions, view)
 	}
 	return response, nil
