@@ -28,15 +28,31 @@ func ReadRelease(ctx context.Context, directory, releaseID, expectedDigest strin
 		return cpup01.ReleaseDocument{}, err
 	}
 	id, err := uuid.Parse(releaseID)
-	if err != nil || id == uuid.Nil || id.String() != releaseID || len(expectedDigest) != 64 || strings.Trim(expectedDigest, "0123456789abcdef") != "" || !filepath.IsAbs(directory) || filepath.Clean(directory) != directory {
+	if err != nil || id == uuid.Nil || id.String() != releaseID || len(expectedDigest) != 64 || strings.Trim(expectedDigest, "0123456789abcdef") != "" {
 		return cpup01.ReleaseDocument{}, cpup01.ErrInvalidArgument
 	}
-	root, err := syscall.Open(directory, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	root, err := openCatalogue(ctx, directory)
 	if err != nil {
-		return cpup01.ReleaseDocument{}, ErrCatalogueUnavailable
+		return cpup01.ReleaseDocument{}, err
 	}
 	defer syscall.Close(root)
 	return readReleaseAt(ctx, root, releaseID, expectedDigest)
+}
+
+// openCatalogue applies the same directory boundary to startup and each read.
+// It neither enumerates Releases nor retains a descriptor between requests.
+func openCatalogue(ctx context.Context, directory string) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return -1, err
+	}
+	if !filepath.IsAbs(directory) || filepath.Clean(directory) != directory {
+		return -1, cpup01.ErrInvalidArgument
+	}
+	root, err := syscall.Open(directory, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return -1, ErrCatalogueUnavailable
+	}
+	return root, nil
 }
 
 // readReleaseAt keeps import replay validation on the same trusted directory

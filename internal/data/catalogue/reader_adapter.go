@@ -3,6 +3,7 @@ package catalogue
 import (
 	"context"
 	"errors"
+	"syscall"
 
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
@@ -16,6 +17,19 @@ type Reader struct {
 
 func NewReader(trustedDirectory string) *Reader {
 	return &Reader{directory: trustedDirectory}
+}
+
+// Check verifies only that the trusted catalogue directory can be opened now.
+// It does not select a Release, inspect its contents or certify readiness.
+func (reader *Reader) Check(ctx context.Context) error {
+	root, err := openCatalogue(ctx, reader.directory)
+	if err != nil {
+		return err
+	}
+	if err := syscall.Close(root); err != nil {
+		return ErrCatalogueUnavailable
+	}
+	return ctx.Err()
 }
 
 func (reader *Reader) ReadRelease(ctx context.Context, releaseID, expectedDigest string) (cpup01.ReleaseDocument, error) {

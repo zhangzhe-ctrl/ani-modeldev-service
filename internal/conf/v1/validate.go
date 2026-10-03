@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -30,6 +31,11 @@ func (c *Bootstrap) Validate() error {
 		if len(c.Command.GovernanceDnsName) > 253 || !commandDNSName.MatchString(c.Command.GovernanceDnsName) || c.Command.GovernanceDnsName == "unknown" {
 			return fmt.Errorf("command requires an explicit exact Governance DNS identity")
 		}
+		if c.Command.AdmissionResolution != nil {
+			if err := validateAdmissionResolution(c.Command.AdmissionResolution); err != nil {
+				return err
+			}
+		}
 	}
 	if err := validateListener("grpc", c.Server.Grpc.Network, c.Server.Grpc.Addr, c.Server.Grpc.Timeout); err != nil {
 		return err
@@ -48,6 +54,24 @@ func (c *Bootstrap) Validate() error {
 }
 
 var commandDNSName = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$`)
+
+func validateAdmissionResolution(config *AdmissionResolution) error {
+	validReference := func(path string) bool {
+		return filepath.IsAbs(path) && filepath.Clean(path) == path && !strings.ContainsRune(path, 0)
+	}
+	if !validReference(config.CatalogueDirectory) {
+		return fmt.Errorf("admission catalogue requires an absolute directory reference")
+	}
+	if len(config.FactsFiles) == 0 || len(config.FactsFiles) > 64 {
+		return fmt.Errorf("admission requires 1..64 explicitly pinned facts files")
+	}
+	for _, file := range config.FactsFiles {
+		if file == nil || !validReference(file.Path) || len(file.Sha256) != 64 || strings.Trim(file.Sha256, "0123456789abcdef") != "" {
+			return fmt.Errorf("admission facts require absolute file references and lowercase SHA256 pins")
+		}
+	}
+	return nil
+}
 
 func validateListener(name, network, address string, timeout *durationpb.Duration) error {
 	if network != "tcp" {

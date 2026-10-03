@@ -13,8 +13,13 @@ import (
 	"github.com/go-kratos/kratos/v3/middleware"
 	kratosgrpc "github.com/go-kratos/kratos/v3/transport/grpc"
 	"github.com/jackc/pgx/v5/pgxpool"
+	modeldevv1 "github.com/zhangzhe-ctrl/ani-modeldev-service/api/ani/modeldev/v1"
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 	conf "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/conf/v1"
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/admissionfacts"
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/catalogue"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/execution"
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/input"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/server"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/service"
 )
@@ -67,7 +72,25 @@ func buildCommandServer(listener *conf.Server_GRPC, config *conf.GovernanceComma
 		return failed("command database unavailable")
 	}
 	command := service.NewCommand(execution.New(pool))
-	s, err := server.NewGovernanceCommandServer(listener, server.CommandTLS{Certificate: certificate, ClientCAs: roots, GovernanceDNSName: config.GovernanceDnsName}, command, nil, middlewares...)
+	var admission modeldevv1.ModelDevAdmissionServiceServer
+	if resolution := config.AdmissionResolution; resolution != nil {
+		sources := make([]admissionfacts.FileSource, len(resolution.FactsFiles))
+		for i, file := range resolution.FactsFiles {
+			sources[i] = admissionfacts.FileSource{Path: file.GetPath(), SHA256: file.GetSha256()}
+		}
+		facts, err := admissionfacts.Load(ctx, sources)
+		if err != nil {
+			pool.Close()
+			return failed("command admission facts unavailable or invalid")
+		}
+		releases := catalogue.NewReader(resolution.CatalogueDirectory)
+		if err := releases.Check(ctx); err != nil {
+			pool.Close()
+			return failed("command admission catalogue unavailable or invalid")
+		}
+		admission = service.NewAdmission(biz.NewManagedAdmissionResolver(releases, input.New(pool), facts))
+	}
+	s, err := server.NewGovernanceCommandServer(listener, server.CommandTLS{Certificate: certificate, ClientCAs: roots, GovernanceDNSName: config.GovernanceDnsName}, command, admission, middlewares...)
 	if err != nil {
 		pool.Close()
 		return failed("command listener configuration invalid")
