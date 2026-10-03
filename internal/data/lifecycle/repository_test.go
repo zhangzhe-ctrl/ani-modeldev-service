@@ -109,6 +109,10 @@ func TestRuntimePersistsPrepareTrainingPublicationAndCloseAcrossReconnect(t *tes
 	if err != nil || visible.ClosedAt == nil || visible.Publication == nil || visible.TrainingHandle == nil || *visible.TrainingHandle != handle {
 		t.Fatalf("independent reconnect lost closed runtime facts: %v", err)
 	}
+	readback, err := execution.New(open()).Get(ctx, authority.TenantID, authority.ExecutionID)
+	if err != nil || readback.States.Compute != biz.ComputeState("SUCCEEDED") || readback.States.Delivery != biz.DeliveryState("PUBLISHED") || readback.States.Close != biz.CloseState("CLOSED") || readback.States.Resource != biz.ResourceStateNotApplicable || readback.OwnerRevision != visible.OwnerRevision {
+		t.Fatalf("RUNTIME_STATE_PROJECTION: committed closed execution still returned stale admission states: %+v; %v", readback.States, err)
+	}
 	if _, err = lifecycle.New(open()).GetRuntime(ctx, "99999999-2222-4333-8444-555555555555", authority.ExecutionID); !errors.Is(err, biz.ErrExecutionNotFound) {
 		t.Fatal("cross-tenant runtime read was not rejected", err)
 	}
