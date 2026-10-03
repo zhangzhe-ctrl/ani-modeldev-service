@@ -85,6 +85,14 @@ func (r *Repository) Accept(ctx context.Context, admission biz.Admission) (biz.A
 	if err != nil {
 		return biz.AcceptReceipt{}, err
 	}
+	if replayed {
+		execution.OwnerRevision, err = currentOwnerRevision(ctx, queries, tenantID, executionID)
+	} else {
+		execution.OwnerRevision, err = advanceOwnerRevision(ctx, queries, tenantID, executionID)
+	}
+	if err != nil {
+		return biz.AcceptReceipt{}, err
+	}
 	if err := transaction.Commit(ctx); err != nil {
 		return biz.AcceptReceipt{}, biz.ErrPersistence
 	}
@@ -113,7 +121,14 @@ func (r *Repository) Get(ctx context.Context, tenant, execution string) (biz.Exe
 	if err != nil {
 		return biz.Execution{}, err
 	}
-	queries := executionsql.New(r.pool)
+	// Admission, latest close and aggregate revision must describe one
+	// committed snapshot, even while a writer advances the shared identity.
+	transaction, err := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return biz.Execution{}, biz.ErrPersistence
+	}
+	defer rollbackExecutionTransaction(transaction)
+	queries := executionsql.New(transaction)
 	row, err := queries.GetExecution(ctx, executionsql.GetExecutionParams{
 		TenantID: tenantID, ExecutionID: executionID,
 	})
@@ -125,7 +140,18 @@ func (r *Repository) Get(ctx context.Context, tenant, execution string) (biz.Exe
 	}
 	// This read reports durable facts, not permission to create resources.
 	// A creator must check and persist its intent under the shared identity lock.
-	return executionWithClose(ctx, queries, row)
+	result, err := executionWithClose(ctx, queries, row)
+	if err != nil {
+		return biz.Execution{}, err
+	}
+	result.OwnerRevision, err = currentOwnerRevision(ctx, queries, tenantID, executionID)
+	if err != nil {
+		return biz.Execution{}, err
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return biz.Execution{}, biz.ErrPersistence
+	}
+	return result, nil
 }
 
 func executionWithClose(ctx context.Context, queries *executionsql.Queries, row executionsql.ModeldevExecution) (biz.Execution, error) {

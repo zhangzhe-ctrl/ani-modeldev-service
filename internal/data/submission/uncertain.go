@@ -37,6 +37,10 @@ func (repository *Repository) MarkSubmissionUncertain(ctx context.Context, permi
 		if err != nil {
 			return biz.PipelineDispatch{}, err
 		}
+		dispatch.OwnerRevision, err = advanceOwnerRevision(ctx, locked.queries, row.TenantID, row.ExecutionID)
+		if err != nil {
+			return biz.PipelineDispatch{}, err
+		}
 	}
 	// Replay preserves the first uncertainty time; a confirmed dispatch also
 	// retains every handle without downgrade or a new uncertainty timestamp.

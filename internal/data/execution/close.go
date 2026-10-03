@@ -50,10 +50,14 @@ func (r *Repository) ApplyCloseIntent(ctx context.Context, intent biz.CloseInten
 		if !sameCloseIntent(record.CloseIntent, intent) {
 			return biz.CloseReceipt{}, biz.ErrAdmissionConflict
 		}
+		revision, err := currentOwnerRevision(ctx, queries, tenantID, executionID)
+		if err != nil {
+			return biz.CloseReceipt{}, err
+		}
 		if err := transaction.Commit(ctx); err != nil {
 			return biz.CloseReceipt{}, biz.ErrPersistence
 		}
-		return biz.CloseReceipt{CloseRecord: record, Replayed: true}, nil
+		return biz.CloseReceipt{CloseRecord: record, OwnerRevision: revision, Replayed: true}, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return biz.CloseReceipt{}, biz.ErrPersistence
@@ -78,10 +82,16 @@ func (r *Repository) ApplyCloseIntent(ctx context.Context, intent biz.CloseInten
 	if err != nil {
 		return biz.CloseReceipt{}, err
 	}
+	// Inserting a source close and advancing its fence are one new aggregate
+	// fact. A replay above preserves the original fence and only reads revision.
+	revision, err := advanceOwnerRevision(ctx, queries, tenantID, executionID)
+	if err != nil {
+		return biz.CloseReceipt{}, err
+	}
 	if err := transaction.Commit(ctx); err != nil {
 		return biz.CloseReceipt{}, biz.ErrPersistence
 	}
-	return biz.CloseReceipt{CloseRecord: record}, nil
+	return biz.CloseReceipt{CloseRecord: record, OwnerRevision: revision}, nil
 }
 
 func sameCloseIntent(stored, requested biz.CloseIntent) bool {

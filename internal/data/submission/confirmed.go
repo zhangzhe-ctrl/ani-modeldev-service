@@ -56,6 +56,14 @@ func (repository *Repository) RecordSubmissionConfirmed(ctx context.Context, per
 	if !found {
 		return biz.PipelineConfirmationReceipt{}, biz.ErrPersistence
 	}
+	// The retained Run is the new fact. Its optional parent-state transition
+	// belongs to the same version; a replay preserves the current locked version.
+	if inserted == 1 {
+		dispatch.OwnerRevision, err = advanceOwnerRevision(ctx, locked.queries, row.TenantID, row.ExecutionID)
+		if err != nil {
+			return biz.PipelineConfirmationReceipt{}, err
+		}
+	}
 	// A failed or unknown commit cannot acknowledge persistence. A distinct
 	// second Run is committed and reported as a conflict, never rolled back or
 	// selected as an authoritative replacement for an earlier observation.

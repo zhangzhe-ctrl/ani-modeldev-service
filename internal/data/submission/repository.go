@@ -110,6 +110,11 @@ func (repository *Repository) Reserve(ctx context.Context, request biz.PipelineD
 	if !identity.CreationOpen {
 		return biz.PipelineDispatchReservation{}, biz.ErrPipelineDispatchBlocked
 	}
+	// A committed Admission already has a positive aggregate version. Zero is
+	// reserved for an identity's uncommitted first business fact, never this path.
+	if _, err := positiveOwnerRevision(identity.OwnerRevision); err != nil {
+		return biz.PipelineDispatchReservation{}, err
+	}
 	attemptID, err := uuid.NewRandom()
 	if err != nil {
 		return biz.PipelineDispatchReservation{}, biz.ErrPersistence
@@ -126,6 +131,10 @@ func (repository *Repository) Reserve(ctx context.Context, request biz.PipelineD
 		return biz.PipelineDispatchReservation{}, biz.ErrPersistence
 	}
 	dispatch, err := dispatchFromRow(row, admission, nil)
+	if err != nil {
+		return biz.PipelineDispatchReservation{}, err
+	}
+	dispatch.OwnerRevision, err = advanceOwnerRevision(ctx, queries, tenantID, executionID)
 	if err != nil {
 		return biz.PipelineDispatchReservation{}, err
 	}
@@ -152,8 +161,8 @@ func (repository *Repository) Get(ctx context.Context, tenant, execution string)
 	if repository == nil || repository.pool == nil {
 		return biz.PipelineDispatch{}, biz.ErrPersistence
 	}
-	// State and immutable handles must come from one snapshot. Separate
-	// ReadCommitted statements could combine old state with a new Run list.
+	// State, immutable handles and aggregate revision must share one snapshot.
+	// Separate ReadCommitted statements could attach a new version to old facts.
 	transaction, err := repository.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return biz.PipelineDispatch{}, biz.ErrPersistence
@@ -201,7 +210,7 @@ func rollback(transaction pgx.Tx) {
 }
 
 // The caller supplies either a locked writer transaction or a read-only
-// RepeatableRead transaction, so the parent and child facts cannot be torn.
+// RepeatableRead transaction, so revision, parent and child facts cannot be torn.
 func readDispatch(ctx context.Context, queries *submissionsql.Queries, row submissionsql.ModeldevPipelineDispatch, original submissionsql.ModeldevExecution) (biz.PipelineDispatch, error) {
 	runs, err := queries.ListConfirmedPipelineRuns(ctx, submissionsql.ListConfirmedPipelineRunsParams{
 		TenantID: row.TenantID, ExecutionID: row.ExecutionID, AttemptID: row.AttemptID, PlanHash: row.PlanHash,
@@ -209,7 +218,15 @@ func readDispatch(ctx context.Context, queries *submissionsql.Queries, row submi
 	if err != nil {
 		return biz.PipelineDispatch{}, biz.ErrPersistence
 	}
-	return dispatchFromRow(row, original, runs)
+	dispatch, err := dispatchFromRow(row, original, runs)
+	if err != nil {
+		return biz.PipelineDispatch{}, err
+	}
+	dispatch.OwnerRevision, err = readOwnerRevision(ctx, queries, row.TenantID, row.ExecutionID)
+	if err != nil {
+		return biz.PipelineDispatch{}, err
+	}
+	return dispatch, nil
 }
 
 func dispatchFromRow(row submissionsql.ModeldevPipelineDispatch, original submissionsql.ModeldevExecution, runs []submissionsql.ModeldevPipelineConfirmedRun) (biz.PipelineDispatch, error) {

@@ -37,6 +37,10 @@ func (repository *Repository) MarkSubmissionNotSent(ctx context.Context, permit 
 		if err != nil {
 			return biz.PipelineDispatch{}, err
 		}
+		dispatch.OwnerRevision, err = advanceOwnerRevision(ctx, locked.queries, row.TenantID, row.ExecutionID)
+		if err != nil {
+			return biz.PipelineDispatch{}, err
+		}
 	}
 	// Replays keep the first committed no-send time even when the new input
 	// time is earlier. Close/deadline do not discard this original-attempt fact.
