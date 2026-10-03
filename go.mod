@@ -10,11 +10,11 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/prometheus/client_golang v1.24.1
-	go.opentelemetry.io/otel v1.44.0
+	go.opentelemetry.io/otel v1.45.0
 	go.opentelemetry.io/otel/exporters/prometheus v0.66.0
-	go.opentelemetry.io/otel/metric v1.44.0
+	go.opentelemetry.io/otel/metric v1.45.0
 	go.opentelemetry.io/otel/sdk v1.45.0
-	go.opentelemetry.io/otel/sdk/metric v1.44.0
+	go.opentelemetry.io/otel/sdk/metric v1.45.0
 	go.uber.org/automaxprocs v1.6.0
 	golang.org/x/sys v0.47.0
 	google.golang.org/grpc v1.83.2
@@ -38,7 +38,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
+	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-playground/form/v4 v4.3.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
@@ -57,7 +57,7 @@ require (
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/otel/trace v1.44.0 // indirect
+	go.opentelemetry.io/otel/trace v1.45.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
