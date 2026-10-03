@@ -35,6 +35,10 @@ type ManagedRuntimeResult struct {
 // Every callback rechecks current workload identity and the KFP-owned task
 // association. A previously issued receipt is never a bearer credential.
 func (runtime *ManagedRuntime) authenticate(ctx context.Context, token string, request BeginManagedExecutionRequest, task string) (ManagedRuntimeResult, error) {
+	return runtime.authenticateOrCloseUnbound(ctx, token, request, task, false)
+}
+
+func (runtime *ManagedRuntime) authenticateOrCloseUnbound(ctx context.Context, token string, request BeginManagedExecutionRequest, task string, closeUnbound bool) (ManagedRuntimeResult, error) {
 	if ctx == nil || token == "" || len(token) > 16384 {
 		return ManagedRuntimeResult{}, ErrManagedStepUnauthorized
 	}
@@ -73,11 +77,32 @@ func (runtime *ManagedRuntime) authenticate(ctx context.Context, token string, r
 	if err = runtime.steps.runs.VerifyManagedRun(ctx, plan, a, task); err != nil {
 		return ManagedRuntimeResult{}, ErrManagedStepUnauthorized
 	}
+	expected := RunAuthorityCandidate{TenantID: plan.TenantID, ExecutionID: plan.ExecutionID, OperationID: plan.OperationID, SpecHash: plan.SpecHash, AttemptID: dispatch.AttemptID, PlanHash: dispatch.PlanHash, RunID: a.RunID, NamespaceName: a.NamespaceName, NamespaceUID: a.NamespaceUID, WorkflowName: a.WorkflowName, WorkflowUID: a.WorkflowUID}
 	authority, err := runtime.steps.repository.GetRunAuthority(ctx, plan.TenantID, plan.ExecutionID)
 	if err != nil {
-		return ManagedRuntimeResult{}, ErrManagedStepUnauthorized
+		if !closeUnbound || task != "close" || !errors.Is(err, ErrExecutionNotFound) {
+			return ManagedRuntimeResult{}, ErrManagedStepUnauthorized
+		}
+		// A failed workspace creation may skip prepare before Begin. Current
+		// workload and KFP proof above are still mandatory; only a proven absence
+		// of writers permits fixing this association in an atomic CLOSED record.
+		execution, err := runtime.steps.executions.Get(ctx, plan.TenantID, plan.ExecutionID)
+		if err != nil {
+			return ManagedRuntimeResult{}, err
+		}
+		evidence, err := runtime.publications.VerifyWritersAbsent(ctx, execution, a)
+		if err != nil {
+			return ManagedRuntimeResult{}, err
+		}
+		authority, state, err := runtime.repository.CloseUnboundRuntime(ctx, expected, evidence)
+		if err != nil {
+			return ManagedRuntimeResult{}, err
+		}
+		if authority.RunAuthorityCandidate != expected || state.CloseGeneration == 0 || state.ClosedAt == nil || state.CloseReason != "STEP_FAILED" {
+			return ManagedRuntimeResult{}, ErrRuntimeConflict
+		}
+		return runtimeResult(ManagedRuntimeResult{Execution: execution, Authority: authority}, state, false)
 	}
-	expected := RunAuthorityCandidate{TenantID: plan.TenantID, ExecutionID: plan.ExecutionID, OperationID: plan.OperationID, SpecHash: plan.SpecHash, AttemptID: dispatch.AttemptID, PlanHash: dispatch.PlanHash, RunID: a.RunID, NamespaceName: a.NamespaceName, NamespaceUID: a.NamespaceUID, WorkflowName: a.WorkflowName, WorkflowUID: a.WorkflowUID}
 	if authority.RunAuthorityCandidate != expected {
 		return ManagedRuntimeResult{}, ErrManagedStepUnauthorized
 	}
@@ -226,7 +251,7 @@ func (runtime *ManagedRuntime) Publish(ctx context.Context, token string, reques
 	return runtimeResult(result, state, replayed)
 }
 func (runtime *ManagedRuntime) Close(ctx context.Context, token string, request BeginManagedExecutionRequest, reason string) (ManagedRuntimeResult, error) {
-	result, err := runtime.authenticate(ctx, token, request, "close")
+	result, err := runtime.authenticateOrCloseUnbound(ctx, token, request, "close", reason == "STEP_FAILED")
 	if err != nil {
 		return result, err
 	}

@@ -32,6 +32,13 @@ func TestMainFlowEarlyCloseBeforeBeginPersistsClosedWithoutTrainingPermit(t *tes
 	}
 	claim := f.stepContext("close")
 	claim.Identity.OperationId = ""
+	if result, err := client.RequestExecutionClose(bootstrapCall(ctx, f, "invalid-workload-token"), &modeldevv1.RequestExecutionCloseRequest{Context: claim, Reason: modeldevv1.CloseReason_CLOSE_REASON_STEP_FAILED}); err == nil || result != nil {
+		t.Fatal("unbound close bypassed current workload authentication")
+	}
+	unchanged, err := facts.GetRuntime(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
+	if err != nil || unchanged.CloseGeneration != 0 || unchanged.ClosedAt != nil {
+		t.Fatal("unauthorized early close changed durable execution facts", err)
+	}
 	tokenFile := filepath.Join(t.TempDir(), "projected-token")
 	if err := os.WriteFile(tokenFile, []byte("synthetic-bound-close"), 0600); err != nil {
 		t.Fatal(err)

@@ -109,6 +109,9 @@ type ExecutionRuntimeRepository interface {
 	RecordPublication(context.Context, RunAuthorityCandidate, RuntimePublication) (ExecutionRuntime, bool, error)
 	RequestRuntimeClose(context.Context, RunAuthorityCandidate, string) (ExecutionRuntime, bool, error)
 	ConfirmRuntimeClosed(context.Context, RunAuthorityCandidate, uint64, TrainingRuntimeObservation, ManagedCloseEvidence) (ExecutionRuntime, error)
+	// CloseUnboundRuntime fixes the verified Run association and closes creation
+	// in one transaction. It cannot leave an open authority binding visible.
+	CloseUnboundRuntime(context.Context, RunAuthorityCandidate, ManagedCloseEvidence) (RunAuthority, ExecutionRuntime, error)
 }
 
 type TrainingRuntime interface {
