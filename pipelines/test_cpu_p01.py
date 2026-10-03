@@ -39,8 +39,8 @@ class PipelineAssembly(unittest.TestCase):
             self.assertEqual(set(inputs), {"execution_id", "spec_hash"})
             self.assertTrue(all(p["parameterType"] == "STRING" and "defaultValue" not in p for p in inputs.values()))
             tasks = ir["root"]["dag"]["tasks"]
-            self.assertEqual(set(tasks), {"create-pvc", "prepare", "train-wait", "collect", "publish", "close"})
-            for before, after in [("create-pvc", "prepare"), ("prepare", "train-wait"), ("train-wait", "collect"), ("collect", "publish"), ("publish", "close")]:
+            self.assertEqual(set(tasks), {"createpvc", "prepare", "train-wait", "collect", "publish", "close"})
+            for before, after in [("createpvc", "prepare"), ("prepare", "train-wait"), ("train-wait", "collect"), ("collect", "publish"), ("publish", "close")]:
                 self.assertIn(before, tasks[after]["dependentTasks"])
             self.assertEqual(tasks["close"]["triggerPolicy"]["strategy"], "ALL_UPSTREAM_TASKS_COMPLETED")
             close_component = ir["components"][tasks["close"]["componentRef"]["name"]]
@@ -48,7 +48,7 @@ class PipelineAssembly(unittest.TestCase):
             for name, task in tasks.items():
                 self.assertFalse(task.get("cachingOptions", {}).get("enableCache", False))
                 self.assertEqual(int(task.get("retryPolicy", {}).get("maxRetryCount", 0)), 0)
-                if name == "create-pvc":
+                if name == "createpvc":
                     continue  # Official KFP resource primitive, not a runnable image.
                 executor = ir["components"][task["componentRef"]["name"]]["executorLabel"]
                 container = ir["deploymentSpec"]["executors"][executor]["container"]
