@@ -23,7 +23,7 @@ type CloseWorker struct {
 
 type CloseBatchResult struct {
 	Examined, Closed, Unresolved int
-	LastError                   error
+	LastError                    error
 }
 
 func NewCloseWorker(repository PendingCloseRepository, closer *ExecutionCloser, binding PipelineDispatchBinding, batchSize int, interval time.Duration) (*CloseWorker, error) {

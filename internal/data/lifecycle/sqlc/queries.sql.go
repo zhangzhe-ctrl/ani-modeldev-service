@@ -92,6 +92,63 @@ func (q *Queries) GetRuntimeIdentity(ctx context.Context, arg GetRuntimeIdentity
 	return i, err
 }
 
+const listPendingBoundClosures = `-- name: ListPendingBoundClosures :many
+SELECT admitted.execution_id
+FROM modeldev_executions AS admitted
+JOIN modeldev_execution_identities AS identity
+  ON identity.tenant_id = admitted.tenant_id
+ AND identity.execution_id = admitted.execution_id
+JOIN modeldev_run_authorities AS authority
+  ON authority.tenant_id = admitted.tenant_id
+ AND authority.execution_id = admitted.execution_id
+LEFT JOIN modeldev_execution_runtimes AS runtime
+  ON runtime.tenant_id = admitted.tenant_id
+ AND runtime.execution_id = admitted.execution_id
+WHERE admitted.tenant_id = $1::uuid
+  AND (convert_from(admitted.snapshot_canonical, 'UTF8')::jsonb -> 'environment') = $2::jsonb
+  AND runtime.closed_at IS NULL
+  AND (identity.close_generation > 0 OR
+       (convert_from(admitted.snapshot_canonical, 'UTF8')::jsonb ->> 'deadline_at')::timestamptz <= clock_timestamp())
+  AND ($3::uuid IS NULL OR admitted.execution_id > $3::uuid)
+ORDER BY admitted.execution_id
+LIMIT $4::integer
+`
+
+type ListPendingBoundClosuresParams struct {
+	TenantID         pgtype.UUID
+	Environment      []byte
+	AfterExecutionID pgtype.UUID
+	BatchSize        int32
+}
+
+// Discovery only. Reconcile rereads the immutable authority and shared fence.
+// Unbound submissions require their own creation reconciliation; this scan
+// cannot fabricate a Run association for them.
+func (q *Queries) ListPendingBoundClosures(ctx context.Context, arg ListPendingBoundClosuresParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listPendingBoundClosures,
+		arg.TenantID,
+		arg.Environment,
+		arg.AfterExecutionID,
+		arg.BatchSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var execution_id pgtype.UUID
+		if err := rows.Scan(&execution_id); err != nil {
+			return nil, err
+		}
+		items = append(items, execution_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockRuntimeIdentity = `-- name: LockRuntimeIdentity :one
 SELECT tenant_id, execution_id
 FROM modeldev_execution_identities

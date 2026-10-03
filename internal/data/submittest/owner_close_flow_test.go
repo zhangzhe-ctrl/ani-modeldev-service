@@ -205,8 +205,8 @@ func awaitOwnerCloseOptimizerStep(t *testing.T, ctx context.Context, f *complete
 		for _, line := range strings.Split(string(data), "\n") {
 			var metric struct {
 				Schema string `json:"schema"`
-				Step int `json:"step"`
-				Name string `json:"name"`
+				Step   int    `json:"step"`
+				Name   string `json:"name"`
 			}
 			if json.Unmarshal([]byte(line), &metric) == nil && metric.Schema == "ani.metric.v1" && metric.Name == "train.loss" && metric.Step > 0 {
 				return

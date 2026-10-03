@@ -36,24 +36,24 @@ const completeJobUID = "eeeeeeee-aaaa-4bbb-8ccc-444444444444"
 const completePodUID = "ffffffff-aaaa-4bbb-8ccc-555555555555"
 
 type completeFixture struct {
-	t                   *testing.T
-	mu                  sync.Mutex
-	request             biz.PipelineDispatchRequest
-	root, source, image string
-	kube, kfp, storage  *httptest.Server
-	objects             map[string]map[string]any
-	blobs               map[string][]byte
-	versions            map[string]string
-	skipped             map[string]bool
-	creates, runCreates int
+	t                    *testing.T
+	mu                   sync.Mutex
+	request              biz.PipelineDispatchRequest
+	root, source, image  string
+	kube, kfp, storage   *httptest.Server
+	objects              map[string]map[string]any
+	blobs                map[string][]byte
+	versions             map[string]string
+	skipped              map[string]bool
+	creates, runCreates  int
 	runStops, trainStops int
-	runStoppedAt        string
-	trainingContainer   string
-	trainingStarted     bool
-	trainingDone        chan struct{}
-	trainingErr         error
-	trainingLog         []byte
-	workspace           biz.WorkspaceBinding
+	runStoppedAt         string
+	trainingContainer    string
+	trainingStarted      bool
+	trainingDone         chan struct{}
+	trainingErr          error
+	trainingLog          []byte
+	workspace            biz.WorkspaceBinding
 }
 
 func newCompleteFixture(t *testing.T) *completeFixture {
