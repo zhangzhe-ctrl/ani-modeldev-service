@@ -26,6 +26,7 @@ const (
 )
 
 const CloseStateClosed CloseState = "CLOSED"
+const CloseStateNeedsReview CloseState = "NEEDS_REVIEW"
 
 type ResourceState string
 
@@ -128,6 +129,9 @@ func ProjectRuntimeStates(base ExecutionStates, runtime ExecutionRuntime) (Execu
 			return ExecutionStates{}, ErrInvalidExecutionStateFacts
 		}
 		states.Close = CloseStateClosing
+		if runtime.CloseReviewReason != "" {
+			states.Close = CloseStateNeedsReview
+		}
 	}
 	if runtime.ClosedAt != nil {
 		if runtime.CloseGeneration == 0 || runtime.CloseEvidence == nil {
