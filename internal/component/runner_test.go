@@ -69,7 +69,7 @@ func (client *trainingRPC) EnsureTraining(ctx context.Context, request *modeldev
 	if err := os.WriteFile(client.tokenFile, []byte("rotated-projected-token"), 0600); err != nil {
 		client.t.Fatal(err)
 	}
-	return &modeldevv1.EnsureTrainingResponse{Status: &modeldevv1.TrainingStatus{Identity: request.Context.Identity, States: &modeldevv1.ExecutionStates{ComputeState: modeldevv1.ComputeState_COMPUTE_STATE_RUNNING}}}, nil
+	return &modeldevv1.EnsureTrainingResponse{Status: &modeldevv1.TrainingStatus{Identity: request.Context.Identity, States: &modeldevv1.ExecutionStates{ComputeState: modeldevv1.ComputeState_COMPUTE_STATE_TRAINING}}}, nil
 }
 
 func (client *trainingRPC) GetTrainingStatus(ctx context.Context, request *modeldevv1.GetTrainingStatusRequest, _ ...grpc.CallOption) (*modeldevv1.GetTrainingStatusResponse, error) {
