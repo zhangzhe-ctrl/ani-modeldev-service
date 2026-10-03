@@ -104,3 +104,71 @@ func TestRunAuthorityBindsOnceAfterRealSubmissionAndSurvivesReconnect(t *testing
 		t.Fatalf("CPU07_AUTHORITY_BEHAVIOR: rejected second Run lost evidence or advanced aggregate revision: %v", err)
 	}
 }
+
+func TestRunAuthorityCannotBindAfterCloseOrAcrossFrozenScope(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		close bool
+		otherTenant bool
+		otherNamespace bool
+	}{
+		{name: "closed before Begin", close: true},
+		{name: "another tenant", otherTenant: true},
+		{name: "recreated namespace", otherNamespace: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			openPool := postgres.Prepare(t)
+			request := validDispatchRequest(t)
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			pool := openPool()
+			admissions, repository := execution.New(pool), submission.New(pool)
+			if _, err := admissions.Accept(ctx, request.Admission); err != nil {
+				t.Fatalf("admission setup: %v", err)
+			}
+			reserved, err := repository.Reserve(ctx, request)
+			if err != nil || reserved.SendPermit == nil {
+				t.Fatalf("reservation setup: %v", err)
+			}
+			candidate := biz.RunAuthorityCandidate{
+				TenantID: request.Admission.TenantID, ExecutionID: request.Admission.ExecutionID,
+				OperationID: request.Admission.OperationID, SpecHash: request.Admission.SpecHash,
+				AttemptID: reserved.Dispatch.AttemptID, PlanHash: reserved.Dispatch.PlanHash, RunID: confirmedRunID,
+				NamespaceName: request.Admission.Snapshot.Environment.NamespaceName,
+				NamespaceUID: request.Admission.Snapshot.Environment.NamespaceUID,
+				WorkflowName: "authority-refusal-fixture", WorkflowUID: "cccccccc-dddd-4eee-8fff-111111111111",
+			}
+			var expected error
+			if test.close {
+				if _, err := admissions.ApplyCloseIntent(ctx, dispatchCloseIntent(request)); err != nil {
+					t.Fatalf("close setup: %v", err)
+				}
+				expected = biz.ErrPipelineDispatchBlocked
+			}
+			if test.otherTenant {
+				candidate.TenantID = "dddddddd-eeee-4fff-8111-222222222222"
+				expected = biz.ErrExecutionNotFound
+			}
+			if test.otherNamespace {
+				candidate.NamespaceUID = "dddddddd-eeee-4fff-8111-222222222222"
+				expected = biz.ErrAdmissionConflict
+			}
+			before, err := admissions.Get(ctx, request.Admission.TenantID, request.Admission.ExecutionID)
+			if err != nil {
+				t.Fatalf("read setup: %v", err)
+			}
+			receipt, err := repository.BindRunAuthority(ctx, candidate)
+			if !errors.Is(err, expected) || receipt != (biz.RunAuthorityReceipt{}) {
+				t.Fatalf("invalid Begin association received authority: %v", err)
+			}
+			reader := submission.New(openPool())
+			if _, err := reader.GetRunAuthority(ctx, request.Admission.TenantID, request.Admission.ExecutionID); !errors.Is(err, biz.ErrExecutionNotFound) {
+				t.Fatalf("rejected Begin left an authority row: %v", err)
+			}
+			after, err := execution.New(openPool()).Get(ctx, request.Admission.TenantID, request.Admission.ExecutionID)
+			if err != nil || after.OwnerRevision != before.OwnerRevision {
+				t.Fatalf("rejected Begin changed the aggregate revision: %v", err)
+			}
+		})
+	}
+}

@@ -158,6 +158,16 @@ func (fixture *schemaFixture) install(t *testing.T, migrations []string, ownerRe
 	if _, err := transaction.Exec(ctx, "GRANT INSERT, SELECT ON "+schemaSQL+".modeldev_pipeline_confirmed_runs TO "+roleSQL); err != nil {
 		t.Fatal("CPU07_DB_PREFLIGHT: runtime confirmed-run observation grant failed; behavior NOT_RUN")
 	}
+	// Historical revision-upgrade fixtures install only their fixed migration
+	// set. Grant the new immutable table only when that migration was installed.
+	for _, migration := range migrations {
+		if filepath.Base(migration) == "0013_run_authority.up.sql" {
+			if _, err := transaction.Exec(ctx, "GRANT INSERT, SELECT ON "+schemaSQL+".modeldev_run_authorities TO "+roleSQL); err != nil {
+				t.Fatal("CPU07_DB_PREFLIGHT: runtime Run authority grant failed; behavior NOT_RUN")
+			}
+			break
+		}
+	}
 	if _, err := transaction.Exec(ctx, "GRANT UPDATE (state, uncertain_at, not_sent_at) ON "+schemaSQL+".modeldev_pipeline_dispatches TO "+roleSQL); err != nil {
 		t.Fatal("CPU07_DB_PREFLIGHT: runtime submission-observation grant failed; behavior NOT_RUN")
 	}

@@ -70,6 +70,57 @@ WHERE tenant_id = sqlc.arg(tenant_id)::uuid
 RETURNING tenant_id, execution_id, operation_id, spec_hash, attempt_id,
     plan_canonical, plan_hash, state, reserved_at, uncertain_at, not_sent_at;
 
+-- Call under the identity lock or in a repeatable-read aggregate snapshot.
+-- The joined revision is current; it is not the version at first binding.
+-- name: GetRunAuthorityRow :one
+SELECT authority.tenant_id, authority.execution_id, authority.operation_id,
+    authority.spec_hash, authority.attempt_id, authority.plan_hash,
+    authority.run_id, authority.namespace_name, authority.namespace_uid,
+    authority.workflow_name, authority.workflow_uid, authority.bound_at,
+    identity.owner_revision
+FROM modeldev_run_authorities AS authority
+JOIN modeldev_execution_identities AS identity
+  ON identity.tenant_id = authority.tenant_id
+ AND identity.execution_id = authority.execution_id
+ AND identity.operation_id = authority.operation_id
+ AND identity.spec_hash = authority.spec_hash
+WHERE authority.tenant_id = sqlc.arg(tenant_id)::uuid
+  AND authority.execution_id = sqlc.arg(execution_id)::uuid;
+
+-- Caller holds the shared identity lock and has checked the complete original
+-- plan and admission. Sample the database clock after that lock, once, for both
+-- eligibility and bound_at. No confirmed-response observation substitutes for
+-- the authenticated upstream association supplied to the domain adapter.
+-- name: InsertRunAuthority :execrows
+WITH binding_clock AS MATERIALIZED (
+    SELECT clock_timestamp()::timestamptz AS bound_at
+)
+INSERT INTO modeldev_run_authorities (
+    tenant_id, execution_id, operation_id, spec_hash, attempt_id, plan_hash,
+    run_id, namespace_name, namespace_uid, workflow_name, workflow_uid, bound_at
+)
+SELECT identity.tenant_id, identity.execution_id, identity.operation_id,
+    identity.spec_hash, dispatch.attempt_id, dispatch.plan_hash,
+    sqlc.arg(run_id)::uuid, sqlc.arg(namespace_name)::text,
+    sqlc.arg(namespace_uid)::uuid, sqlc.arg(workflow_name)::text,
+    sqlc.arg(workflow_uid)::text, binding_clock.bound_at
+FROM modeldev_execution_identities AS identity
+JOIN modeldev_pipeline_dispatches AS dispatch
+  ON dispatch.tenant_id = identity.tenant_id
+ AND dispatch.execution_id = identity.execution_id
+ AND dispatch.operation_id = identity.operation_id
+ AND dispatch.spec_hash = identity.spec_hash
+CROSS JOIN binding_clock
+WHERE identity.tenant_id = sqlc.arg(tenant_id)::uuid
+  AND identity.execution_id = sqlc.arg(execution_id)::uuid
+  AND identity.operation_id = sqlc.arg(operation_id)::uuid
+  AND identity.spec_hash = sqlc.arg(spec_hash)::text
+  AND dispatch.attempt_id = sqlc.arg(attempt_id)::uuid
+  AND dispatch.plan_hash = sqlc.arg(plan_hash)::text
+  AND identity.close_generation = 0
+  AND binding_clock.bound_at >= dispatch.reserved_at
+  AND binding_clock.bound_at < sqlc.arg(deadline_at)::timestamptz;
+
 -- These immutable observations belong to one exact reservation, not to an
 -- authoritative Run binding. Ordering gives stable output, never priority.
 -- Readers combining this list with dispatch state must use one consistent
