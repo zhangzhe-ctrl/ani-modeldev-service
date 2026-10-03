@@ -36,7 +36,9 @@ func (repository *Repository) RecordClosingRun(ctx context.Context, candidate bi
 		return biz.ExecutionRuntime{}, biz.ErrInvalidAdmission
 	}
 	return repository.mutateOwnerClose(ctx, candidate.TenantID, candidate.ExecutionID, func(current *runtimeTransaction, tx pgx.Tx) (bool, error) {
-		if current.state.CloseReviewReason == "MULTIPLE_RUNS" { return false, biz.ErrRunAuthorityConflict }
+		if current.state.CloseReviewReason == "MULTIPLE_RUNS" {
+			return false, biz.ErrRunAuthorityConflict
+		}
 		dispatch, err := submission.ReadInTransaction(ctx, tx, candidate.TenantID, candidate.ExecutionID)
 		if err != nil {
 			return false, err
@@ -82,23 +84,38 @@ func (repository *Repository) RecordClosingRun(ctx context.Context, candidate bi
 // Keep every verified identity in the existing original-attempt history. The
 // next shorter API list cannot erase ambiguity or elect a replacement Run.
 func (repository *Repository) RecordClosingRunAmbiguity(ctx context.Context, observed biz.PipelineDispatch, runIDs []string) (biz.ExecutionRuntime, error) {
-	if len(runIDs) != 2 || runIDs[0] == runIDs[1] { return biz.ExecutionRuntime{}, biz.ErrInvalidAdmission }
-	for _, id := range runIDs { value, err := databaseID(id); if err != nil || value.String() != id { return biz.ExecutionRuntime{}, biz.ErrInvalidAdmission } }
+	if len(runIDs) != 2 || runIDs[0] == runIDs[1] {
+		return biz.ExecutionRuntime{}, biz.ErrInvalidAdmission
+	}
+	for _, id := range runIDs {
+		value, err := databaseID(id)
+		if err != nil || value.String() != id {
+			return biz.ExecutionRuntime{}, biz.ErrInvalidAdmission
+		}
+	}
 	return repository.mutateOwnerClose(ctx, observed.Plan.TenantID, observed.Plan.ExecutionID, func(current *runtimeTransaction, tx pgx.Tx) (bool, error) {
 		dispatch, err := submission.ReadInTransaction(ctx, tx, observed.Plan.TenantID, observed.Plan.ExecutionID)
-		if err != nil { return false, err }
-		if dispatch.AttemptID != observed.AttemptID || dispatch.PlanHash != observed.PlanHash { return false, biz.ErrRunAuthorityConflict }
+		if err != nil {
+			return false, err
+		}
+		if dispatch.AttemptID != observed.AttemptID || dispatch.PlanHash != observed.PlanHash {
+			return false, biz.ErrRunAuthorityConflict
+		}
 		queries := submissionsql.New(tx)
 		attemptID, _ := databaseID(dispatch.AttemptID)
 		changed := current.state.CloseReviewReason != "MULTIPLE_RUNS"
 		for _, id := range runIDs {
 			runID, _ := databaseID(id)
 			count, err := queries.InsertConfirmedPipelineRun(ctx, submissionsql.InsertConfirmedPipelineRunParams{TenantID: current.tenantID, ExecutionID: current.executionID, AttemptID: attemptID, PlanHash: dispatch.PlanHash, RunID: runID, ObservedAt: timestamp(current.now)})
-			if err != nil || count < 0 || count > 1 { return false, biz.ErrPersistence }
+			if err != nil || count < 0 || count > 1 {
+				return false, biz.ErrPersistence
+			}
 			changed = changed || count == 1
 		}
 		if dispatch.State != biz.PipelineDispatchConfirmed {
-			if _, err := queries.MarkSubmissionConfirmed(ctx, submissionsql.MarkSubmissionConfirmedParams{TenantID: current.tenantID, ExecutionID: current.executionID, AttemptID: attemptID, PlanHash: dispatch.PlanHash}); err != nil { return false, biz.ErrPersistence }
+			if _, err := queries.MarkSubmissionConfirmed(ctx, submissionsql.MarkSubmissionConfirmedParams{TenantID: current.tenantID, ExecutionID: current.executionID, AttemptID: attemptID, PlanHash: dispatch.PlanHash}); err != nil {
+				return false, biz.ErrPersistence
+			}
 		}
 		current.state.CloseReviewReason = "MULTIPLE_RUNS"
 		return changed, nil

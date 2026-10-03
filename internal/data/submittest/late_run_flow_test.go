@@ -61,13 +61,19 @@ func TestMainFlowLateRunRecoveryFindsOriginalAndClosesWithoutRecreating(t *testi
 					f.kfpRequest(recorder, get)
 					var run json.RawMessage = recorder.Body.Bytes()
 					items := []json.RawMessage{run}
-					if duplicate.Load() { items = append(items, json.RawMessage(strings.ReplaceAll(string(run), completeRunID, secondRunID))) }
+					if duplicate.Load() {
+						items = append(items, json.RawMessage(strings.ReplaceAll(string(run), completeRunID, secondRunID)))
+					}
 					_ = json.NewEncoder(w).Encode(map[string]any{"runs": items, "total_size": len(items)})
 					return
 				}
 				if r.Method == http.MethodGet && r.URL.Path == "/apis/v2beta1/runs/"+secondRunID {
-					get := r.Clone(r.Context()); copyURL := *r.URL; get.URL = &copyURL; get.URL.Path = "/apis/v2beta1/runs/"+completeRunID
-					recorder := httptest.NewRecorder(); f.kfpRequest(recorder, get)
+					get := r.Clone(r.Context())
+					copyURL := *r.URL
+					get.URL = &copyURL
+					get.URL.Path = "/apis/v2beta1/runs/" + completeRunID
+					recorder := httptest.NewRecorder()
+					f.kfpRequest(recorder, get)
 					w.Header().Set("Content-Type", "application/json")
 					_, _ = w.Write([]byte(strings.ReplaceAll(recorder.Body.String(), completeRunID, secondRunID)))
 					return
@@ -141,13 +147,19 @@ func TestMainFlowLateRunRecoveryFindsOriginalAndClosesWithoutRecreating(t *testi
 			batch, err = worker.ReconcileOnce(ctx)
 			closed, readErr := lifecycle.New(pool).GetRuntime(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
 			if multiple {
-				if err != nil || readErr != nil || batch.Unresolved != 1 || closed.ClosedAt != nil || closed.CloseReviewReason != "MULTIPLE_RUNS" { t.Fatalf("ambiguous external Runs were not fenced: %+v %+v %v %v", batch, closed, err, readErr) }
+				if err != nil || readErr != nil || batch.Unresolved != 1 || closed.ClosedAt != nil || closed.CloseReviewReason != "MULTIPLE_RUNS" {
+					t.Fatalf("ambiguous external Runs were not fenced: %+v %+v %v %v", batch, closed, err, readErr)
+				}
 				duplicate.Store(false)
-				pool.Close(); pool = open(); worker, _ = assembleRecoveryOwner(t, f, pool)
+				pool.Close()
+				pool = open()
+				worker, _ = assembleRecoveryOwner(t, f, pool)
 				batch, err = worker.ReconcileOnce(ctx)
 				closed, readErr = lifecycle.New(pool).GetRuntime(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
 				recovered, recordErr := submission.New(pool).Get(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
-				if err != nil || readErr != nil || recordErr != nil || batch.Unresolved != 1 || closed.ClosedAt != nil || closed.CloseReviewReason != "MULTIPLE_RUNS" || recovered.AttemptID != original.AttemptID || len(recovered.ConfirmedRuns) != 2 || recovered.ConfirmedRuns[0].RunID != completeRunID || recovered.ConfirmedRuns[1].RunID != secondRunID { t.Fatalf("shorter list erased original ambiguity/Run identities: %+v %+v %v %v %v", batch, recovered, err, readErr, recordErr) }
+				if err != nil || readErr != nil || recordErr != nil || batch.Unresolved != 1 || closed.ClosedAt != nil || closed.CloseReviewReason != "MULTIPLE_RUNS" || recovered.AttemptID != original.AttemptID || len(recovered.ConfirmedRuns) != 2 || recovered.ConfirmedRuns[0].RunID != completeRunID || recovered.ConfirmedRuns[1].RunID != secondRunID {
+					t.Fatalf("shorter list erased original ambiguity/Run identities: %+v %+v %v %v %v", batch, recovered, err, readErr, recordErr)
+				}
 				t.Log("LATE_RUN_CLOSE: both independently observed Run IDs retained; restart and a shorter later list cannot select one or report CLOSED")
 				return
 			}

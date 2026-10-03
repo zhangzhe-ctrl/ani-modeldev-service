@@ -29,7 +29,8 @@ type OwnerCloseRecovery interface {
 
 // AmbiguousClosingRunsError contains independently verified KFP Run identities.
 // The owner retains them in the original submission history before failing closed.
-type AmbiguousClosingRunsError struct { RunIDs []string }
+type AmbiguousClosingRunsError struct{ RunIDs []string }
+
 func (*AmbiguousClosingRunsError) Error() string { return "MULTIPLE_KFP_RUNS" }
 func (*AmbiguousClosingRunsError) Unwrap() error { return ErrRunAuthorityConflict }
 
@@ -133,9 +134,13 @@ func (closer *ExecutionCloser) Reconcile(ctx context.Context, tenant, execution 
 		if findErr == nil {
 			authority = recovered
 			state, err = runtime.repository.GetRuntime(ctx, tenant, execution)
-			if err != nil { return ManagedRuntimeResult{}, err }
+			if err != nil {
+				return ManagedRuntimeResult{}, err
+			}
 			dispatch, err = runtime.steps.repository.Get(ctx, tenant, execution)
-			if err != nil { return ManagedRuntimeResult{}, err }
+			if err != nil {
+				return ManagedRuntimeResult{}, err
+			}
 			result.Authority, result.Runtime = authority, state
 		}
 	}
@@ -188,7 +193,9 @@ func (closer *ExecutionCloser) Reconcile(ctx context.Context, tenant, execution 
 	}
 	state, err = runtime.repository.ConfirmRuntimeClosed(ctx, owner, state.CloseGeneration, observation, evidence)
 	if err != nil {
-		if errors.Is(err, ErrRunAuthorityConflict) { return ManagedRuntimeResult{}, closer.review(ctx, tenant, execution, "MULTIPLE_RUNS", err) }
+		if errors.Is(err, ErrRunAuthorityConflict) {
+			return ManagedRuntimeResult{}, closer.review(ctx, tenant, execution, "MULTIPLE_RUNS", err)
+		}
 		return ManagedRuntimeResult{}, err
 	}
 	return runtimeResult(result, state, false)
