@@ -108,6 +108,17 @@ func TestMainFlowCompleteActualMLPToVerifiedPublicationAndClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MAIN_FLOW_RUNTIME_NOT_IMPLEMENTED: execution configuration failed: %v", err)
 	}
+	admissionField := configuration.ProtoReflect().Descriptor().Fields().ByName("admission")
+	if admissionField == nil || !configuration.ProtoReflect().Has(admissionField) {
+		t.Fatal("COMPONENT_CONFIGURATION_NOT_IMPLEMENTED: actual component cannot obtain committed envelope for canonical IO")
+	}
+	configured := configuration.ProtoReflect().Get(admissionField).Message().Interface().(*modeldevv1.AcceptExecutionRequest)
+	if configured.ResourceTenantId != f.request.Admission.TenantID || configured.IntentHash != f.request.Admission.IntentHash || configured.Identity.ExecutionSpecHash != f.request.Admission.SpecHash {
+		t.Fatal("component configuration changed committed admission")
+	}
+	if _, err := client.GetExecutionConfiguration(call("train-wait"), &modeldevv1.GetExecutionConfigurationRequest{Context: f.stepContext("train-wait")}); err != nil {
+		t.Fatalf("COMPONENT_CONFIGURATION_NOT_IMPLEMENTED: authenticated downstream task cannot fetch its configuration: %v", err)
+	}
 	original, err := admissions.Get(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
 	if err != nil {
 		t.Fatal(err)
