@@ -62,19 +62,23 @@ func main() {
 }
 
 func execute(ctx context.Context, args []string) error {
-	invocation,err := bootstrapInvocation(ctx,args,nil)
+	invocation, err := bootstrapInvocation(ctx, args, nil)
 	if err != nil {
 		return err
 	}
-	step,config,claim := invocation.step,invocation.config,invocation.claim
+	step, config, claim := invocation.step, invocation.config, invocation.claim
 	if invocation.candidateJSON != nil {
 		// This input lives only in the control Pod's private temporary directory.
 		// It does not require the execution PVC or share a path with publishers.
-		directory,err := os.MkdirTemp("","ani-modeldev-close-")
-		if err != nil { return component.ErrConfiguration }
+		directory, err := os.MkdirTemp("", "ani-modeldev-close-")
+		if err != nil {
+			return component.ErrConfiguration
+		}
 		defer os.RemoveAll(directory)
-		config.CandidateFile = filepath.Join(directory,"publication.json")
-		if err := os.WriteFile(config.CandidateFile,[]byte(*invocation.candidateJSON),0600); err != nil { return component.ErrConfiguration }
+		config.CandidateFile = filepath.Join(directory, "publication.json")
+		if err := os.WriteFile(config.CandidateFile, []byte(*invocation.candidateJSON), 0600); err != nil {
+			return component.ErrConfiguration
+		}
 	}
 	roots, err := trustedRoots(config.CAFile)
 	if err != nil {
