@@ -281,7 +281,7 @@ ENV/LIVE 仍未验证。未来权威绑定必须另行认证受管步骤并核�
 `Execution.OwnerRevision`、`CloseReceipt.OwnerRevision` 与
 `PipelineDispatch.OwnerRevision` 表示同一 tenant/execution 已提交事实集合的版本。
 它不等于关闭来源序号、关闭 fence、Governance binding generation 或冻结配置中的
-`PipelineDispatchPlan.Owner.Revision`；任何版本号都不能充当资源创建或发送许可。
+`PipelineDispatchPlan.Owner.RevisionSHA256`；任何版本号都不能充当资源创建或发送许可。
 
 所有写者继续串行锁定同一 `modeldev_execution_identities` 行。首 Admission、首次
 提交预约、首次实际保留的观察、每个新的 Run、每个新的 source close 各在自己的

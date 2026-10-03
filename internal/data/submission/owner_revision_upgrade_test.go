@@ -31,10 +31,10 @@ type oldRevisionSeedManifest struct {
 type oldRevisionSeedCase struct {
 	Name      string                      `json:"name"`
 	Request   biz.PipelineDispatchRequest `json:"request"`
-	Closes    []biz.CloseRecord            `json:"closes"`
-	Permit    *biz.PipelineSendPermit      `json:"permit,omitempty"`
-	Execution *biz.Execution               `json:"execution,omitempty"`
-	Dispatch  *biz.PipelineDispatch        `json:"dispatch,omitempty"`
+	Closes    []biz.CloseRecord           `json:"closes"`
+	Permit    *biz.PipelineSendPermit     `json:"permit,omitempty"`
+	Execution *biz.Execution              `json:"execution,omitempty"`
+	Dispatch  *biz.PipelineDispatch       `json:"dispatch,omitempty"`
 }
 
 func TestOwnerRevisionUpgradeFromOldWriter(t *testing.T) {

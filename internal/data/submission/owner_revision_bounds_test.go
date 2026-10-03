@@ -113,7 +113,7 @@ func TestOwnerRevisionMaximumIsExactAndAllExistingFactsReplay(t *testing.T) {
 
 func TestOwnerRevisionSaturationRollsBackEveryNewFact(t *testing.T) {
 	cases := []struct {
-		name string
+		name    string
 		reserve bool
 		confirm bool
 	}{
@@ -176,7 +176,9 @@ func TestOwnerRevisionSaturationRollsBackEveryNewFact(t *testing.T) {
 				call = func() (any, error) { return dispatches.MarkSubmissionNotSent(ctx, permit, observedAt) }
 				zero = biz.PipelineDispatch{}
 			case "first confirmed Run", "additional confirmed Run":
-				call = func() (any, error) { return dispatches.RecordSubmissionConfirmed(ctx, permit, confirmedObservation("66666666-7777-4888-8999-aaaaaaaaaaaa"), observedAt) }
+				call = func() (any, error) {
+					return dispatches.RecordSubmissionConfirmed(ctx, permit, confirmedObservation("66666666-7777-4888-8999-aaaaaaaaaaaa"), observedAt)
+				}
 				zero = biz.PipelineConfirmationReceipt{}
 			default:
 				t.Fatal("invalid saturation test case")
@@ -268,7 +270,7 @@ func setRevisionBoundsValue(t *testing.T, ctx context.Context, pool *pgxpool.Poo
 
 type revisionBoundsRows struct {
 	revision string
-	facts string
+	facts    string
 }
 
 // One statement snapshots every column of every row for this exact aggregate,
