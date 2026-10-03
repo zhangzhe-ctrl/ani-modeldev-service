@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run on the authorized Fedora verification host. This explicit integration
+# entry does not belong in every small-change or default unit-test invocation.
+: "${CPU_P01_TEST_DATABASE_URL:?protected restricted test database reference required}"
+: "${CPU_P01_TEST_DATABASE_ADMIN_URL:?protected migration database reference required}"
+: "${CPU_P01_MLP_IMAGE:?locally available CPU training image pinned by manifest digest required}"
+: "${CPU_P01_MAINFLOW_OUTPUT:?new absolute output directory required}"
+[[ "$CPU_P01_MLP_IMAGE" =~ @sha256:[0-9a-f]{64}$ ]] || { echo 'CPU image must use its manifest digest' >&2; exit 2; }
+[[ "$CPU_P01_MAINFLOW_OUTPUT" == /* && ! -e "$CPU_P01_MAINFLOW_OUTPUT" ]] || { echo 'Output directory must be absolute and not already exist' >&2; exit 2; }
+
+exec go test -tags cpu_mainflow -count=1 -v \
+    -run '^TestMainFlowCompleteActualMLPToVerifiedPublicationAndClosed$' \
+    ./internal/data/submittest

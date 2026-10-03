@@ -206,3 +206,28 @@ WHERE tenant_id = sqlc.arg(tenant_id)::uuid
   AND sqlc.arg(observed_at)::timestamptz >= reserved_at
 RETURNING tenant_id, execution_id, operation_id, spec_hash, attempt_id,
     plan_canonical, plan_hash, state, reserved_at, uncertain_at, not_sent_at;
+
+-- A trusted worker selects one explicit tenant/environment owner binding.
+-- This read grants no sending permission; Reserve repeats all creation checks
+-- under the shared identity lock before its sole permit can reach KFP.
+-- name: ListPendingAdmissions :many
+SELECT admitted.tenant_id, admitted.execution_id, admitted.operation_id,
+    admitted.actor, admitted.intent_canonical, admitted.intent_hash,
+    admitted.snapshot_canonical, admitted.spec_hash, admitted.accepted_at
+FROM modeldev_executions AS admitted
+JOIN modeldev_execution_identities AS identity
+  ON identity.tenant_id = admitted.tenant_id
+ AND identity.execution_id = admitted.execution_id
+ AND identity.operation_id = admitted.operation_id
+ AND identity.spec_hash = admitted.spec_hash
+WHERE admitted.tenant_id = sqlc.arg(tenant_id)::uuid
+  AND identity.close_generation = 0
+  AND (convert_from(admitted.snapshot_canonical, 'UTF8')::jsonb -> 'environment') = sqlc.arg(environment)::jsonb
+  AND (convert_from(admitted.snapshot_canonical, 'UTF8')::jsonb ->> 'deadline_at')::timestamptz > clock_timestamp()
+  AND NOT EXISTS (
+      SELECT 1 FROM modeldev_pipeline_dispatches AS dispatch
+      WHERE dispatch.tenant_id = admitted.tenant_id
+        AND dispatch.execution_id = admitted.execution_id
+  )
+ORDER BY admitted.accepted_at, admitted.execution_id
+LIMIT sqlc.arg(batch_size)::integer;

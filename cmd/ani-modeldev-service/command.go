@@ -27,7 +27,17 @@ import (
 // Command assembly consumes mounted references only. It does not run schema
 // migrations, create roles, enable readiness, or fall back to another listener.
 func buildCommandServer(listener *conf.Server_GRPC, config *conf.GovernanceCommand, middlewares ...middleware.Middleware) (*kratosgrpc.Server, func(), error) {
-	failed := func(message string) (*kratosgrpc.Server, func(), error) { return nil, nil, errors.New(message) }
+	pool, err := openCommandPool(config)
+	if err != nil { return nil, nil, err }
+	s, err := buildCommandServerWithPool(listener, config, pool, middlewares...)
+	if err != nil { pool.Close(); return nil, nil, err }
+	return s, pool.Close, nil
+}
+
+// The runtime composition shares this restricted pool with all durable ports;
+// this builder never takes ownership of the caller's pool.
+func buildCommandServerWithPool(listener *conf.Server_GRPC, config *conf.GovernanceCommand, pool *pgxpool.Pool, middlewares ...middleware.Middleware) (*kratosgrpc.Server, error) {
+	failed := func(message string) (*kratosgrpc.Server, error) { return nil, errors.New(message) }
 	ca, err := readCommandMaterial(config.ClientCaFile, 1<<20)
 	if err != nil {
 		return failed("command CA material unavailable")
@@ -48,29 +58,8 @@ func buildCommandServer(listener *conf.Server_GRPC, config *conf.GovernanceComma
 	if err != nil {
 		return failed("command server certificate pair invalid")
 	}
-	databaseBytes, err := readCommandMaterial(config.DatabaseUrlFile, 16<<10)
-	if err != nil {
-		return failed("command database reference unavailable")
-	}
-	connection := strings.TrimSpace(string(databaseBytes))
-	if connection == "" {
-		return failed("command database configuration invalid")
-	}
-	poolConfig, err := pgxpool.ParseConfig(connection)
-	if err != nil {
-		return failed("command database configuration invalid")
-	}
-	poolConfig.MaxConns = 4
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
-	if err != nil {
-		return failed("command database unavailable")
-	}
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		return failed("command database unavailable")
-	}
 	command := service.NewCommand(execution.New(pool))
 	var admission modeldevv1.ModelDevAdmissionServiceServer
 	if resolution := config.AdmissionResolution; resolution != nil {
@@ -80,22 +69,35 @@ func buildCommandServer(listener *conf.Server_GRPC, config *conf.GovernanceComma
 		}
 		facts, err := admissionfacts.Load(ctx, sources)
 		if err != nil {
-			pool.Close()
 			return failed("command admission facts unavailable or invalid")
 		}
 		releases := catalogue.NewReader(resolution.CatalogueDirectory)
 		if err := releases.Check(ctx); err != nil {
-			pool.Close()
 			return failed("command admission catalogue unavailable or invalid")
 		}
 		admission = service.NewAdmission(biz.NewManagedAdmissionResolver(releases, input.New(pool), facts))
 	}
 	s, err := server.NewGovernanceCommandServer(listener, server.CommandTLS{Certificate: certificate, ClientCAs: roots, GovernanceDNSName: config.GovernanceDnsName}, command, admission, middlewares...)
 	if err != nil {
-		pool.Close()
 		return failed("command listener configuration invalid")
 	}
-	return s, pool.Close, nil
+	return s, nil
+}
+
+func openCommandPool(config *conf.GovernanceCommand) (*pgxpool.Pool, error) {
+	databaseBytes, err := readCommandMaterial(config.DatabaseUrlFile, 16<<10)
+	if err != nil { return nil, errors.New("command database reference unavailable") }
+	connection := strings.TrimSpace(string(databaseBytes))
+	if connection == "" { return nil, errors.New("command database configuration invalid") }
+	poolConfig, err := pgxpool.ParseConfig(connection)
+	if err != nil { return nil, errors.New("command database configuration invalid") }
+	poolConfig.MaxConns = 4
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	if err != nil { return nil, errors.New("command database unavailable") }
+	if err := pool.Ping(ctx); err != nil { pool.Close(); return nil, errors.New("command database unavailable") }
+	return pool, nil
 }
 
 func readCommandMaterial(path string, maximum int64) ([]byte, error) {

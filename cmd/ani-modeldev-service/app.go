@@ -35,8 +35,8 @@ func buildApp(bc *conf.Bootstrap, logger *slog.Logger) (*application, error) {
 	if bc.Runtime != nil {
 		return buildRuntimeApp(bc, logger)
 	}
-	// The full training/observation/publication chain is not assembled yet.
-	// Durable command delivery alone cannot grant overall business readiness.
+	// The shell and command-only configuration lack the managed runtime.
+	// Durable command delivery alone cannot grant runtime readiness.
 	readiness := server.NewReadiness()
 	observability, err := server.NewObservability(Name, Version, readiness)
 	if err != nil {

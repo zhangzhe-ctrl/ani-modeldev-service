@@ -91,7 +91,8 @@ generate: config api sql vectors
 
 build:
 	mkdir -p bin
-	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o bin/$(SERVICE_NAME) ./cmd/...
+	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o bin/$(SERVICE_NAME) ./cmd/ani-modeldev-service
+	$(GO) build -trimpath -o bin/ani-modeldev-step ./cmd/ani-modeldev-step
 
 test:
 	$(GO) test -count=1 ./...

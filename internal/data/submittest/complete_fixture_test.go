@@ -1,3 +1,5 @@
+//go:build cpu_mainflow
+
 package submittest_test
 
 import (
@@ -64,6 +66,9 @@ func newCompleteFixture(t *testing.T) *completeFixture {
 		t.Fatal(err)
 	}
 	snapshot := &f.request.Admission.Snapshot
+	// Freeze the actual locally qualified image manifest used by Podman. The
+	// external TrainJob substitute may not replace it with a synthetic digest.
+	snapshot.Program.ImageDigest = f.image
 	snapshot.Input.Object.SizeBytes = int64(len(data))
 	snapshot.Input.Object.SHA256 = completeHash(data)
 	snapshot.Program.ResolvedArgs = []string{"--data", "/inputs/data.csv", "--output", "/outputs", "--expected-input-sha256", snapshot.Input.Object.SHA256, "--expected-input-bytes", fmt.Sprint(len(data)), "--learning-rate", "0.01"}

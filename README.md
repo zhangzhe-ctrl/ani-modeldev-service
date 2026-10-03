@@ -75,5 +75,34 @@ receipt and configuration boundaries. An optional `command.admission_resolution`
 block adds read-only snapshot resolution on that same mTLS listener using pinned
 mounted facts, the immutable Release catalogue and the existing runtime pool.
 See [admission configuration](docs/design/cpu-p01-admission-resolution.md#启动配置)
-for material and readiness boundaries. Query, Step and the full training/publication
-chain are not assembled; unavailable RPCs fail explicitly.
+for material and readiness boundaries. An explicit `runtime` block additionally
+assembles the durable dispatch worker, dedicated managed-step TLS listener,
+current Kubernetes/KFP identity checks, Trainer, workspace and publication
+verification. See [runtime configuration](configs/examples/managed-runtime.yaml).
+Its `/readyz` reports whether these configured service entry points can serve;
+it does not establish cluster or business acceptance. Query capabilities outside
+this slice remain unavailable.
+
+## Run the CPU main flow on Fedora
+
+The explicit integration entry runs real ModelDev RPCs, authentication,
+PostgreSQL transactions, component code and CPU PyTorch training. Only external
+KFP, Kubernetes and S3 HTTP APIs are test substitutes. It checks one Run and
+TrainJob creation, 48 optimizer steps, actual uploaded bytes, publication after
+uploader exit, writer closure, durable CLOSED and independent checkpoint reload.
+It is separate from default unit tests and does not establish BFF/LIVE acceptance.
+
+On the authorized Fedora host, supply the existing protected
+`CPU_P01_TEST_DATABASE_URL` and `CPU_P01_TEST_DATABASE_ADMIN_URL` references,
+`CPU_P01_MLP_IMAGE` as a locally available CPU training image pinned by its
+manifest digest, and `CPU_P01_MAINFLOW_OUTPUT` as a new absolute output directory.
+Set `CONTAINERS_STORAGE_CONF` when that image uses task-specific Podman storage.
+The image must provide `/opt/venv/bin/python` with CPU PyTorch. No image is pulled.
+
+```sh
+./scripts/test-main-flow
+```
+
+The output directory retains the independently downloaded checkpoint, model
+configuration, metrics, summary, canonical manifest and inference result.
+`make build` produces both service and single-step component executables.

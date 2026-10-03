@@ -57,6 +57,7 @@ func TestConfiguredRuntimeDispatchesPersistedCommandAndServesStepTLS(t *testing.
 		select { case err := <-done: if err != nil { t.Errorf("runtime app: %v", err) }; case <-time.After(6*time.Second): t.Error("runtime app did not stop") }
 	})
 	waitForHTTP(t, "http://"+f.config.Server.Admin.Addr+"/healthz")
+	waitForHTTP(t, "http://"+f.config.Server.Admin.Addr+"/readyz")
 	connection, err := grpc.NewClient(f.config.Server.Grpc.Addr, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion:tls.VersionTLS13, RootCAs:f.certificates.Roots, ServerName:commandtls.ServerDNSName, Certificates:[]tls.Certificate{f.certificates.Governance}})))
 	if err != nil { t.Fatal(err) }
 	defer connection.Close()
