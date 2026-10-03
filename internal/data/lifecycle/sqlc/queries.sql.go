@@ -98,9 +98,6 @@ FROM modeldev_executions AS admitted
 JOIN modeldev_execution_identities AS identity
   ON identity.tenant_id = admitted.tenant_id
  AND identity.execution_id = admitted.execution_id
-JOIN modeldev_run_authorities AS authority
-  ON authority.tenant_id = admitted.tenant_id
- AND authority.execution_id = admitted.execution_id
 LEFT JOIN modeldev_execution_runtimes AS runtime
   ON runtime.tenant_id = admitted.tenant_id
  AND runtime.execution_id = admitted.execution_id
@@ -121,9 +118,8 @@ type ListPendingBoundClosuresParams struct {
 	BatchSize        int32
 }
 
-// Discovery only. Reconcile rereads the immutable authority and shared fence.
-// Unbound submissions require their own creation reconciliation; this scan
-// cannot fabricate a Run association for them.
+// Discovery only. Reconcile rereads the shared fence and original submission.
+// Include admission delivered after a stop tombstone, before any Run exists.
 func (q *Queries) ListPendingBoundClosures(ctx context.Context, arg ListPendingBoundClosuresParams) ([]pgtype.UUID, error) {
 	rows, err := q.db.Query(ctx, listPendingBoundClosures,
 		arg.TenantID,
