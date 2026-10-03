@@ -41,9 +41,9 @@ func TestDownloadSignerPinsVersionAndLifetime(t *testing.T) {
 	expiring := credentials
 	expiring.Expires = time.Now().Add(30 * time.Second)
 	tests := []struct {
-		name string
+		name   string
 		signer *objectstore.DownloadSigner
-		scope cpup01.StorageScope
+		scope  cpup01.StorageScope
 		object cpup01.FixedObjectRef
 	}{
 		{name: "wrong scope", signer: signer, scope: cpup01.StorageScope{StorageConnectionID: scope.StorageConnectionID, Bucket: scope.Bucket, ApprovedPrefix: "other-tenant"}, object: object},

@@ -43,6 +43,22 @@ type ModeldevExecutionIdentity struct {
 	OwnerRevision   pgtype.Numeric
 }
 
+type ModeldevExecutionRuntime struct {
+	TenantID              pgtype.UUID
+	ExecutionID           pgtype.UUID
+	OperationID           pgtype.UUID
+	SpecHash              string
+	Facts                 []byte
+	TrainingName          pgtype.Text
+	TrainingRequestSha256 pgtype.Text
+	TrainingUid           pgtype.Text
+	PublicationID         pgtype.UUID
+	CloseGeneration       pgtype.Numeric
+	CloseReason           pgtype.Text
+	CloseRequestedAt      pgtype.Timestamptz
+	ClosedAt              pgtype.Timestamptz
+}
+
 type ModeldevPipelineConfirmedRun struct {
 	TenantID        pgtype.UUID
 	ExecutionID     pgtype.UUID
@@ -64,4 +80,19 @@ type ModeldevPipelineDispatch struct {
 	ReservedAt    pgtype.Timestamptz
 	UncertainAt   pgtype.Timestamptz
 	NotSentAt     pgtype.Timestamptz
+}
+
+type ModeldevRunAuthority struct {
+	TenantID      pgtype.UUID
+	ExecutionID   pgtype.UUID
+	OperationID   pgtype.UUID
+	SpecHash      string
+	AttemptID     pgtype.UUID
+	PlanHash      string
+	RunID         pgtype.UUID
+	NamespaceName string
+	NamespaceUid  pgtype.UUID
+	WorkflowName  string
+	WorkflowUid   string
+	BoundAt       pgtype.Timestamptz
 }

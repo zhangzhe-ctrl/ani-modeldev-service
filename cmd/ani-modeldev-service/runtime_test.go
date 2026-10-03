@@ -100,6 +100,11 @@ func TestConfiguredRuntimeDispatchesPersistedCommandAndServesStepTLS(t *testing.
 	if _, err := command.AcceptExecution(commandContext, request); err != nil {
 		t.Fatalf("runtime command admission: %v", err)
 	}
+	queryContext := metadata.NewOutgoingContext(ctx, metadata.Pairs("x-ani-tenant-id", f.admission.TenantID, "x-ani-actor", "governance:user:9001", "x-ani-request-id", uuid.NewString(), "x-ani-data-scope", "tenant-all", "x-ani-authorized-method", modeldevv1.ModelDevQueryService_GetExecution_FullMethodName))
+	queried, err := modeldevv1.NewModelDevQueryServiceClient(connection).GetExecution(queryContext, &modeldevv1.GetExecutionRequest{ExecutionId: f.admission.ExecutionID})
+	if err != nil || queried.GetExecution().GetIdentity().GetExecutionId() != f.admission.ExecutionID {
+		t.Fatalf("configured runtime query not connected: %v", err)
+	}
 	tick := time.NewTicker(20 * time.Millisecond)
 	defer tick.Stop()
 	for {

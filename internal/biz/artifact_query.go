@@ -9,13 +9,13 @@ import (
 )
 
 var (
-	ErrArtifactNotFound = errors.New("ARTIFACT_NOT_FOUND")
+	ErrArtifactNotFound    = errors.New("ARTIFACT_NOT_FOUND")
 	ErrDownloadUnavailable = errors.New("DOWNLOAD_UNAVAILABLE")
 )
 
 type QueryRecord struct {
 	Execution Execution
-	Runtime ExecutionRuntime
+	Runtime   ExecutionRuntime
 }
 
 type ArtifactQueryRepository interface {
@@ -28,6 +28,6 @@ type ArtifactSigner interface {
 }
 
 type DownloadGrant struct {
-	URL string
+	URL       string
 	ExpiresAt time.Time
 }

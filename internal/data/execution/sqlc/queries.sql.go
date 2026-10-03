@@ -54,6 +54,43 @@ func (q *Queries) AdvanceOwnerRevision(ctx context.Context, arg AdvanceOwnerRevi
 	return owner_revision, err
 }
 
+const findPublishedArtifactExecution = `-- name: FindPublishedArtifactExecution :many
+SELECT execution_id
+FROM modeldev_execution_runtimes
+WHERE tenant_id = $1::uuid
+  AND publication_id IS NOT NULL
+  AND (facts->'Publication'->'Files') @>
+      jsonb_build_array(jsonb_build_object('ArtifactID', $2::text))
+LIMIT 2
+`
+
+type FindPublishedArtifactExecutionParams struct {
+	TenantID   pgtype.UUID
+	ArtifactID string
+}
+
+// The tenant filter precedes returning any artifact association. Two matches
+// reject a duplicated artifact identity instead of choosing an arbitrary Run.
+func (q *Queries) FindPublishedArtifactExecution(ctx context.Context, arg FindPublishedArtifactExecutionParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, findPublishedArtifactExecution, arg.TenantID, arg.ArtifactID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var execution_id pgtype.UUID
+		if err := rows.Scan(&execution_id); err != nil {
+			return nil, err
+		}
+		items = append(items, execution_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCloseIntent = `-- name: GetCloseIntent :one
 SELECT tenant_id, execution_id, operation_id, spec_hash, source_kind,
     source_generation, owner_generation, reason, requested_at, requested_actor, close_state

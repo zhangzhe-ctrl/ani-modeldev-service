@@ -14,7 +14,7 @@ import (
 )
 
 type DownloadSigner struct {
-	client *s3.Client
+	client       *s3.Client
 	connectionID string
 }
 

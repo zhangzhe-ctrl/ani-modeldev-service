@@ -21,9 +21,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/google/uuid"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 )
 
@@ -350,15 +350,30 @@ func (f *completeFixture) storageRequest(w http.ResponseWriter, r *http.Request)
 // The external S3 substitute accepts credential-free GET only when the actual
 // SDK signature covers this URL/version and remains within its sixty seconds.
 func validFixtureDownload(r *http.Request) bool {
-	q:=r.URL.Query()
-	signedAt,err:=time.Parse("20060102T150405Z",q.Get("X-Amz-Date"))
-	if err!=nil || r.Method!=http.MethodGet || q.Get("X-Amz-Expires")!="60" || q.Get("versionId")=="" || time.Now().Before(signedAt) || !time.Now().Before(signedAt.Add(time.Minute)) { return false }
-	want:=q.Get("X-Amz-Signature")
-	for key:=range q { if strings.HasPrefix(key,"X-Amz-") && key!="X-Amz-Expires" { q.Del(key) } }
-	copy:=r.Clone(context.Background()); u:=*r.URL; u.Scheme="https";u.Host=r.Host;u.RawQuery=q.Encode();copy.URL=&u;copy.Header=make(http.Header)
-	signed,_,err:=v4.NewSigner().PresignHTTP(r.Context(),aws.Credentials{AccessKeyID:"synthetic-key",SecretAccessKey:"synthetic-secret"},copy,"UNSIGNED-PAYLOAD","s3","us-east-1",signedAt,func(o *v4.SignerOptions){o.DisableURIPathEscaping=true})
-	if err!=nil { return false }; got,err:=url.Parse(signed)
-	return err==nil && want!="" && hmac.Equal([]byte(got.Query().Get("X-Amz-Signature")),[]byte(want))
+	q := r.URL.Query()
+	signedAt, err := time.Parse("20060102T150405Z", q.Get("X-Amz-Date"))
+	if err != nil || r.Method != http.MethodGet || q.Get("X-Amz-Expires") != "60" || q.Get("versionId") == "" || time.Now().Before(signedAt) || !time.Now().Before(signedAt.Add(time.Minute)) {
+		return false
+	}
+	want := q.Get("X-Amz-Signature")
+	for key := range q {
+		if strings.HasPrefix(key, "X-Amz-") && key != "X-Amz-Expires" {
+			q.Del(key)
+		}
+	}
+	copy := r.Clone(context.Background())
+	u := *r.URL
+	u.Scheme = "https"
+	u.Host = r.Host
+	u.RawQuery = q.Encode()
+	copy.URL = &u
+	copy.Header = make(http.Header)
+	signed, _, err := v4.NewSigner().PresignHTTP(r.Context(), aws.Credentials{AccessKeyID: "synthetic-key", SecretAccessKey: "synthetic-secret"}, copy, "UNSIGNED-PAYLOAD", "s3", "us-east-1", signedAt, func(o *v4.SignerOptions) { o.DisableURIPathEscaping = true })
+	if err != nil {
+		return false
+	}
+	got, err := url.Parse(signed)
+	return err == nil && want != "" && hmac.Equal([]byte(got.Query().Get("X-Amz-Signature")), []byte(want))
 }
 
 func (f *completeFixture) finishPublisher() {
