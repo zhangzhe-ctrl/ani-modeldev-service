@@ -15,7 +15,7 @@ const advanceRuntimeClose = `-- name: AdvanceRuntimeClose :one
 UPDATE modeldev_execution_identities SET close_generation = close_generation + 1
 WHERE tenant_id = $1::uuid AND execution_id = $2::uuid
     AND close_generation < 18446744073709551615
-RETURNING close_generation::text
+RETURNING close_generation
 `
 
 type AdvanceRuntimeCloseParams struct {
@@ -23,9 +23,9 @@ type AdvanceRuntimeCloseParams struct {
 	ExecutionID pgtype.UUID
 }
 
-func (q *Queries) AdvanceRuntimeClose(ctx context.Context, arg AdvanceRuntimeCloseParams) (string, error) {
+func (q *Queries) AdvanceRuntimeClose(ctx context.Context, arg AdvanceRuntimeCloseParams) (pgtype.Numeric, error) {
 	row := q.db.QueryRow(ctx, advanceRuntimeClose, arg.TenantID, arg.ExecutionID)
-	var close_generation string
+	var close_generation pgtype.Numeric
 	err := row.Scan(&close_generation)
 	return close_generation, err
 }
@@ -34,7 +34,7 @@ const advanceRuntimeRevision = `-- name: AdvanceRuntimeRevision :one
 UPDATE modeldev_execution_identities SET owner_revision = owner_revision + 1
 WHERE tenant_id = $1::uuid AND execution_id = $2::uuid
     AND owner_revision < 18446744073709551615
-RETURNING owner_revision::text
+RETURNING owner_revision
 `
 
 type AdvanceRuntimeRevisionParams struct {
@@ -42,9 +42,9 @@ type AdvanceRuntimeRevisionParams struct {
 	ExecutionID pgtype.UUID
 }
 
-func (q *Queries) AdvanceRuntimeRevision(ctx context.Context, arg AdvanceRuntimeRevisionParams) (string, error) {
+func (q *Queries) AdvanceRuntimeRevision(ctx context.Context, arg AdvanceRuntimeRevisionParams) (pgtype.Numeric, error) {
 	row := q.db.QueryRow(ctx, advanceRuntimeRevision, arg.TenantID, arg.ExecutionID)
-	var owner_revision string
+	var owner_revision pgtype.Numeric
 	err := row.Scan(&owner_revision)
 	return owner_revision, err
 }
@@ -67,7 +67,7 @@ func (q *Queries) GetRuntimeFacts(ctx context.Context, arg GetRuntimeFactsParams
 }
 
 const getRuntimeIdentity = `-- name: GetRuntimeIdentity :one
-SELECT close_generation::text AS close_generation, owner_revision::text AS owner_revision,
+SELECT close_generation, owner_revision,
     clock_timestamp()::timestamptz AS database_now
 FROM modeldev_execution_identities
 WHERE tenant_id = $1::uuid AND execution_id = $2::uuid
@@ -79,8 +79,8 @@ type GetRuntimeIdentityParams struct {
 }
 
 type GetRuntimeIdentityRow struct {
-	CloseGeneration string
-	OwnerRevision   string
+	CloseGeneration pgtype.Numeric
+	OwnerRevision   pgtype.Numeric
 	DatabaseNow     pgtype.Timestamptz
 }
 
