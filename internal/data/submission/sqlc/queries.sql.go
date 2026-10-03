@@ -11,6 +11,29 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const advanceOwnerRevision = `-- name: AdvanceOwnerRevision :one
+UPDATE modeldev_execution_identities
+SET owner_revision = owner_revision + 1
+WHERE tenant_id = $1::uuid
+  AND execution_id = $2::uuid
+  AND owner_revision < 18446744073709551615
+RETURNING owner_revision
+`
+
+type AdvanceOwnerRevisionParams struct {
+	TenantID    pgtype.UUID
+	ExecutionID pgtype.UUID
+}
+
+// Advance once for new facts, even when their summary state does not change.
+// Replays never use this query and remain readable when the version is Max.
+func (q *Queries) AdvanceOwnerRevision(ctx context.Context, arg AdvanceOwnerRevisionParams) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, advanceOwnerRevision, arg.TenantID, arg.ExecutionID)
+	var owner_revision pgtype.Numeric
+	err := row.Scan(&owner_revision)
+	return owner_revision, err
+}
+
 const getAdmission = `-- name: GetAdmission :one
 SELECT tenant_id, execution_id, operation_id, actor,
     intent_canonical, intent_hash, snapshot_canonical, spec_hash, accepted_at
@@ -39,6 +62,26 @@ func (q *Queries) GetAdmission(ctx context.Context, arg GetAdmissionParams) (Mod
 		&i.AcceptedAt,
 	)
 	return i, err
+}
+
+const getOwnerRevision = `-- name: GetOwnerRevision :one
+SELECT owner_revision
+FROM modeldev_execution_identities
+WHERE tenant_id = $1::uuid
+  AND execution_id = $2::uuid
+`
+
+type GetOwnerRevisionParams struct {
+	TenantID    pgtype.UUID
+	ExecutionID pgtype.UUID
+}
+
+// Read under the shared identity lock or in the existing repeatable-read Get.
+func (q *Queries) GetOwnerRevision(ctx context.Context, arg GetOwnerRevisionParams) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, getOwnerRevision, arg.TenantID, arg.ExecutionID)
+	var owner_revision pgtype.Numeric
+	err := row.Scan(&owner_revision)
+	return owner_revision, err
 }
 
 const getPipelineDispatch = `-- name: GetPipelineDispatch :one
@@ -268,7 +311,7 @@ func (q *Queries) ListConfirmedPipelineRuns(ctx context.Context, arg ListConfirm
 }
 
 const lockExecutionIdentity = `-- name: LockExecutionIdentity :one
-SELECT tenant_id, execution_id, operation_id, spec_hash,
+SELECT tenant_id, execution_id, operation_id, spec_hash, owner_revision,
     close_generation = 0 AS creation_open
 FROM modeldev_execution_identities
 WHERE tenant_id = $1::uuid
@@ -282,11 +325,12 @@ type LockExecutionIdentityParams struct {
 }
 
 type LockExecutionIdentityRow struct {
-	TenantID     pgtype.UUID
-	ExecutionID  pgtype.UUID
-	OperationID  pgtype.UUID
-	SpecHash     string
-	CreationOpen bool
+	TenantID      pgtype.UUID
+	ExecutionID   pgtype.UUID
+	OperationID   pgtype.UUID
+	SpecHash      string
+	OwnerRevision pgtype.Numeric
+	CreationOpen  bool
 }
 
 func (q *Queries) LockExecutionIdentity(ctx context.Context, arg LockExecutionIdentityParams) (LockExecutionIdentityRow, error) {
@@ -297,6 +341,7 @@ func (q *Queries) LockExecutionIdentity(ctx context.Context, arg LockExecutionId
 		&i.ExecutionID,
 		&i.OperationID,
 		&i.SpecHash,
+		&i.OwnerRevision,
 		&i.CreationOpen,
 	)
 	return i, err

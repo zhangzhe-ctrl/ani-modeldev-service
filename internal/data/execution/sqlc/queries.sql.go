@@ -31,6 +31,29 @@ func (q *Queries) AdvanceCloseGeneration(ctx context.Context, arg AdvanceCloseGe
 	return close_generation, err
 }
 
+const advanceOwnerRevision = `-- name: AdvanceOwnerRevision :one
+UPDATE modeldev_execution_identities
+SET owner_revision = owner_revision + 1
+WHERE tenant_id = $1::uuid
+  AND execution_id = $2::uuid
+  AND owner_revision < 18446744073709551615
+RETURNING owner_revision
+`
+
+type AdvanceOwnerRevisionParams struct {
+	TenantID    pgtype.UUID
+	ExecutionID pgtype.UUID
+}
+
+// Only a new fact advances the version. Saturation rejects the entire writer
+// transaction; a replay uses GetOwnerRevision and remains readable at Max.
+func (q *Queries) AdvanceOwnerRevision(ctx context.Context, arg AdvanceOwnerRevisionParams) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, advanceOwnerRevision, arg.TenantID, arg.ExecutionID)
+	var owner_revision pgtype.Numeric
+	err := row.Scan(&owner_revision)
+	return owner_revision, err
+}
+
 const getCloseIntent = `-- name: GetCloseIntent :one
 SELECT tenant_id, execution_id, operation_id, spec_hash, source_kind,
     source_generation, owner_generation, reason, requested_at, requested_actor, close_state
@@ -128,6 +151,26 @@ func (q *Queries) GetExecution(ctx context.Context, arg GetExecutionParams) (Mod
 		&i.AcceptedAt,
 	)
 	return i, err
+}
+
+const getOwnerRevision = `-- name: GetOwnerRevision :one
+SELECT owner_revision
+FROM modeldev_execution_identities
+WHERE tenant_id = $1::uuid
+  AND execution_id = $2::uuid
+`
+
+type GetOwnerRevisionParams struct {
+	TenantID    pgtype.UUID
+	ExecutionID pgtype.UUID
+}
+
+// Read in the identity-locked writer or the aggregate's read-only snapshot.
+func (q *Queries) GetOwnerRevision(ctx context.Context, arg GetOwnerRevisionParams) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, getOwnerRevision, arg.TenantID, arg.ExecutionID)
+	var owner_revision pgtype.Numeric
+	err := row.Scan(&owner_revision)
+	return owner_revision, err
 }
 
 const insertCloseIntent = `-- name: InsertCloseIntent :one
@@ -264,7 +307,7 @@ func (q *Queries) InsertExecutionIdentity(ctx context.Context, arg InsertExecuti
 }
 
 const lockExecutionIdentity = `-- name: LockExecutionIdentity :one
-SELECT tenant_id, execution_id, operation_id, spec_hash, close_generation
+SELECT tenant_id, execution_id, operation_id, spec_hash, close_generation, owner_revision
 FROM modeldev_execution_identities
 WHERE tenant_id = $1::uuid
   AND execution_id = $2::uuid
@@ -285,6 +328,7 @@ func (q *Queries) LockExecutionIdentity(ctx context.Context, arg LockExecutionId
 		&i.OperationID,
 		&i.SpecHash,
 		&i.CloseGeneration,
+		&i.OwnerRevision,
 	)
 	return i, err
 }

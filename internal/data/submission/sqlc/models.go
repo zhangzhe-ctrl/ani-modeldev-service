@@ -40,6 +40,7 @@ type ModeldevExecutionIdentity struct {
 	OperationID     pgtype.UUID
 	SpecHash        string
 	CloseGeneration pgtype.Numeric
+	OwnerRevision   pgtype.Numeric
 }
 
 type ModeldevPipelineConfirmedRun struct {
