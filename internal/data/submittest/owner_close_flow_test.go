@@ -169,7 +169,7 @@ func TestMainFlowOwnerStopRecoversIntentAndTerminatesActualTraining(t *testing.T
 	stop = nil
 	pool.Close()
 	pool = open()
-	steps, managed, proof := assemble(pool)
+	steps, managed, _ = assemble(pool)
 	intent, err := execution.New(pool).GetCloseIntent(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
 	if err != nil || intent.Generation != closeGeneration || intent.Reason != biz.CloseReasonUserStop {
 		t.Fatalf("OWNER_CLOSE_PREFLIGHT: restarted owner lost committed USER_STOP: %v", err)
@@ -180,20 +180,7 @@ func TestMainFlowOwnerStopRecoversIntentAndTerminatesActualTraining(t *testing.T
 	default:
 	}
 	t.Log("OWNER_CLOSE_PREFLIGHT: real PG/mTLS admission, authenticated prepare, actual optimizer step, running writer history and USER_STOP recovered after reconnect")
-	closer, err := biz.NewExecutionCloser(managed, runs, proof)
-	if err != nil {
-		t.Fatal(err)
-	}
-	worker, err := biz.NewCloseWorker(lifecycle.New(pool), closer, biz.PipelineDispatchBinding{TenantID: f.request.Admission.TenantID, Environment: f.request.Admission.Snapshot.Environment, Owner: f.request.Owner}, 10, 100*time.Millisecond)
-	if err != nil {
-		t.Fatal(err)
-	}
-	workerContext, stopWorker := context.WithCancel(ctx)
-	workerDone := make(chan error, 1)
-	go func() {
-		workerDone <- worker.Run(workerContext)
-		close(workerDone)
-	}()
+	stopWorker, workerDone := restartRecoveryProcess(t, ctx, f, pool)
 	defer func() { stopWorker(); <-workerDone }()
 	closeContext, cancelClose := context.WithTimeout(ctx, 15*time.Second)
 	defer cancelClose()
