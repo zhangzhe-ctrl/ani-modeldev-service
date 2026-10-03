@@ -45,8 +45,12 @@ func ReadInTransaction(ctx context.Context, transaction pgx.Tx, tenant, executio
 	if err != nil {
 		return biz.ExecutionRuntime{}, err
 	}
-	available, err := lifecyclesql.New(transaction).RuntimeSchemaAvailable(ctx)
+	availability, err := lifecyclesql.New(transaction).RuntimeSchemaAvailable(ctx)
 	if err != nil {
+		return biz.ExecutionRuntime{}, biz.ErrPersistence
+	}
+	available, valid := availability.(bool)
+	if !valid {
 		return biz.ExecutionRuntime{}, biz.ErrPersistence
 	}
 	if !available {
