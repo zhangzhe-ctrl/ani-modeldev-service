@@ -71,7 +71,7 @@ func TestGovernanceAcceptExecutionCommitsAndReplaysCurrentState(t *testing.T) {
 
 	type outcome struct {
 		response *modeldevv1.AcceptExecutionResponse
-		err error
+		err      error
 	}
 	start := make(chan struct{})
 	results := make(chan outcome, len(clients))
@@ -214,7 +214,7 @@ func validAcceptCommand(t *testing.T) (*modeldevv1.AcceptExecutionRequest, biz.P
 		t.Fatalf("CPU_ACCEPT_PREFLIGHT: shared snapshot codec rejected fixture: %v; behavior NOT_RUN", err)
 	}
 	request := &modeldevv1.AcceptExecutionRequest{
-		Identity: &trainingv1.ExecutionIdentity{OperationId: admission.OperationID, ExecutionId: admission.ExecutionID, ExecutionSpecHash: specHash},
+		Identity:         &trainingv1.ExecutionIdentity{OperationId: admission.OperationID, ExecutionId: admission.ExecutionID, ExecutionSpecHash: specHash},
 		ResourceTenantId: admission.TenantID, AdmittedActorId: admission.Actor, IntentHash: intentHash,
 		Snapshot: wireSnapshot, AcceptedAt: timestamppb.New(acceptedAt), Intent: wireIntent,
 	}
