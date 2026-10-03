@@ -20,7 +20,7 @@ import (
 // Step adapts managed workload requests to the configured business capabilities.
 type Step struct {
 	modeldevv1.UnimplementedModelDevStepServiceServer
-	steps *biz.ManagedSteps
+	steps   *biz.ManagedSteps
 	runtime *biz.ManagedRuntime
 }
 

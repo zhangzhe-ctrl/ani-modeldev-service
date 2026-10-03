@@ -7,24 +7,26 @@ import (
 )
 
 type ManagedRuntime struct {
-	steps *ManagedSteps
-	repository ExecutionRuntimeRepository
-	trainer TrainingRuntime
-	workspaces PreparedWorkspaceVerifier
+	steps        *ManagedSteps
+	repository   ExecutionRuntimeRepository
+	trainer      TrainingRuntime
+	workspaces   PreparedWorkspaceVerifier
 	publications PublicationVerifier
 }
 
 func NewManagedRuntime(steps *ManagedSteps, repository ExecutionRuntimeRepository, trainer TrainingRuntime, workspaces PreparedWorkspaceVerifier, publications PublicationVerifier) (*ManagedRuntime, error) {
-	if steps == nil || repository == nil || trainer == nil || workspaces == nil || publications == nil { return nil, ErrRuntimeNotReady }
+	if steps == nil || repository == nil || trainer == nil || workspaces == nil || publications == nil {
+		return nil, ErrRuntimeNotReady
+	}
 	return &ManagedRuntime{steps: steps, repository: repository, trainer: trainer, workspaces: workspaces, publications: publications}, nil
 }
 
 type ManagedRuntimeResult struct {
-	States ExecutionStates
+	States    ExecutionStates
 	Execution Execution
 	Authority RunAuthority
-	Runtime ExecutionRuntime
-	Replayed bool
+	Runtime   ExecutionRuntime
+	Replayed  bool
 }
 
 func (runtime *ManagedRuntime) Configuration(ctx context.Context, token string, request BeginManagedExecutionRequest) (ManagedRuntimeResult, error) {
