@@ -18,9 +18,12 @@
 服务器要求 TLS 1.3、私有 CA 验证链及唯一精确 Governance DNS SAN；不接受 CN、通配或混合身份。
 每个 RPC 重新验证实际 TLS peer 的证书当前有效期，长连接不能延长过期身份。
 这是本分支现有 mTLS 工作负载信任合同，不声称已使用 IAM 在线 Grant/撤权。
-只有 Command 的精确 unary 方法可进入；当前 AcceptExecution 明确 Unimplemented，Query/Step 尚未装配，stream与非Command方法不获得command权限。
+只有 Command 的精确 unary 方法及实际装配后的 `ResolveAdmission` 可进入；后者复用
+相同认证边界，只返回未持久受理的候选。当前 AcceptExecution 明确 Unimplemented，
+Query/Step 尚未装配，stream与其他方法不获得此入口权限。
 
-单值 `x-ani-tenant-id`、`x-ani-actor`、`x-ani-request-id` 来自上述认证工作负载的冻结命令声明。
+单值 `x-ani-tenant-id`、`x-ani-actor`、`x-ani-request-id` 来自上述认证工作负载的声明。
+对关闭投递，它们关联已冻结命令；对候选解析，Governance 仍须在调用前检查当前用户授权。
 UUID metadata 必须规范非零；actor 必须是非零 uint32 的规范 `governance:user:<id>` 或 `governance:access-key:<id>`。
 入站 scope 与 Close body 的租户/actor 一致；缺可信 scope、重复头、非法字段/enum/time、unknown protobuf字段不能写库。
 RPC只返回有限安全错误与已定义ErrorDetail，不回显SQL、连接、证书或凭据。
@@ -33,6 +36,8 @@ cmd读取有界文件、建立实际PG连接并注册mTLS listener，缺材料/�
 装配不迁移数据库、不创建角色、不改共享环境；部署需另提供受限runtime角色、版本化schema和真实应用所有权。
 证书/连接材料在进程启动时读取；当前轮换通过受控重启，不声称热轮换或在线撤权。
 持久Command可用仍不使全链ready：训练、观察、发布未接齐时 `/readyz` 保持503。
+可选 `command.admission_resolution` 在同一listener与PG池上装配候选解析，省略时不注册
+该RPC；显式材料失败拒绝启动。字段与文件边界见[候选解析](cpu-p01-admission-resolution.md#启动配置)。
 
 ## 验证边界
 
