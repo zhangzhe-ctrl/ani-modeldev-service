@@ -76,12 +76,16 @@ func runCompleteMainFlow(t *testing.T, rejectedInput bool) {
 		return aws.Credentials{AccessKeyID: "synthetic-key", SecretAccessKey: "synthetic-secret"}, nil
 	}), BaseEndpoint: aws.String(f.storage.URL), UsePathStyle: true, HTTPClient: f.storage.Client(), RetryMaxAttempts: 1, RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired, ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired})
 	var businessQuery *mainFlowQuery
-	if os.Getenv("ANI_MODELDEV_MAINFLOW_STARTUP")!="" {
-		resolver,selection,intent:=prepareMainFlowAdmission(t,ctx,f,pool,store)
+	if os.Getenv("ANI_MODELDEV_MAINFLOW_STARTUP") != "" {
+		resolver, selection, intent := prepareMainFlowAdmission(t, ctx, f, pool, store)
 		// This separate pool keeps one real BFF endpoint alive while the
 		// training-side repository below disconnects and recovers its facts.
-		if resolver!=nil { businessQuery=startMainFlowQuery(t,open(),store,f.request.Admission,resolver) } else { businessQuery=startMainFlowQuery(t,open(),store,f.request.Admission) }
-		awaitBusinessAdmission(t,ctx,f,businessQuery,admissions,selection,intent)
+		if resolver != nil {
+			businessQuery = startMainFlowQuery(t, open(), store, f.request.Admission, resolver)
+		} else {
+			businessQuery = startMainFlowQuery(t, open(), store, f.request.Admission)
+		}
+		awaitBusinessAdmission(t, ctx, f, businessQuery, admissions, selection, intent)
 	} else {
 		acceptThroughCommandRPC(t, ctx, admissions, f.request.Admission)
 	}
@@ -324,7 +328,9 @@ func runCompleteMainFlow(t *testing.T, rejectedInput bool) {
 	// Reconnect to the actual query handler and download solely with its short
 	// lived grants. No S3 credentials or original training mount enter verifier.
 	query := businessQuery
-	if query==nil { query=startMainFlowQuery(t, pool, store, original.Admission) }
+	if query == nil {
+		query = startMainFlowQuery(t, pool, store, original.Admission)
+	}
 	assertQueryAccess(t, ctx, query, original.Admission)
 	listed, err := query.ListExecutionArtifacts(queryCall(ctx, original.Admission, modeldevv1.ModelDevQueryService_ListExecutionArtifacts_FullMethodName), &modeldevv1.ListExecutionArtifactsRequest{ExecutionId: original.ExecutionID})
 	if err != nil || len(listed.GetArtifacts()) != len(stored.Publication.Files) {
