@@ -276,7 +276,42 @@ identity 锁。解码核对状态/列表一致、完整 child identity、UUID、
 ENV/LIVE 仍未验证。未来权威绑定必须另行认证受管步骤并核实实际关联；本表
 任何已保存 Run 都不能单凭这条观察获训练许可。
 
-## 下一目录读取与 Release 冻结方案（未实现）
+## 执行聚合 owner revision
+
+`Execution.OwnerRevision`、`CloseReceipt.OwnerRevision` 与
+`PipelineDispatch.OwnerRevision` 表示同一 tenant/execution 已提交事实集合的版本。
+它不等于关闭来源序号、关闭 fence、Governance binding generation 或冻结配置中的
+`PipelineDispatchPlan.Owner.Revision`；任何版本号都不能充当资源创建或发送许可。
+
+所有写者继续串行锁定同一 `modeldev_execution_identities` 行。首 Admission、首次
+提交预约、首次实际保留的观察、每个新的 Run、每个新的 source close 各在自己的
+事务内递增一次。一个事务同时插入 Run 并切换提交状态只递增一次；强状态下首次
+保留 not_sent_at 仍递增，即使提交状态字符串不变。完整重放和真正无变化不递增，
+回执可以携带此时其他事务已推进的当前版本。旧 close 重放保留其原始 fence。
+
+持久化、版本递增与 COMMIT 是同一事务。失败不得返回部分回执；包括已经写入业务
+事实后发现版本已达 uint64 最大值时，也必须整体回滚。最大版本的原件重放仍可读。
+Execution.Get 与 PipelineDispatch.Get 各自在一个只读 REPEATABLE READ 快照中读取
+其返回事实与版本，不能在 COMMIT 后另查版本、或在 service 拼接多个独立查询。
+这些读取仍只提供各自事实；公共四轴状态投影和 AcceptExecution RPC 尚未接通。
+
+迁移 `0012_execution_owner_revision.up.sql` 必须在一个迁移事务内运行，并先停止旧
+写者。它验证旧 identity/Admission/close/dispatch/Run 关联及观察顺序，再给每个已有
+identity 建立 baseline=1，不反推历史事件数量、不修改原 canonical bytes 或时间。
+孤立或损坏关联使迁移失败。新增 numeric 列显式限制非负整数和完整 uint64 范围，
+不用会先对小数四舍五入的 numeric(20,0) 列。新 identity 的0只存在于未提交的首事实
+事务内；成功的外部回执不暴露0。
+
+迁移后仅需在原列权限上增加 `UPDATE(owner_revision)`，不可授表级 UPDATE 或修改
+identity 不可变列。应待全部写者升级完成后恢复写入；本片不支持旧新版本滚动混写。
+数据库迁移角色、受限 runtime 与共享数据库的实际切换仍由相应部署流程控制。
+本地模块测试中的授权和独占 schema 不代表目标集群升级完成。
+
+## 目录读取与 Release 冻结方案（历史设计）
+
+本节保留最初设计依据；现有可选 `ModelDevAdmissionService.ResolveAdmission`
+实现及启动材料合同见 [admission resolution](cpu-p01-admission-resolution.md)。
+实际 Governance 消费和受管 T02/T03 入口的未完成边界以该文档为准。
 
 依据原 CPU04 与 v0.4 D03/D05/D13，下一步只增加受管不可变目录和 Governance
 所需的解析能力。Release 是版本化文件与内容摘要，不新增 Release 管理平台、
