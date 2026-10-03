@@ -168,6 +168,14 @@ func (fixture *schemaFixture) install(t *testing.T, migrations []string, ownerRe
 			break
 		}
 	}
+	for _, migration := range migrations {
+		if filepath.Base(migration) == "0014_execution_runtime.up.sql" {
+			if _, err := transaction.Exec(ctx, "GRANT INSERT, SELECT, UPDATE ON "+schemaSQL+".modeldev_execution_runtimes TO "+roleSQL); err != nil {
+				t.Fatal("CPU04_DB_PREFLIGHT: runtime lifecycle grant failed; behavior NOT_RUN")
+			}
+			break
+		}
+	}
 	if _, err := transaction.Exec(ctx, "GRANT UPDATE (state, uncertain_at, not_sent_at) ON "+schemaSQL+".modeldev_pipeline_dispatches TO "+roleSQL); err != nil {
 		t.Fatal("CPU07_DB_PREFLIGHT: runtime submission-observation grant failed; behavior NOT_RUN")
 	}

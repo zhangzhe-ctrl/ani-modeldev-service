@@ -254,9 +254,13 @@ func mainFlowWorkloadVerifier(t *testing.T, env cpup01.EnvironmentBindingSnapsho
 }
 
 func startMainFlowStepServer(t *testing.T, steps *biz.ManagedSteps) (modeldevv1.ModelDevStepServiceClient, func()) {
+	return startMainFlowStepHandler(t, service.NewStep(steps))
+}
+
+func startMainFlowStepHandler(t *testing.T, handler modeldevv1.ModelDevStepServiceServer) (modeldevv1.ModelDevStepServiceClient, func()) {
 	t.Helper()
 	certificates := commandtls.New(t)
-	listener, err := server.NewManagedStepServer(&conf.Server_GRPC{Network: "tcp", Addr: "127.0.0.1:0", Timeout: durationpb.New(5 * time.Second)}, certificates.Server, service.NewStep(steps))
+	listener, err := server.NewManagedStepServer(&conf.Server_GRPC{Network: "tcp", Addr: "127.0.0.1:0", Timeout: durationpb.New(5 * time.Second)}, certificates.Server, handler)
 	if err != nil {
 		t.Fatal(err)
 	}

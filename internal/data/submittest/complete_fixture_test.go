@@ -1,0 +1,163 @@
+package submittest_test
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
+)
+
+const completeRunID = "55555555-6666-4777-8888-999999999999"
+const completeWorkflowUID = "cccccccc-dddd-4eee-8fff-111111111111"
+const completePVCUID = "abababab-cdcd-4efe-8aaa-111111111111"
+const completeTrainUID = "babababa-dcdc-4fef-8bbb-222222222222"
+const completeSetUID = "dddddddd-aaaa-4bbb-8ccc-333333333333"
+const completeJobUID = "eeeeeeee-aaaa-4bbb-8ccc-444444444444"
+const completePodUID = "ffffffff-aaaa-4bbb-8ccc-555555555555"
+
+type completeFixture struct {
+	t *testing.T
+	mu sync.Mutex
+	request biz.PipelineDispatchRequest
+	root, source, image string
+	kube, kfp, storage *httptest.Server
+	objects map[string]map[string]any
+	blobs map[string][]byte
+	versions map[string]string
+	creates, runCreates int
+	trainingDone chan struct{}
+	trainingErr error
+	trainingLog []byte
+	workspace biz.WorkspaceBinding
+}
+
+func newCompleteFixture(t *testing.T) *completeFixture {
+	t.Helper()
+	f := &completeFixture{t:t, root:t.TempDir(), objects:map[string]map[string]any{}, blobs:map[string][]byte{}, versions:map[string]string{}, trainingDone:make(chan struct{})}
+	f.image = os.Getenv("CPU_P01_MLP_IMAGE")
+	if f.image == "" { t.Fatal("CPU_MAINFLOW_PREFLIGHT: real CPU image missing; behavior NOT_RUN") }
+	f.source, _ = filepath.Abs("../../../training")
+	f.request = dispatchRequest(t)
+	f.request.Admission.Actor = "governance:user:42"
+	dataPath := filepath.Join(f.root,"source-data.csv")
+	if output, err := exec.CommandContext(context.Background(),"python3",filepath.Join(f.source,"make_data.py"),"--output",dataPath).CombinedOutput(); err != nil { t.Fatalf("CPU_MAINFLOW_PREFLIGHT: fixed CSV generator failed: %v: %s",err,output) }
+	data,err := os.ReadFile(dataPath);if err != nil { t.Fatal(err) }
+	snapshot := &f.request.Admission.Snapshot
+	snapshot.Input.Object.SizeBytes=int64(len(data));snapshot.Input.Object.SHA256=completeHash(data)
+	snapshot.Program.ResolvedArgs=[]string{"--data","/inputs/data.csv","--output","/outputs","--expected-input-sha256",snapshot.Input.Object.SHA256,"--expected-input-bytes",fmt.Sprint(len(data)),"--learning-rate","0.01"}
+	snapshot.Workspace.Mode="EXECUTION_PVC"
+	snapshot.Release.Runtime.Name="cpu-runtime-v1"
+	snapshot.Release.Runtime.TargetJobs=[]string{"trainer"}
+	f.workspace=biz.WorkspaceBinding{Mode:snapshot.Workspace.Mode,NamespaceName:snapshot.Environment.NamespaceName,NamespaceUID:snapshot.Environment.NamespaceUID,PVCName:"md-"+f.request.Admission.ExecutionID,PVCUID:completePVCUID,InputSubpath:snapshot.Workspace.InputSubpath,TrainingSubpath:snapshot.Workspace.TrainingSubpath,ReportsSubpath:snapshot.Workspace.ReportsSubpath,PublicationSubpath:snapshot.Workspace.PublicationSubpath}
+	ns:=snapshot.Environment.NamespaceName
+	meta:=func(name,uid string)map[string]any{return map[string]any{"name":name,"namespace":ns,"uid":uid,"resourceVersion":"1","generation":1}}
+	f.objects["/api/v1/namespaces/"+ns]=map[string]any{"apiVersion":"v1","kind":"Namespace","metadata":map[string]any{"name":ns,"uid":snapshot.Environment.NamespaceUID}}
+	f.objects["/api/v1/namespaces/"+ns+"/persistentvolumeclaims/"+f.workspace.PVCName]=map[string]any{"apiVersion":"v1","kind":"PersistentVolumeClaim","metadata":meta(f.workspace.PVCName,completePVCUID),"spec":map[string]any{"storageClassName":snapshot.Workspace.StorageClass,"accessModes":[]string{"ReadWriteOnce"},"resources":map[string]any{"requests":map[string]string{"storage":fmt.Sprint(snapshot.Workspace.CapacityBytes)}}},"status":map[string]string{"phase":"Bound"}}
+	f.objects["/api/v1/namespaces/"+ns+"/serviceaccounts/"+snapshot.Environment.Identities.KFPStepServiceAccount]=map[string]any{"apiVersion":"v1","kind":"ServiceAccount","metadata":meta(snapshot.Environment.Identities.KFPStepServiceAccount,"99999999-aaaa-4bbb-8ccc-666666666666")}
+	f.objects["/apis/argoproj.io/v1alpha1/namespaces/"+ns+"/workflows/main-flow"]=map[string]any{"apiVersion":"argoproj.io/v1alpha1","kind":"Workflow","metadata":meta("main-flow",completeWorkflowUID)}
+	for _,step:=range []string{"prepare","train-wait","collect","publish","close"}{
+		m:=meta("main-"+step,completeStepUID(step));m["ownerReferences"]=[]any{map[string]any{"apiVersion":"argoproj.io/v1alpha1","kind":"Workflow","name":"main-flow","uid":completeWorkflowUID,"controller":true}}
+		f.objects["/api/v1/namespaces/"+ns+"/pods/main-"+step]=map[string]any{"apiVersion":"v1","kind":"Pod","metadata":m,"spec":map[string]any{"serviceAccountName":snapshot.Environment.Identities.KFPStepServiceAccount,"volumes":[]any{map[string]any{"name":"workspace","persistentVolumeClaim":map[string]any{"claimName":f.workspace.PVCName}}},"containers":[]any{map[string]any{"name":"main","volumeMounts":[]any{map[string]any{"name":"workspace","mountPath":"/workspace"}}}}},"status":map[string]any{"phase":"Running"}}
+	}
+	var runtime map[string]any
+	if err:=json.Unmarshal([]byte(`{"apiVersion":"trainer.kubeflow.org/v1alpha1","kind":"ClusterTrainingRuntime","metadata":{"name":"cpu-runtime-v1","uid":"77777777-aaaa-4bbb-8ccc-111111111111"},"spec":{"mlPolicy":{"numNodes":1},"template":{"spec":{"failurePolicy":{"maxRestarts":0},"replicatedJobs":[{"name":"trainer","replicas":1,"template":{"metadata":{"labels":{"trainer.kubeflow.org/trainjob-ancestor-step":"trainer"}},"spec":{"parallelism":1,"completions":1,"backoffLimit":0,"template":{"spec":{"restartPolicy":"Never","automountServiceAccountToken":false,"securityContext":{"runAsNonRoot":true,"runAsUser":10001,"fsGroup":10001},"containers":[{"name":"node","image":"registry.example.test/placeholder:never-used","securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}}}}]}}}}`),&runtime);err!=nil{t.Fatal(err)}
+	runtimeSpec,_:=json.Marshal(runtime["spec"]);snapshot.Release.Runtime.ContentSHA256=completeHash(runtimeSpec)
+	f.objects["/apis/trainer.kubeflow.org/v1alpha1/clustertrainingruntimes/cpu-runtime-v1"]=runtime
+	f.request.Admission.SpecHash,err=snapshot.Digest();if err!=nil{t.Fatal(err)}
+	inputKey:="/"+snapshot.Input.Object.Bucket+"/"+snapshot.Input.Object.Key;f.blobs[inputKey]=data;f.versions[inputKey]=*snapshot.Input.Object.VersionID
+	f.kube=httptest.NewTLSServer(http.HandlerFunc(f.kubeRequest));t.Cleanup(f.kube.Close)
+	f.kfp=httptest.NewTLSServer(http.HandlerFunc(f.kfpRequest));t.Cleanup(f.kfp.Close)
+	f.storage=httptest.NewTLSServer(http.HandlerFunc(f.storageRequest));t.Cleanup(f.storage.Close)
+	return f
+}
+
+func completeHash(value []byte)string { hash:=sha256.Sum256(value);return hex.EncodeToString(hash[:]) }
+func completeStepUID(step string)string{return uuid.NewSHA1(uuid.NameSpaceOID,[]byte("cpu-p01-mainflow-"+step)).String()}
+
+func(f *completeFixture) kubeRequest(w http.ResponseWriter,r *http.Request){
+	f.mu.Lock();defer f.mu.Unlock();w.Header().Set("Content-Type","application/json")
+	if r.Header.Get("Authorization")!="Bearer synthetic-kube-owner"{w.WriteHeader(401);return}
+	ns:=f.workspace.NamespaceName
+	if r.URL.Path=="/apis/authentication.k8s.io/v1/tokenreviews"{
+		var input struct{Spec struct{Token string `json:"token"`;Audiences []string `json:"audiences"`} `json:"spec"`};if r.Method!="POST"||json.NewDecoder(r.Body).Decode(&input)!=nil{w.WriteHeader(400);return}
+		step:=strings.TrimPrefix(input.Spec.Token,"synthetic-bound-");valid:=false;for _,s:=range []string{"prepare","train-wait","collect","publish","close"}{valid=valid||step==s}
+		if len(input.Spec.Audiences)!=1||input.Spec.Audiences[0]!="ani-modeldev-managed-step"{valid=false}
+		_ = json.NewEncoder(w).Encode(map[string]any{"apiVersion":"authentication.k8s.io/v1","kind":"TokenReview","status":map[string]any{"authenticated":valid,"audiences":[]string{"ani-modeldev-managed-step"},"user":map[string]any{"username":"system:serviceaccount:"+ns+":"+f.request.Admission.Snapshot.Environment.Identities.KFPStepServiceAccount,"uid":"99999999-aaaa-4bbb-8ccc-666666666666","extra":map[string]any{"authentication.kubernetes.io/pod-name":[]string{"main-"+step},"authentication.kubernetes.io/pod-uid":[]string{completeStepUID(step)}}}}});return
+	}
+	trainPath:="/apis/trainer.kubeflow.org/v1alpha1/namespaces/"+ns+"/trainjobs"
+	if r.Method=="POST"&&r.URL.Path==trainPath{
+		f.creates++;var job map[string]any;if json.NewDecoder(r.Body).Decode(&job)!=nil{w.WriteHeader(400);return};m:=job["metadata"].(map[string]any);name:=m["name"].(string)
+		if f.objects[trainPath+"/"+name]!=nil{w.WriteHeader(409);return};m["uid"]=completeTrainUID;m["resourceVersion"]="1";m["generation"]=1;f.objects[trainPath+"/"+name]=job
+		f.makeTrainingChildren(name);go f.runTraining(name);w.WriteHeader(201);_ = json.NewEncoder(w).Encode(job);return
+	}
+	if r.Method=="PATCH"&&strings.HasPrefix(r.URL.Path,trainPath+"/"){
+		job:=f.objects[r.URL.Path];if job==nil{w.WriteHeader(404);return};job["spec"].(map[string]any)["suspend"]=true;_ = json.NewEncoder(w).Encode(job);return
+	}
+	if r.Method!="GET"{f.t.Error("unexpected Kubernetes mutation");w.WriteHeader(405);return}
+	if object:=f.objects[r.URL.Path];object!=nil{_ = json.NewEncoder(w).Encode(object);return}
+	if strings.HasSuffix(r.URL.Path,"/pods")||strings.HasSuffix(r.URL.Path,"/jobs"){
+		items:=[]any{};for p,o:=range f.objects{if strings.HasPrefix(p,r.URL.Path+"/"){items=append(items,o)}};_ = json.NewEncoder(w).Encode(map[string]any{"apiVersion":"v1","kind":"List","metadata":map[string]any{},"items":items});return
+	}
+	w.WriteHeader(404);_ = json.NewEncoder(w).Encode(map[string]any{"apiVersion":"v1","kind":"Status","status":"Failure","reason":"NotFound","code":404})
+}
+
+func(f *completeFixture) makeTrainingChildren(name string){
+	ns:=f.workspace.NamespaceName
+	object:=func(api,kind,name,uid,ownerAPI,ownerKind,ownerName,ownerUID string)map[string]any{return map[string]any{"apiVersion":api,"kind":kind,"metadata":map[string]any{"name":name,"namespace":ns,"uid":uid,"generation":1,"resourceVersion":"1","ownerReferences":[]any{map[string]any{"apiVersion":ownerAPI,"kind":ownerKind,"name":ownerName,"uid":ownerUID,"controller":true}}},"status":map[string]any{"conditions":[]any{}}}}
+	set:=object("jobset.x-k8s.io/v1alpha2","JobSet",name,completeSetUID,"trainer.kubeflow.org/v1alpha1","TrainJob",name,completeTrainUID);set["spec"]=map[string]any{"suspend":false}
+	f.objects["/apis/jobset.x-k8s.io/v1alpha2/namespaces/"+ns+"/jobsets/"+name]=set
+	job:=object("batch/v1","Job",name+"-trainer-0",completeJobUID,"jobset.x-k8s.io/v1alpha2","JobSet",name,completeSetUID);job["spec"]=map[string]any{"parallelism":1,"completions":1,"backoffLimit":0};job["status"].(map[string]any)["active"]=1
+	f.objects["/apis/batch/v1/namespaces/"+ns+"/jobs/"+name+"-trainer-0"]=job
+	pod:=object("v1","Pod","actual-training-pod",completePodUID,"batch/v1","Job",name+"-trainer-0",completeJobUID);pod["spec"]=map[string]any{"serviceAccountName":f.request.Admission.Snapshot.Environment.Identities.TrainerServiceAccount,"restartPolicy":"Never","automountServiceAccountToken":false,"containers":[]any{map[string]any{"name":"node"}}};pod["status"]=map[string]any{"phase":"Running","containerStatuses":[]any{map[string]any{"name":"node","restartCount":0,"state":map[string]any{"running":map[string]any{"startedAt":time.Now().UTC().Format(time.RFC3339)}}}}}
+	f.objects["/api/v1/namespaces/"+ns+"/pods/actual-training-pod"]=pod
+}
+
+func(f *completeFixture) runTraining(name string){
+	ctx,cancel:=context.WithTimeout(context.Background(),90*time.Second);defer cancel()
+	args:=[]string{"run","--rm","--pull=never","--network","none","--http-proxy=false","--cpus","2","--memory","2g","--memory-swap","2g","--pids-limit","256","--cap-drop","all","--security-opt","no-new-privileges","--read-only","--userns","keep-id:uid=10001,gid=10001","--volume",f.source+":/source:ro,Z","--volume",filepath.Join(f.root,f.workspace.InputSubpath)+":/inputs:ro,Z","--volume",filepath.Join(f.root,f.workspace.TrainingSubpath)+":/outputs:rw,Z","--entrypoint","/opt/venv/bin/python",f.image,"-I","/source/train_mlp.py"}
+	args=append(args,f.request.Admission.Snapshot.Program.ResolvedArgs...)
+	output,err:=exec.CommandContext(ctx,"podman",args...).CombinedOutput()
+	f.mu.Lock();defer f.mu.Unlock();f.trainingErr=err;f.trainingLog=output
+	ns:=f.workspace.NamespaceName;phase,condition,setCondition:="Succeeded","Complete","Completed";code:=0;if err!=nil{phase="Failed";condition="Failed";setCondition="Failed";code=1}
+	status:=func(typ string)map[string]any{return map[string]any{"active":0,"conditions":[]any{map[string]any{"type":typ,"status":"True","observedGeneration":1,"reason":"ActualProcessExited","lastTransitionTime":time.Now().UTC().Format(time.RFC3339)}}}}
+	f.objects["/apis/trainer.kubeflow.org/v1alpha1/namespaces/"+ns+"/trainjobs/"+name]["status"]=status(condition)
+	f.objects["/apis/jobset.x-k8s.io/v1alpha2/namespaces/"+ns+"/jobsets/"+name]["status"]=status(setCondition)
+	f.objects["/apis/batch/v1/namespaces/"+ns+"/jobs/"+name+"-trainer-0"]["status"]=status(condition)
+	f.objects["/api/v1/namespaces/"+ns+"/pods/actual-training-pod"]["status"]=map[string]any{"phase":phase,"containerStatuses":[]any{map[string]any{"name":"node","restartCount":0,"state":map[string]any{"terminated":map[string]any{"exitCode":code,"reason":phase,"finishedAt":time.Now().UTC().Format(time.RFC3339)}}}}}
+	close(f.trainingDone)
+}
+
+func(f *completeFixture) kfpRequest(w http.ResponseWriter,r *http.Request){
+	f.mu.Lock();defer f.mu.Unlock();w.Header().Set("Content-Type","application/json")
+	if r.Header.Get("Authorization")!="Bearer synthetic-kfp-owner"{w.WriteHeader(401);return}
+	if r.Method=="POST"&&r.URL.Path=="/apis/v2beta1/runs"{f.runCreates++}else if r.Method!="GET"||r.URL.Path!="/apis/v2beta1/runs/"+completeRunID{w.WriteHeader(400);return}
+	s:=f.request.Admission.Snapshot;tasks:=[]any{}
+	for _,step:=range []string{"prepare","train-wait","collect","publish","close"}{state:="RUNNING";pod:=f.objects["/api/v1/namespaces/"+s.Environment.NamespaceName+"/pods/main-"+step];if pod["status"].(map[string]any)["phase"]=="Succeeded"{state="SUCCEEDED"};tasks=append(tasks,map[string]string{"run_id":completeRunID,"task_id":step+"-task","display_name":step,"pod_name":"main-"+step,"state":state})}
+	_ = json.NewEncoder(w).Encode(map[string]any{"run_id":completeRunID,"experiment_id":s.Environment.ExperimentID,"display_name":"md-"+f.request.Admission.ExecutionID,"pipeline_version_reference":map[string]string{"pipeline_id":s.Release.PipelineID,"pipeline_version_id":s.Release.PipelineVersionID},"runtime_config":map[string]any{"parameters":map[string]string{"execution_id":f.request.Admission.ExecutionID,"spec_hash":f.request.Admission.SpecHash},"pipeline_root":f.request.Owner.PipelineRoot},"service_account":s.Environment.Identities.KFPStepServiceAccount,"state":"RUNNING","run_details":map[string]any{"task_details":tasks}})
+}
+
+func(f *completeFixture) storageRequest(w http.ResponseWriter,r *http.Request){
+	f.mu.Lock();defer f.mu.Unlock()
+	if !strings.HasPrefix(r.Header.Get("Authorization"),"AWS4-HMAC-SHA256 "){w.WriteHeader(403);return}
+	key:=r.URL.Path
+	if r.Method=="PUT"{if r.Header.Get("If-None-Match")!="*"{f.t.Error("upload must not overwrite");w.WriteHeader(400);return};if f.blobs[key]!=nil{w.WriteHeader(412);return};body,err:=io.ReadAll(r.Body);if err!=nil{w.WriteHeader(500);return};f.blobs[key]=body;f.versions[key]=uuid.NewString();w.Header().Set("x-amz-version-id",f.versions[key]);w.WriteHeader(200);return}
+	if r.Method!="GET"&&r.Method!="HEAD"{w.WriteHeader(405);return};body,found:=f.blobs[key];if !found{w.WriteHeader(404);return}
+	if version:=r.URL.Query().Get("versionId");version!=""&&version!=f.versions[key]{w.WriteHeader(404);return}
+	w.Header().Set("x-amz-version-id",f.versions[key]);w.Header().Set("Content-Length",fmt.Sprint(len(body)));w.Header().Set("Content-Type","application/octet-stream");if r.Method=="GET"{_,_ = w.Write(body)}
+}
+
+func(f *completeFixture) finishPublisher(){f.mu.Lock();defer f.mu.Unlock();f.objects["/api/v1/namespaces/"+f.workspace.NamespaceName+"/pods/main-publish"]["status"]=map[string]any{"phase":"Succeeded","containerStatuses":[]any{map[string]any{"name":"main","restartCount":0,"state":map[string]any{"terminated":map[string]any{"exitCode":0,"finishedAt":time.Now().UTC().Format(time.RFC3339)}}}}}}

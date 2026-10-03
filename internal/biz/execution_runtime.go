@@ -2,7 +2,11 @@ package biz
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01"
@@ -40,6 +44,7 @@ type TrainingHandle struct {
 type RuntimeResource struct {
 	APIVersion, Kind, Namespace, Name, UID, OwnerUID string
 	APIObjectPresent bool
+	CreationDisabled bool
 	Terminal bool
 	ExitCode *int32
 }
@@ -91,6 +96,7 @@ type ExecutionRuntime struct {
 	CloseReason string
 	CloseRequestedAt time.Time
 	ClosedAt *time.Time
+	CloseEvidence *ManagedCloseEvidence
 	OwnerRevision uint64
 }
 
@@ -102,7 +108,7 @@ type ExecutionRuntimeRepository interface {
 	RecordTrainingObservation(context.Context, RunAuthorityCandidate, TrainingRuntimeObservation) (ExecutionRuntime, error)
 	RecordPublication(context.Context, RunAuthorityCandidate, RuntimePublication) (ExecutionRuntime, bool, error)
 	RequestRuntimeClose(context.Context, RunAuthorityCandidate, string) (ExecutionRuntime, bool, error)
-	ConfirmRuntimeClosed(context.Context, RunAuthorityCandidate, uint64, TrainingRuntimeObservation) (ExecutionRuntime, error)
+	ConfirmRuntimeClosed(context.Context, RunAuthorityCandidate, uint64, TrainingRuntimeObservation, ManagedCloseEvidence) (ExecutionRuntime, error)
 }
 
 type TrainingRuntime interface {
@@ -118,8 +124,28 @@ type PreparedWorkspaceVerifier interface {
 
 type PublicationVerifier interface {
 	VerifyPublication(context.Context, Execution, ManagedStepAssociation, RuntimePublication) (RuntimePublication, error)
+	VerifyWritersAbsent(context.Context, Execution, ManagedStepAssociation) (ManagedCloseEvidence, error)
+}
+
+type ManagedCloseEvidence struct {
+	RunID, WorkflowUID string
+	Resources []RuntimeResource
+	ObservedAt time.Time
 }
 
 func FreezeTrainingPlan(execution Execution, workspace WorkspaceBinding) (TrainingPlan, error) {
-	return TrainingPlan{}, ErrRuntimeNotReady
+	if _, _, err := execution.CanonicalPayloads(); err != nil { return TrainingPlan{}, ErrInvalidAdmission }
+	want := execution.Snapshot.Workspace
+	if workspace.Mode != want.Mode || workspace.NamespaceName != execution.Snapshot.Environment.NamespaceName || workspace.NamespaceUID != execution.Snapshot.Environment.NamespaceUID ||
+		workspace.PVCName == "" || workspace.PVCUID == "" || workspace.InputSubpath != want.InputSubpath || workspace.TrainingSubpath != want.TrainingSubpath ||
+		workspace.ReportsSubpath != want.ReportsSubpath || workspace.PublicationSubpath != want.PublicationSubpath || workspace.PreparedManifestBytes <= 0 || !closeSpecHashPattern.MatchString(workspace.PreparedManifestSHA256) {
+		return TrainingPlan{}, ErrRuntimeConflict
+	}
+	plan := TrainingPlan{TenantID: execution.TenantID, OperationID: execution.OperationID, ExecutionID: execution.ExecutionID, SpecHash: execution.SpecHash,
+		Name: "md-"+strings.ToLower(execution.ExecutionID), Snapshot:execution.Snapshot, Workspace:workspace}
+	encoded, err := json.Marshal(plan)
+	if err != nil { return TrainingPlan{}, ErrInvalidAdmission }
+	digest := sha256.Sum256(encoded)
+	plan.RequestSHA256 = hex.EncodeToString(digest[:])
+	return plan,nil
 }

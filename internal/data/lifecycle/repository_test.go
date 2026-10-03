@@ -7,6 +7,7 @@ import (
  "testing"
  "time"
 
+ "github.com/google/uuid"
  "github.com/jackc/pgx/v5/pgxpool"
  "github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01"
  "github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01/conformance"
@@ -34,7 +35,7 @@ func runtimeFixture(t *testing.T) (func()*pgxpool.Pool, biz.Admission,biz.RunAut
  if err!=nil||reserved.SendPermit==nil {t.Fatal("runtime preflight dispatch",err)}
  authority:=biz.RunAuthorityCandidate{TenantID:admission.TenantID,ExecutionID:admission.ExecutionID,OperationID:admission.OperationID,SpecHash:admission.SpecHash,AttemptID:reserved.Dispatch.AttemptID,PlanHash:reserved.Dispatch.PlanHash,RunID:"55555555-6666-4777-8888-999999999999",NamespaceName:snapshot.Environment.NamespaceName,NamespaceUID:snapshot.Environment.NamespaceUID,WorkflowName:"main-runtime-workflow",WorkflowUID:"cccccccc-dddd-4eee-8fff-111111111111"}
  if _,err=repository.BindRunAuthority(ctx,authority);err!=nil {t.Fatal("runtime preflight authority",err)}
- workspace:=biz.WorkspaceBinding{NamespaceName:snapshot.Environment.NamespaceName,NamespaceUID:snapshot.Environment.NamespaceUID,PVCName:"main-runtime-workspace",PVCUID:"dddddddd-eeee-4fff-8111-222222222222",InputSubpath:snapshot.Workspace.InputSubpath,TrainingSubpath:snapshot.Workspace.TrainingSubpath,ReportsSubpath:snapshot.Workspace.ReportsSubpath,PublicationSubpath:snapshot.Workspace.PublicationSubpath,PreparedManifestSHA256:strings.Repeat("1",64),PreparedManifestBytes:256}
+ workspace:=biz.WorkspaceBinding{Mode:snapshot.Workspace.Mode,NamespaceName:snapshot.Environment.NamespaceName,NamespaceUID:snapshot.Environment.NamespaceUID,PVCName:"main-runtime-workspace",PVCUID:"dddddddd-eeee-4fff-8111-222222222222",InputSubpath:snapshot.Workspace.InputSubpath,TrainingSubpath:snapshot.Workspace.TrainingSubpath,ReportsSubpath:snapshot.Workspace.ReportsSubpath,PublicationSubpath:snapshot.Workspace.PublicationSubpath,PreparedManifestSHA256:strings.Repeat("1",64),PreparedManifestBytes:256}
  t.Log("RUNTIME_PREFLIGHT PASS: real restricted PostgreSQL admission, dispatch and Run authority")
  return open,admission,authority,workspace
 }
@@ -54,7 +55,7 @@ func TestRuntimePersistsPrepareTrainingPublicationAndCloseAcrossReconnect(t *tes
  handle:=biz.TrainingHandle{NamespaceUID:workspace.NamespaceUID,TrainJobUID:"eeeeeeee-ffff-4111-8222-333333333333",PVCUID:workspace.PVCUID}
  if _,err=repository.RecordTrainingHandle(ctx,authority,handle);err!=nil {t.Fatal(err)}
  zero:=int32(0)
- observation:=biz.TrainingRuntimeObservation{Handle:handle,Resources:[]biz.RuntimeResource{{APIVersion:"trainer.kubeflow.org/v1alpha1",Kind:"TrainJob",Namespace:workspace.NamespaceName,Name:reserved.State.Training.Name,UID:handle.TrainJobUID,Terminal:true},{APIVersion:"jobset.x-k8s.io/v1alpha2",Kind:"JobSet",Namespace:workspace.NamespaceName,Name:"main-training-jobset",UID:"jobset-runtime-uid",OwnerUID:handle.TrainJobUID,Terminal:true},{APIVersion:"v1",Kind:"Pod",Namespace:workspace.NamespaceName,Name:"main-training-pod",UID:"pod-runtime-uid",OwnerUID:"jobset-runtime-uid",Terminal:true,ExitCode:&zero}},Outcome:"SUCCEEDED",WritersAbsent:true,ObservedAt:time.Now().UTC().Truncate(time.Microsecond)}
+ observation:=biz.TrainingRuntimeObservation{Handle:handle,Resources:[]biz.RuntimeResource{{APIVersion:"trainer.kubeflow.org/v1alpha1",Kind:"TrainJob",Namespace:workspace.NamespaceName,Name:reserved.State.Training.Name,UID:handle.TrainJobUID,APIObjectPresent:true,Terminal:true},{APIVersion:"jobset.x-k8s.io/v1alpha2",Kind:"JobSet",Namespace:workspace.NamespaceName,Name:"main-training-jobset",UID:"jobset-runtime-uid",OwnerUID:handle.TrainJobUID,APIObjectPresent:true,Terminal:true},{APIVersion:"v1",Kind:"Pod",Namespace:workspace.NamespaceName,Name:"main-training-pod",UID:"pod-runtime-uid",OwnerUID:"jobset-runtime-uid",APIObjectPresent:true,Terminal:true,ExitCode:&zero}},Outcome:"SUCCEEDED",WritersAbsent:true,ObservedAt:time.Now().UTC().Truncate(time.Microsecond)}
  if _,err=repository.RecordTrainingObservation(ctx,authority,observation);err!=nil {t.Fatal(err)}
  publication:=publicationFixture(t,admission,authority)
  published,replayed,err:=repository.RecordPublication(ctx,authority,publication)
@@ -62,7 +63,9 @@ func TestRuntimePersistsPrepareTrainingPublicationAndCloseAcrossReconnect(t *tes
  if _,replayed,err=repository.RecordPublication(ctx,authority,publication);err!=nil||!replayed {t.Fatalf("publication replay changed the main publication: %v",err)}
  closing,replayed,err:=repository.RequestRuntimeClose(ctx,authority,"NATURAL_TERMINAL")
  if err!=nil||replayed||closing.CloseGeneration==0||closing.ClosedAt!=nil {t.Fatalf("natural close intent failed: %v",err)}
- closed,err:=repository.ConfirmRuntimeClosed(ctx,authority,closing.CloseGeneration,observation)
+ evidence:=biz.ManagedCloseEvidence{RunID:authority.RunID,WorkflowUID:authority.WorkflowUID,ObservedAt:time.Now().UTC()}
+ for _,step:=range []string{"prepare","train-wait","collect","publish"} {evidence.Resources=append(evidence.Resources,biz.RuntimeResource{APIVersion:"v1",Kind:"Pod",Namespace:authority.NamespaceName,Name:"managed-"+step,UID:uuid.NewSHA1(uuid.NameSpaceOID,[]byte(step)).String(),OwnerUID:authority.WorkflowUID,APIObjectPresent:true,Terminal:true,ExitCode:&zero})}
+ closed,err:=repository.ConfirmRuntimeClosed(ctx,authority,closing.CloseGeneration,observation,evidence)
  if err!=nil||closed.ClosedAt==nil {t.Fatalf("verified writer absence did not close execution: %v",err)}
  visible,err:=lifecycle.New(open()).GetRuntime(ctx,authority.TenantID,authority.ExecutionID)
  if err!=nil||visible.ClosedAt==nil||visible.Publication==nil||visible.TrainingHandle==nil||*visible.TrainingHandle!=handle {t.Fatalf("independent reconnect lost closed runtime facts: %v",err)}
@@ -86,7 +89,7 @@ func publicationFixture(t *testing.T,admission biz.Admission,authority biz.RunAu
  var files []cpup01.OutputFile
  for _,required:=range admission.Snapshot.OutputContract.RequiredFiles {
   file:=cpup01.OutputFile{RelativePath:required.RelativePath,Role:required.Role,SizeBytes:1,SHA256:strings.Repeat("2",64)};files=append(files,file)
-  publication.Files=append(publication.Files,biz.PublishedRuntimeFile{File:file,Object:cpup01.FixedObjectRef{StorageConnectionID:scope.StorageConnectionID,Bucket:scope.Bucket,Key:strings.TrimSuffix(scope.ApprovedPrefix,"/")+"/"+admission.ExecutionID+"/"+file.RelativePath,VersionID:&version,SizeBytes:file.SizeBytes,SHA256:file.SHA256}})
+  publication.Files=append(publication.Files,biz.PublishedRuntimeFile{ArtifactID:uuid.NewSHA1(uuid.NameSpaceOID,[]byte(file.RelativePath)).String(),File:file,Object:cpup01.FixedObjectRef{StorageConnectionID:scope.StorageConnectionID,Bucket:scope.Bucket,Key:strings.TrimSuffix(scope.ApprovedPrefix,"/")+"/"+admission.ExecutionID+"/"+file.RelativePath,VersionID:&version,SizeBytes:file.SizeBytes,SHA256:file.SHA256}})
  }
  manifest,digest,err:=cpup01.OutputManifestBytes(cpup01.AdmissionEnvelope(admission),files);if err!=nil {t.Fatal(err)}
  publication.Manifest=cpup01.FixedObjectRef{StorageConnectionID:scope.StorageConnectionID,Bucket:scope.Bucket,Key:strings.TrimSuffix(scope.ApprovedPrefix,"/")+"/"+admission.ExecutionID+"/output-manifest.json",VersionID:&version,SizeBytes:int64(len(manifest)),SHA256:digest}

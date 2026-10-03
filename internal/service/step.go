@@ -17,15 +17,19 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// Step adapts managed workload requests. The inherited methods remain explicitly
-// Unimplemented until their business capabilities are connected.
+// Step adapts managed workload requests to the configured business capabilities.
 type Step struct {
 	modeldevv1.UnimplementedModelDevStepServiceServer
 	steps *biz.ManagedSteps
+	runtime *biz.ManagedRuntime
 }
 
 func NewStep(steps *biz.ManagedSteps) *Step {
 	return &Step{steps: steps}
+}
+
+func NewRuntimeStep(steps *biz.ManagedSteps, runtime *biz.ManagedRuntime) *Step {
+	return &Step{steps: steps, runtime: runtime}
 }
 
 func (step *Step) BeginExecution(ctx context.Context, request *modeldevv1.BeginExecutionRequest) (*modeldevv1.BeginExecutionResponse, error) {
