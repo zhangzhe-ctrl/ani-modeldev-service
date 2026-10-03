@@ -19,10 +19,13 @@ type Query struct {
 	modeldevv1.UnimplementedModelDevQueryServiceServer
 	repository biz.ArtifactQueryRepository
 	signer     biz.ArtifactSigner
+	logs       biz.TrainingLogReader
 }
 
-func NewQuery(repository biz.ArtifactQueryRepository, signer biz.ArtifactSigner) *Query {
-	return &Query{repository: repository, signer: signer}
+func NewQuery(repository biz.ArtifactQueryRepository, signer biz.ArtifactSigner, logs ...biz.TrainingLogReader) *Query {
+	query := &Query{repository: repository, signer: signer}
+	if len(logs) == 1 { query.logs = logs[0] }
+	return query
 }
 
 type governanceQueryKey struct{}
