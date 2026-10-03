@@ -43,7 +43,9 @@ import (
 func TestMainFlowManagedBeginAuthenticatesAndRecovers(t *testing.T) {
 	for _, lostResponse := range []bool{false, true} {
 		name := "confirmed submission"
-		if lostResponse { name = "lost CreateRun response" }
+		if lostResponse {
+			name = "lost CreateRun response"
+		}
 		t.Run(name, func(t *testing.T) { runManagedBeginFlow(t, lostResponse) })
 	}
 }
@@ -55,75 +57,110 @@ func runManagedBeginFlow(t *testing.T, lostResponse bool) {
 	defer cancel()
 	pool := openPool()
 	executions, repository := execution.New(pool), submission.New(pool)
-	if _, err := executions.Accept(ctx, request.Admission); err != nil { t.Fatal(err) }
+	if _, err := executions.Accept(ctx, request.Admission); err != nil {
+		t.Fatal(err)
+	}
 	association := biz.ManagedStepAssociation{
-		RunID: "55555555-6666-4777-8888-999999999999",
+		RunID:         "55555555-6666-4777-8888-999999999999",
 		NamespaceName: request.Admission.Snapshot.Environment.NamespaceName,
-		NamespaceUID: request.Admission.Snapshot.Environment.NamespaceUID,
-		WorkflowName: "main-flow-workflow", WorkflowUID: "cccccccc-dddd-4eee-8fff-111111111111",
+		NamespaceUID:  request.Admission.Snapshot.Environment.NamespaceUID,
+		WorkflowName:  "main-flow-workflow", WorkflowUID: "cccccccc-dddd-4eee-8fff-111111111111",
 		PodName: "main-flow-prepare", PodUID: "dddddddd-eeee-4fff-8aaa-222222222222",
 	}
 	var posts atomic.Int32
 	var wrongTask atomic.Bool
 	peer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer synthetic-control-token" { t.Error("missing frozen KFP control identity"); w.WriteHeader(401); return }
+		if r.Header.Get("Authorization") != "Bearer synthetic-control-token" {
+			t.Error("missing frozen KFP control identity")
+			w.WriteHeader(401)
+			return
+		}
 		if r.Method == http.MethodPost && r.URL.Path == "/apis/v2beta1/runs" {
 			posts.Add(1)
 			if lostResponse {
 				connection, _, err := w.(http.Hijacker).Hijack()
-				if err != nil { t.Error(err); return }
+				if err != nil {
+					t.Error(err)
+					return
+				}
 				_ = connection.Close()
 				return
 			}
 		} else if r.Method != http.MethodGet || r.URL.Path != "/apis/v2beta1/runs/"+association.RunID {
-			t.Error("unexpected KFP operation"); w.WriteHeader(400); return
+			t.Error("unexpected KFP operation")
+			w.WriteHeader(400)
+			return
 		}
 		podName := association.PodName
-		if wrongTask.Load() { podName = "unrelated-pod" }
+		if wrongTask.Load() {
+			podName = "unrelated-pod"
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"run_id": association.RunID, "experiment_id": "44444444-4444-4444-8444-444444444444",
-			"display_name": "md-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+			"display_name":               "md-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
 			"pipeline_version_reference": map[string]string{"pipeline_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "pipeline_version_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd"},
-			"runtime_config": map[string]any{"parameters": map[string]string{"execution_id": request.Admission.ExecutionID, "spec_hash": request.Admission.SpecHash}, "pipeline_root": "s3://fixture-kfp-artifacts/frozen-submit-root"},
-			"service_account": "cpu-managed-step", "state": "RUNNING",
+			"runtime_config":             map[string]any{"parameters": map[string]string{"execution_id": request.Admission.ExecutionID, "spec_hash": request.Admission.SpecHash}, "pipeline_root": "s3://fixture-kfp-artifacts/frozen-submit-root"},
+			"service_account":            "cpu-managed-step", "state": "RUNNING",
 			"run_details": map[string]any{"task_details": []any{map[string]string{"run_id": association.RunID, "display_name": "prepare", "pod_name": podName}}},
 		})
 	}))
 	t.Cleanup(peer.Close)
 	provider := tokenProviderFunc(func(_ context.Context, tenant string, env cpup01.EnvironmentBindingSnapshot) (string, error) {
-		if tenant != request.Admission.TenantID || env != request.Admission.Snapshot.Environment { t.Error("wrong frozen KFP scope") }
+		if tenant != request.Admission.TenantID || env != request.Admission.Snapshot.Environment {
+			t.Error("wrong frozen KFP scope")
+		}
 		return "synthetic-control-token", nil
 	})
 	result, err := newSubmitter(t, repository, peer, provider).Submit(ctx, request)
 	if lostResponse {
-		if !errors.Is(err, biz.ErrPipelineSubmissionUncertain) || result.Dispatch.State != biz.PipelineDispatchUncertain { t.Fatalf("uncertain preflight: %v", err) }
-	} else if err != nil || result.Dispatch.State != biz.PipelineDispatchConfirmed { t.Fatalf("confirmed preflight: %v", err) }
-	if posts.Load() != 1 { t.Fatal("CreateRun was not sent exactly once") }
+		if !errors.Is(err, biz.ErrPipelineSubmissionUncertain) || result.Dispatch.State != biz.PipelineDispatchUncertain {
+			t.Fatalf("uncertain preflight: %v", err)
+		}
+	} else if err != nil || result.Dispatch.State != biz.PipelineDispatchConfirmed {
+		t.Fatalf("confirmed preflight: %v", err)
+	}
+	if posts.Load() != 1 {
+		t.Fatal("CreateRun was not sent exactly once")
+	}
 	t.Log("MAIN_FLOW: real admission and one CreateRun attempt persisted")
 	roots := x509.NewCertPool()
 	roots.AddCert(peer.Certificate())
-	runs, err := kfp.New(kfp.Config{ConnectionRef: "kfp-managed-v1", Endpoint: peer.URL, RootCAs: roots, Timeout: 3*time.Second}, provider)
-	if err != nil { t.Fatal(err) }
+	runs, err := kfp.New(kfp.Config{ConnectionRef: "kfp-managed-v1", Endpoint: peer.URL, RootCAs: roots, Timeout: 3 * time.Second}, provider)
+	if err != nil {
+		t.Fatal(err)
+	}
 	workloads := mainFlowWorkloadVerifier(t, request.Admission.Snapshot.Environment, association)
 	steps, err := biz.NewManagedSteps(repository, executions, workloads, runs)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	client, stop := startMainFlowStepServer(t, steps)
 	body := &modeldevv1.BeginExecutionRequest{Context: &modeldevv1.StepContext{
-		Identity: &trainingv1.ExecutionIdentity{OperationId: request.Admission.OperationID, ExecutionId: request.Admission.ExecutionID, ExecutionSpecHash: request.Admission.SpecHash},
+		Identity:    &trainingv1.ExecutionIdentity{OperationId: request.Admission.OperationID, ExecutionId: request.Admission.ExecutionID, ExecutionSpecHash: request.Admission.SpecHash},
 		Association: &modeldevv1.RunAssociation{KfpRunId: association.RunID, NamespaceName: association.NamespaceName, NamespaceUid: association.NamespaceUID, WorkflowName: association.WorkflowName, WorkflowUid: association.WorkflowUID, PodName: association.PodName, PodUid: association.PodUID},
-		Step: modeldevv1.PipelineStep_PIPELINE_STEP_PREPARE,
+		Step:        modeldevv1.PipelineStep_PIPELINE_STEP_PREPARE,
 	}}
-	callContext := func(token string) context.Context { return metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", "Bearer "+token, "x-ani-tenant-id", request.Admission.TenantID)) }
+	callContext := func(token string) context.Context {
+		return metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", "Bearer "+token, "x-ani-tenant-id", request.Admission.TenantID))
+	}
 	for _, token := range []string{"synthetic-training-token", "synthetic-forged-token"} {
-		if _, err := client.BeginExecution(callContext(token), body); status.Code(err) != codes.Unauthenticated { t.Fatalf("untrusted workload was not rejected: %v", err) }
+		if _, err := client.BeginExecution(callContext(token), body); status.Code(err) != codes.Unauthenticated {
+			t.Fatalf("untrusted workload was not rejected: %v", err)
+		}
 	}
 	wrongTask.Store(true)
-	if _, err := client.BeginExecution(callContext("synthetic-bound-step-token"), body); status.Code(err) != codes.Unauthenticated { t.Fatalf("KFP unrelated Pod was not rejected: %v", err) }
+	if _, err := client.BeginExecution(callContext("synthetic-bound-step-token"), body); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("KFP unrelated Pod was not rejected: %v", err)
+	}
 	wrongTask.Store(false)
-	if _, err := repository.GetRunAuthority(ctx, request.Admission.TenantID, request.Admission.ExecutionID); !errors.Is(err, biz.ErrExecutionNotFound) { t.Fatal("rejected calls created authority") }
+	if _, err := repository.GetRunAuthority(ctx, request.Admission.TenantID, request.Admission.ExecutionID); !errors.Is(err, biz.ErrExecutionNotFound) {
+		t.Fatal("rejected calls created authority")
+	}
 	response, err := client.BeginExecution(callContext("synthetic-bound-step-token"), body)
-	if err != nil || response.GetAuthority().GetKfpRunId() != association.RunID || response.Replayed { t.Fatalf("main flow did not bind authenticated Begin: %v", err) }
+	if err != nil || response.GetAuthority().GetKfpRunId() != association.RunID || response.Replayed {
+		t.Fatalf("main flow did not bind authenticated Begin: %v", err)
+	}
 	boundAt := response.Authority.BoundAt.AsTime()
 	t.Log("MAIN_FLOW: TLS Begin verified TokenReview, current objects and KFP task, then committed authority")
 	stop()
@@ -131,14 +168,22 @@ func runManagedBeginFlow(t *testing.T, lostResponse bool) {
 	pool = openPool()
 	repository, executions = submission.New(pool), execution.New(pool)
 	steps, err = biz.NewManagedSteps(repository, executions, workloads, runs)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	client, _ = startMainFlowStepServer(t, steps)
 	response, err = client.BeginExecution(callContext("synthetic-bound-step-token"), body)
-	if err != nil || !response.GetReplayed() || !response.GetAuthority().GetBoundAt().AsTime().Equal(boundAt) { t.Fatalf("restarted Begin lost original binding: %v", err) }
-	if _, err := newSubmitter(t, repository, peer, provider).Submit(ctx, request); err != nil || posts.Load() != 1 { t.Fatalf("restart repeated submission: %v", err) }
+	if err != nil || !response.GetReplayed() || !response.GetAuthority().GetBoundAt().AsTime().Equal(boundAt) {
+		t.Fatalf("restarted Begin lost original binding: %v", err)
+	}
+	if _, err := newSubmitter(t, repository, peer, provider).Submit(ctx, request); err != nil || posts.Load() != 1 {
+		t.Fatalf("restart repeated submission: %v", err)
+	}
 	forged := proto.Clone(body).(*modeldevv1.BeginExecutionRequest)
 	forged.Context.Association.PodUid = "eeeeeeee-ffff-4aaa-8bbb-333333333333"
-	if _, err := client.BeginExecution(callContext("synthetic-bound-step-token"), forged); status.Code(err) != codes.Unauthenticated { t.Fatalf("replay bypassed current Pod identity: %v", err) }
+	if _, err := client.BeginExecution(callContext("synthetic-bound-step-token"), forged); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("replay bypassed current Pod identity: %v", err)
+	}
 	t.Log("MAIN_FLOW: restarted RPC reauthenticated and replayed original authority without CreateRun")
 }
 
@@ -147,59 +192,104 @@ func mainFlowWorkloadVerifier(t *testing.T, env cpup01.EnvironmentBindingSnapsho
 	const saUID = "ffffffff-aaaa-4bbb-8ccc-444444444444"
 	peer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.Header.Get("Authorization") != "Bearer synthetic-kube-control" { t.Error("wrong Kubernetes client credential"); w.WriteHeader(401); return }
+		if r.Header.Get("Authorization") != "Bearer synthetic-kube-control" {
+			t.Error("wrong Kubernetes client credential")
+			w.WriteHeader(401)
+			return
+		}
 		metadata := func(name, uid string, namespaced bool) map[string]any {
 			m := map[string]any{"name": name, "uid": uid}
-			if namespaced { m["namespace"] = env.NamespaceName }
+			if namespaced {
+				m["namespace"] = env.NamespaceName
+			}
 			return m
 		}
 		var object map[string]any
 		switch r.URL.Path {
 		case "/apis/authentication.k8s.io/v1/tokenreviews":
-			var request struct { Spec struct { Token string `json:"token"`; Audiences []string `json:"audiences"` } `json:"spec"` }
-			if r.Method != http.MethodPost || json.NewDecoder(r.Body).Decode(&request) != nil || len(request.Spec.Audiences) != 1 || request.Spec.Audiences[0] != "ani-modeldev-managed-step" { t.Error("invalid TokenReview request"); w.WriteHeader(400); return }
-			object = map[string]any{"apiVersion": "authentication.k8s.io/v1", "kind": "TokenReview", "status": map[string]any{"authenticated": request.Spec.Token == "synthetic-bound-step-token", "audiences": []string{"ani-modeldev-managed-step"}, "user": map[string]any{"username": "system:serviceaccount:"+env.NamespaceName+":"+env.Identities.KFPStepServiceAccount, "uid": saUID, "extra": map[string]any{"authentication.kubernetes.io/pod-name": []string{association.PodName}, "authentication.kubernetes.io/pod-uid": []string{association.PodUID}}}}}
-		case "/api/v1/namespaces/"+env.NamespaceName:
+			var request struct {
+				Spec struct {
+					Token     string   `json:"token"`
+					Audiences []string `json:"audiences"`
+				} `json:"spec"`
+			}
+			if r.Method != http.MethodPost || json.NewDecoder(r.Body).Decode(&request) != nil || len(request.Spec.Audiences) != 1 || request.Spec.Audiences[0] != "ani-modeldev-managed-step" {
+				t.Error("invalid TokenReview request")
+				w.WriteHeader(400)
+				return
+			}
+			object = map[string]any{"apiVersion": "authentication.k8s.io/v1", "kind": "TokenReview", "status": map[string]any{"authenticated": request.Spec.Token == "synthetic-bound-step-token", "audiences": []string{"ani-modeldev-managed-step"}, "user": map[string]any{"username": "system:serviceaccount:" + env.NamespaceName + ":" + env.Identities.KFPStepServiceAccount, "uid": saUID, "extra": map[string]any{"authentication.kubernetes.io/pod-name": []string{association.PodName}, "authentication.kubernetes.io/pod-uid": []string{association.PodUID}}}}}
+		case "/api/v1/namespaces/" + env.NamespaceName:
 			object = map[string]any{"apiVersion": "v1", "kind": "Namespace", "metadata": metadata(env.NamespaceName, env.NamespaceUID, false)}
-		case "/api/v1/namespaces/"+env.NamespaceName+"/serviceaccounts/"+env.Identities.KFPStepServiceAccount:
+		case "/api/v1/namespaces/" + env.NamespaceName + "/serviceaccounts/" + env.Identities.KFPStepServiceAccount:
 			object = map[string]any{"apiVersion": "v1", "kind": "ServiceAccount", "metadata": metadata(env.Identities.KFPStepServiceAccount, saUID, true)}
-		case "/api/v1/namespaces/"+env.NamespaceName+"/pods/"+association.PodName:
+		case "/api/v1/namespaces/" + env.NamespaceName + "/pods/" + association.PodName:
 			m := metadata(association.PodName, association.PodUID, true)
 			m["ownerReferences"] = []any{map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "Workflow", "name": association.WorkflowName, "uid": association.WorkflowUID, "controller": true}}
 			object = map[string]any{"apiVersion": "v1", "kind": "Pod", "metadata": m, "spec": map[string]string{"serviceAccountName": env.Identities.KFPStepServiceAccount}}
-		case "/apis/argoproj.io/v1alpha1/namespaces/"+env.NamespaceName+"/workflows/"+association.WorkflowName:
+		case "/apis/argoproj.io/v1alpha1/namespaces/" + env.NamespaceName + "/workflows/" + association.WorkflowName:
 			object = map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "Workflow", "metadata": metadata(association.WorkflowName, association.WorkflowUID, true)}
-		default: t.Error("unexpected Kubernetes operation"); w.WriteHeader(404); return
+		default:
+			t.Error("unexpected Kubernetes operation")
+			w.WriteHeader(404)
+			return
 		}
-		if !strings.Contains(r.URL.Path, "tokenreviews") && r.Method != http.MethodGet { t.Error("unexpected Kubernetes mutation"); w.WriteHeader(400); return }
+		if !strings.Contains(r.URL.Path, "tokenreviews") && r.Method != http.MethodGet {
+			t.Error("unexpected Kubernetes mutation")
+			w.WriteHeader(400)
+			return
+		}
 		_ = json.NewEncoder(w).Encode(object)
 	}))
 	t.Cleanup(peer.Close)
-	client, err := dynamic.NewForConfig(&rest.Config{Host: peer.URL, BearerToken: "synthetic-kube-control", Timeout: 3*time.Second, TLSClientConfig: rest.TLSClientConfig{CAData: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: peer.Certificate().Raw})}})
-	if err != nil { t.Fatal(err) }
+	client, err := dynamic.NewForConfig(&rest.Config{Host: peer.URL, BearerToken: "synthetic-kube-control", Timeout: 3 * time.Second, TLSClientConfig: rest.TLSClientConfig{CAData: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: peer.Certificate().Raw})}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	verifier, err := stepidentity.New(client, "ani-modeldev-managed-step")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	return verifier
 }
 
 func startMainFlowStepServer(t *testing.T, steps *biz.ManagedSteps) (modeldevv1.ModelDevStepServiceClient, func()) {
 	t.Helper()
 	certificates := commandtls.New(t)
-	listener, err := server.NewManagedStepServer(&conf.Server_GRPC{Network: "tcp", Addr: "127.0.0.1:0", Timeout: durationpb.New(5*time.Second)}, certificates.Server, service.NewStep(steps))
-	if err != nil { t.Fatal(err) }
+	listener, err := server.NewManagedStepServer(&conf.Server_GRPC{Network: "tcp", Addr: "127.0.0.1:0", Timeout: durationpb.New(5 * time.Second)}, certificates.Server, service.NewStep(steps))
+	if err != nil {
+		t.Fatal(err)
+	}
 	endpoint, err := listener.Endpoint()
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	done := make(chan error, 1)
 	go func() { done <- listener.Start(context.Background()) }()
 	connection, err := grpc.NewClient(endpoint.Host, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS13, RootCAs: certificates.Roots, ServerName: commandtls.ServerDNSName})))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	stopped := false
 	stop := func() {
-		if stopped { return }; stopped = true
+		if stopped {
+			return
+		}
+		stopped = true
 		_ = connection.Close()
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second); defer cancel()
-		if err := listener.Stop(ctx); err != nil { t.Error(err) }
-		select { case err := <-done: if err != nil && !errors.Is(err, grpc.ErrServerStopped) { t.Error(err) }; case <-ctx.Done(): t.Error("step listener did not stop") }
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := listener.Stop(ctx); err != nil {
+			t.Error(err)
+		}
+		select {
+		case err := <-done:
+			if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+				t.Error(err)
+			}
+		case <-ctx.Done():
+			t.Error("step listener did not stop")
+		}
 	}
 	t.Cleanup(stop)
 	return modeldevv1.NewModelDevStepServiceClient(connection), stop

@@ -21,22 +21,22 @@ import (
 )
 
 const (
-	audience = "ani-modeldev-managed-step"
-	stepToken = "managed-step-test-token"
-	controlToken = "control-workload-test-token"
-	namespaceName = "cpu-execution"
-	namespaceUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
-	podName = "cpu-main-prepare"
-	podUID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
-	workflowName = "cpu-main"
-	workflowUID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
-	serviceAccount = "cpu-managed-step"
-	serviceAccountUID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
-	tokenReviewPath = "/apis/authentication.k8s.io/v1/tokenreviews"
-	namespacePath = "/api/v1/namespaces/" + namespaceName
-	podPath = namespacePath + "/pods/" + podName
+	audience           = "ani-modeldev-managed-step"
+	stepToken          = "managed-step-test-token"
+	controlToken       = "control-workload-test-token"
+	namespaceName      = "cpu-execution"
+	namespaceUID       = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	podName            = "cpu-main-prepare"
+	podUID             = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	workflowName       = "cpu-main"
+	workflowUID        = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+	serviceAccount     = "cpu-managed-step"
+	serviceAccountUID  = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+	tokenReviewPath    = "/apis/authentication.k8s.io/v1/tokenreviews"
+	namespacePath      = "/api/v1/namespaces/" + namespaceName
+	podPath            = namespacePath + "/pods/" + podName
 	serviceAccountPath = namespacePath + "/serviceaccounts/" + serviceAccount
-	workflowPath = "/apis/argoproj.io/v1alpha1/namespaces/" + namespaceName + "/workflows/" + workflowName
+	workflowPath       = "/apis/argoproj.io/v1alpha1/namespaces/" + namespaceName + "/workflows/" + workflowName
 )
 
 func TestVerifyManagedStepUsesAudienceBoundPodIdentityAndLiveObjects(t *testing.T) {
@@ -61,9 +61,9 @@ func TestVerifyManagedStepUsesAudienceBoundPodIdentityAndLiveObjects(t *testing.
 
 func TestVerifyManagedStepRejectsUnboundOrSubstitutedIdentity(t *testing.T) {
 	cases := []struct {
-		name string
-		path string
-		value any
+		name   string
+		path   string
+		value  any
 		fields []string
 	}{
 		{"unauthenticated token", tokenReviewPath, false, []string{"status", "authenticated"}},
@@ -118,32 +118,32 @@ func TestVerifyManagedStepRejectsDifferentFrozenNamespaceAndSanitizesAPIErrors(t
 
 func managedStepInputs() (biz.PipelineDispatchPlan, biz.ManagedStepAssociation) {
 	return biz.PipelineDispatchPlan{Environment: cpup01.EnvironmentBindingSnapshot{
-		NamespaceName: namespaceName, NamespaceUID: namespaceUID,
-		Identities: cpup01.RuntimeIdentityRefs{KFPStepServiceAccount: serviceAccount},
-	}}, biz.ManagedStepAssociation{
-		RunID: "11111111-1111-4111-8111-111111111111",
-		NamespaceName: namespaceName, NamespaceUID: namespaceUID,
-		WorkflowName: workflowName, WorkflowUID: workflowUID,
-		PodName: podName, PodUID: podUID,
-	}
+			NamespaceName: namespaceName, NamespaceUID: namespaceUID,
+			Identities: cpup01.RuntimeIdentityRefs{KFPStepServiceAccount: serviceAccount},
+		}}, biz.ManagedStepAssociation{
+			RunID:         "11111111-1111-4111-8111-111111111111",
+			NamespaceName: namespaceName, NamespaceUID: namespaceUID,
+			WorkflowName: workflowName, WorkflowUID: workflowUID,
+			PodName: podName, PodUID: podUID,
+		}
 }
 
 type identityFixture struct {
-	objects map[string]map[string]any
+	objects  map[string]map[string]any
 	failPath string
-	mu sync.Mutex
-	calls map[string]int
+	mu       sync.Mutex
+	calls    map[string]int
 }
 
 func newIdentityFixture(t *testing.T) *identityFixture {
 	t.Helper()
 	fixture := &identityFixture{objects: make(map[string]map[string]any), calls: make(map[string]int)}
 	for path, source := range map[string]string{
-		tokenReviewPath: `{"apiVersion":"authentication.k8s.io/v1","kind":"TokenReview","status":{"authenticated":true,"audiences":["ani-modeldev-managed-step"],"user":{"username":"system:serviceaccount:cpu-execution:cpu-managed-step","uid":"dddddddd-dddd-4ddd-8ddd-dddddddddddd","extra":{"authentication.kubernetes.io/pod-name":["cpu-main-prepare"],"authentication.kubernetes.io/pod-uid":["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]}}}}`,
-		namespacePath: `{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"cpu-execution","uid":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}}`,
-		podPath: `{"apiVersion":"v1","kind":"Pod","metadata":{"namespace":"cpu-execution","name":"cpu-main-prepare","uid":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","ownerReferences":[{"apiVersion":"argoproj.io/v1alpha1","kind":"Workflow","name":"cpu-main","uid":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","controller":true}]},"spec":{"serviceAccountName":"cpu-managed-step"}}`,
+		tokenReviewPath:    `{"apiVersion":"authentication.k8s.io/v1","kind":"TokenReview","status":{"authenticated":true,"audiences":["ani-modeldev-managed-step"],"user":{"username":"system:serviceaccount:cpu-execution:cpu-managed-step","uid":"dddddddd-dddd-4ddd-8ddd-dddddddddddd","extra":{"authentication.kubernetes.io/pod-name":["cpu-main-prepare"],"authentication.kubernetes.io/pod-uid":["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]}}}}`,
+		namespacePath:      `{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"cpu-execution","uid":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}}`,
+		podPath:            `{"apiVersion":"v1","kind":"Pod","metadata":{"namespace":"cpu-execution","name":"cpu-main-prepare","uid":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","ownerReferences":[{"apiVersion":"argoproj.io/v1alpha1","kind":"Workflow","name":"cpu-main","uid":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","controller":true}]},"spec":{"serviceAccountName":"cpu-managed-step"}}`,
 		serviceAccountPath: `{"apiVersion":"v1","kind":"ServiceAccount","metadata":{"namespace":"cpu-execution","name":"cpu-managed-step","uid":"dddddddd-dddd-4ddd-8ddd-dddddddddddd"}}`,
-		workflowPath: `{"apiVersion":"argoproj.io/v1alpha1","kind":"Workflow","metadata":{"namespace":"cpu-execution","name":"cpu-main","uid":"cccccccc-cccc-4ccc-8ccc-cccccccccccc"}}`,
+		workflowPath:       `{"apiVersion":"argoproj.io/v1alpha1","kind":"Workflow","metadata":{"namespace":"cpu-execution","name":"cpu-main","uid":"cccccccc-cccc-4ccc-8ccc-cccccccccccc"}}`,
 	} {
 		var object map[string]any
 		if err := json.Unmarshal([]byte(source), &object); err != nil {

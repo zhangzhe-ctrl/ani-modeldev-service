@@ -33,7 +33,9 @@ func TestManagedRunRequiresFrozenRunAndKFPTaskPod(t *testing.T) {
 	}))
 	t.Cleanup(peer.Close)
 	client := fixtureClient(t, peer, tokenProviderFunc(func(_ context.Context, tenant string, env cpup01.EnvironmentBindingSnapshot) (string, error) {
-		if tenant != input.Plan.TenantID || env != input.Plan.Environment { t.Error("wrong frozen identity") }
+		if tenant != input.Plan.TenantID || env != input.Plan.Environment {
+			t.Error("wrong frozen identity")
+		}
 		return "synthetic-fixture-token", nil
 	}))
 	if err := client.VerifyManagedRun(context.Background(), input.Plan, association, "prepare"); err != nil {
@@ -44,12 +46,14 @@ func TestManagedRunRequiresFrozenRunAndKFPTaskPod(t *testing.T) {
 		strings.Replace(valid, `"display_name":"prepare"`, `"display_name":"train-wait"`, 1),
 		strings.Replace(valid, input.Plan.SpecHash, strings.Repeat("f", 64), 1),
 		strings.Replace(valid, `"service_account":"cpu-managed-step"`, `"service_account":"ordinary-trainer"`, 1),
-		strings.TrimSuffix(valid, "}")+`,"run_details":{"task_details":[]}}`,
+		strings.TrimSuffix(valid, "}") + `,"run_details":{"task_details":[]}}`,
 	} {
 		body.Store(invalid)
 		if err := client.VerifyManagedRun(context.Background(), input.Plan, association, "prepare"); err == nil {
 			t.Error("unproven Run/task association accepted")
 		}
 	}
-	if calls.Load() != 6 { t.Errorf("expected one GET for each verification, got %d", calls.Load()) }
+	if calls.Load() != 6 {
+		t.Errorf("expected one GET for each verification, got %d", calls.Load())
+	}
 }
