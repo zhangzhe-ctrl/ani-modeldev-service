@@ -40,7 +40,7 @@ func TestResolveAdmissionRPCRejectsInvalidWireRequests(t *testing.T) {
 	before := requireAdmissionRPCControl(t, fixture, client)
 	unknown := protowire.AppendBytes(protowire.AppendTag(nil, 500, protowire.BytesType), []byte("rpc-untrusted-facts-sentinel"))
 	for _, test := range []struct {
-		name string
+		name   string
 		change func(*modeldevv1.ResolveAdmissionRequest)
 	}{
 		{"missing intent", func(r *modeldevv1.ResolveAdmissionRequest) { r.Intent = nil }},
@@ -49,7 +49,9 @@ func TestResolveAdmissionRPCRejectsInvalidWireRequests(t *testing.T) {
 		{"outer unknown", func(r *modeldevv1.ResolveAdmissionRequest) { r.ProtoReflect().SetUnknown(unknown) }},
 		{"Release unknown", func(r *modeldevv1.ResolveAdmissionRequest) { r.Release.ProtoReflect().SetUnknown(unknown) }},
 		{"timestamp unknown", func(r *modeldevv1.ResolveAdmissionRequest) { r.AcceptedAt.ProtoReflect().SetUnknown(unknown) }},
-		{"nested parameter unknown", func(r *modeldevv1.ResolveAdmissionRequest) { r.Intent.GeneralParameters.Values[0].ProtoReflect().SetUnknown(unknown) }},
+		{"nested parameter unknown", func(r *modeldevv1.ResolveAdmissionRequest) {
+			r.Intent.GeneralParameters.Values[0].ProtoReflect().SetUnknown(unknown)
+		}},
 		{"unknown kind", func(r *modeldevv1.ResolveAdmissionRequest) { r.Intent.Kind = trainingv1.ExecutionKind(999) }},
 		{"zero generation", func(r *modeldevv1.ResolveAdmissionRequest) { r.Release.BindingGeneration = 0 }},
 		{"timestamp outside supported years", func(r *modeldevv1.ResolveAdmissionRequest) { r.AcceptedAt.Seconds = 253402300800 }},
@@ -115,7 +117,7 @@ func TestResolveAdmissionRPCScopesFactsAndInputsByVerifiedTenant(t *testing.T) {
 	}
 	otherReady, err := repository.RecordVerifiedCSV(fixture.ctx, otherImport, biz.VerifiedCSV{
 		VerifiedObject: biz.VerifiedObject{Object: otherImport.Object, VerifiedAt: otherImport.RequestedAt.Add(time.Minute)},
-		SchemaVersion: "ani.cpu.csv.v1", RowCount: 1024, FeatureCount: 16,
+		SchemaVersion:  "ani.cpu.csv.v1", RowCount: 1024, FeatureCount: 16,
 	})
 	if err != nil || otherReady.State != biz.InputStateReady {
 		t.Fatalf("ADMISSION_RPC_PREFLIGHT: tenant B READY failed; behavior NOT_RUN: %v", err)
@@ -179,9 +181,9 @@ func TestResolveAdmissionRPCMapsFiniteFailures(t *testing.T) {
 		}
 	})
 	for _, test := range []struct {
-		name string
+		name    string
 		failure error
-		code codes.Code
+		code    codes.Code
 	}{
 		{"unknown dependency error", errors.New("rpc-private-dependency-sentinel"), codes.Unavailable},
 		{"wrapped cancellation", fmt.Errorf("rpc-private-dependency-sentinel: %w", context.Canceled), codes.Canceled},
@@ -221,7 +223,10 @@ func TestResolveAdmissionRPCCancellationReachesFactsReader(t *testing.T) {
 	ctx, cancel := context.WithCancel(admissionRPCContext(fixture.ctx, fixture.selection.TenantID))
 	defer cancel()
 	request := admissionRPCRequest(t, fixture)
-	type outcome struct { response *modeldevv1.ResolveAdmissionResponse; err error }
+	type outcome struct {
+		response *modeldevv1.ResolveAdmissionResponse
+		err      error
+	}
 	finished := make(chan outcome, 1)
 	go func() {
 		response, err := client.ResolveAdmission(ctx, request)
@@ -302,7 +307,10 @@ func TestResolveAdmissionRPCRejectsUntrustedMetadata(t *testing.T) {
 	reader := loadAdmissionRPCFacts(t, fixture)
 	client := startAdmissionClient(t, fixture, biz.NewManagedAdmissionResolver(fixture.releaseReader, fixture.inputReader, reader))
 	requireAdmissionRPCControl(t, fixture, client)
-	for _, test := range []struct { name string; change func(metadata.MD) }{
+	for _, test := range []struct {
+		name   string
+		change func(metadata.MD)
+	}{
 		{"missing tenant", func(md metadata.MD) { md.Delete("x-ani-tenant-id") }},
 		{"duplicate tenant", func(md metadata.MD) { md.Append("x-ani-tenant-id", fixture.selection.TenantID) }},
 		{"duplicate request ID", func(md metadata.MD) { md.Append("x-ani-request-id", admissionRPCRequestID) }},
@@ -340,9 +348,13 @@ func admissionRPCContext(ctx context.Context, tenant string) context.Context {
 func loadAdmissionRPCFacts(t *testing.T, fixtures ...resolutionFixture) *admissionfacts.Reader {
 	t.Helper()
 	var sources []admissionfacts.FileSource
-	for _, fixture := range fixtures { sources = append(sources, writeManagedFactsFixture(t, fixture)) }
+	for _, fixture := range fixtures {
+		sources = append(sources, writeManagedFactsFixture(t, fixture))
+	}
 	reader, err := admissionfacts.Load(fixtures[0].ctx, sources)
-	if err != nil { t.Fatalf("ADMISSION_RPC_PREFLIGHT: facts load failed; behavior NOT_RUN: %v", err) }
+	if err != nil {
+		t.Fatalf("ADMISSION_RPC_PREFLIGHT: facts load failed; behavior NOT_RUN: %v", err)
+	}
 	for _, fixture := range fixtures {
 		got, err := reader.ReadAdmissionFacts(fixture.ctx, fixture.selection.TenantID, fixture.selection.Release.ReleaseID, fixture.selection.Release.ReleaseDigest)
 		if err != nil || !reflect.DeepEqual(got, fixture.facts) {
@@ -355,7 +367,9 @@ func loadAdmissionRPCFacts(t *testing.T, fixtures ...resolutionFixture) *admissi
 func requireAdmissionRPCControl(t *testing.T, fixture resolutionFixture, client modeldevv1.ModelDevAdmissionServiceClient) *modeldevv1.ResolveAdmissionResponse {
 	t.Helper()
 	response, err := client.ResolveAdmission(admissionRPCContext(fixture.ctx, fixture.selection.TenantID), admissionRPCRequest(t, fixture))
-	if err != nil || response == nil { t.Fatalf("healthy RPC control failed: %v", err) }
+	if err != nil || response == nil {
+		t.Fatalf("healthy RPC control failed: %v", err)
+	}
 	got, err := contractpb.DecodeSnapshot(response.Snapshot)
 	want := expectedManagedSnapshot(fixture)
 	canonical, canonicalErr := want.Canonical()
@@ -369,19 +383,23 @@ func requireAdmissionRPCControl(t *testing.T, fixture resolutionFixture, client 
 
 func requireAdmissionRPCError(t *testing.T, response *modeldevv1.ResolveAdmissionResponse, err error, code codes.Code, reason modeldevv1.ErrorReason, correlation string) *modeldevv1.ErrorDetail {
 	t.Helper()
-	if response != nil || status.Code(err) != code { t.Fatalf("RPC failure returned a candidate or wrong code: %v", err) }
+	if response != nil || status.Code(err) != code {
+		t.Fatalf("RPC failure returned a candidate or wrong code: %v", err)
+	}
 	failure := status.Convert(err)
 	details := failure.Details()
-	if len(details) != 1 { t.Fatalf("RPC failure lacks one typed safe detail: %v", err) }
+	if len(details) != 1 {
+		t.Fatalf("RPC failure lacks one typed safe detail: %v", err)
+	}
 	detail, ok := details[0].(*modeldevv1.ErrorDetail)
 	messages := map[modeldevv1.ErrorReason]string{
-		modeldevv1.ErrorReason_ERROR_REASON_INVALID_ARGUMENT: "invalid admission resolution request",
-		modeldevv1.ErrorReason_ERROR_REASON_UNAUTHENTICATED: "authenticated Governance delivery required",
+		modeldevv1.ErrorReason_ERROR_REASON_INVALID_ARGUMENT:      "invalid admission resolution request",
+		modeldevv1.ErrorReason_ERROR_REASON_UNAUTHENTICATED:       "authenticated Governance delivery required",
 		modeldevv1.ErrorReason_ERROR_REASON_NO_COMPATIBLE_RELEASE: "selected Release is unavailable or incompatible",
-		modeldevv1.ErrorReason_ERROR_REASON_RESOURCE_NOT_FOUND: "input version unavailable",
-		modeldevv1.ErrorReason_ERROR_REASON_INPUT_NOT_READY: "input version is not ready",
+		modeldevv1.ErrorReason_ERROR_REASON_RESOURCE_NOT_FOUND:    "input version unavailable",
+		modeldevv1.ErrorReason_ERROR_REASON_INPUT_NOT_READY:       "input version is not ready",
 		modeldevv1.ErrorReason_ERROR_REASON_ENVIRONMENT_NOT_READY: "managed admission environment is not ready",
-		modeldevv1.ErrorReason_ERROR_REASON_UPSTREAM_UNAVAILABLE: "admission resolution unavailable",
+		modeldevv1.ErrorReason_ERROR_REASON_UPSTREAM_UNAVAILABLE:  "admission resolution unavailable",
 	}
 	if !ok || detail.Reason != reason || detail.CorrelationId != correlation || detail.SafeMessage != messages[reason] || failure.Message() != messages[reason] || len(detail.Violations) != 0 {
 		t.Fatalf("RPC failure changed its finite reason, correlation or safe message: %v", err)
@@ -401,24 +419,38 @@ func requireAdmissionRPCUnchanged(t *testing.T, fixture resolutionFixture, extra
 	}
 	for _, want := range append([]biz.InputVersion{fixture.ready}, extra...) {
 		got, err := input.New(pool).Get(fixture.ctx, want.Import.TenantID, want.Import.InputVersionID)
-		if err != nil || !reflect.DeepEqual(got, want) { t.Fatalf("RPC changed durable input: %v", err) }
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Fatalf("RPC changed durable input: %v", err)
+		}
 	}
 }
 
 // Failure injection still delegates the actual pinned facts read first. These
 // wrappers never provide fake facts or represent a production adapter.
-type admissionRPCFailingFacts struct { delegate biz.AdmissionFactsReader; failure error; observed chan struct{} }
+type admissionRPCFailingFacts struct {
+	delegate biz.AdmissionFactsReader
+	failure  error
+	observed chan struct{}
+}
 
 func (reader admissionRPCFailingFacts) ReadAdmissionFacts(ctx context.Context, tenant, release, digest string) (biz.TenantAdmissionFacts, error) {
-	if _, err := reader.delegate.ReadAdmissionFacts(ctx, tenant, release, digest); err != nil { return biz.TenantAdmissionFacts{}, err }
+	if _, err := reader.delegate.ReadAdmissionFacts(ctx, tenant, release, digest); err != nil {
+		return biz.TenantAdmissionFacts{}, err
+	}
 	close(reader.observed)
 	return biz.TenantAdmissionFacts{}, reader.failure
 }
 
-type admissionRPCWaitingFacts struct { delegate biz.AdmissionFactsReader; entered chan struct{}; exited chan error }
+type admissionRPCWaitingFacts struct {
+	delegate biz.AdmissionFactsReader
+	entered  chan struct{}
+	exited   chan error
+}
 
 func (reader admissionRPCWaitingFacts) ReadAdmissionFacts(ctx context.Context, tenant, release, digest string) (biz.TenantAdmissionFacts, error) {
-	if _, err := reader.delegate.ReadAdmissionFacts(ctx, tenant, release, digest); err != nil { return biz.TenantAdmissionFacts{}, err }
+	if _, err := reader.delegate.ReadAdmissionFacts(ctx, tenant, release, digest); err != nil {
+		return biz.TenantAdmissionFacts{}, err
+	}
 	close(reader.entered)
 	<-ctx.Done()
 	err := ctx.Err()
