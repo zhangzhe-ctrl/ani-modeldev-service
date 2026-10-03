@@ -97,6 +97,10 @@ type ExecutionRuntime struct {
 	CloseRequestedAt time.Time
 	ClosedAt         *time.Time
 	CloseEvidence    *ManagedCloseEvidence
+	// CloseAuthority is an owner-only recovery association. It cannot authorize
+	// managed steps or recreate a consumed submission permit.
+	CloseAuthority   *RunAuthorityCandidate
+	CloseReviewReason string
 	OwnerRevision    uint64
 }
 

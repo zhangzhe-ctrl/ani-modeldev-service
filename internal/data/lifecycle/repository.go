@@ -19,6 +19,7 @@ import (
 	executionsql "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/execution/sqlc"
 	lifecyclesql "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/lifecycle/sqlc"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/pgvalue"
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/submission"
 	submissionsql "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/submission/sqlc"
 )
 
@@ -78,6 +79,7 @@ func ReadInTransaction(ctx context.Context, transaction pgx.Tx, tenant, executio
 }
 
 type runtimeTransaction struct {
+	transaction           pgx.Tx
 	queries               *lifecyclesql.Queries
 	tenantID, executionID pgtype.UUID
 	execution             biz.Execution
@@ -139,10 +141,14 @@ func (repository *Repository) mutate(ctx context.Context, authority biz.RunAutho
 		return biz.ExecutionRuntime{}, false, err
 	}
 	original, err := submissionsql.New(tx).GetRunAuthorityRow(ctx, submissionsql.GetRunAuthorityRowParams{TenantID: tenantID, ExecutionID: executionID})
-	if err != nil {
+	var observed biz.RunAuthorityCandidate
+	if errors.Is(err, pgx.ErrNoRows) && current.state.CloseGeneration > 0 && current.state.CloseAuthority != nil {
+		observed = *current.state.CloseAuthority
+	} else if err != nil {
 		return biz.ExecutionRuntime{}, false, storageError(err)
+	} else {
+		observed = biz.RunAuthorityCandidate{TenantID: original.TenantID.String(), ExecutionID: original.ExecutionID.String(), OperationID: original.OperationID.String(), SpecHash: original.SpecHash, AttemptID: original.AttemptID.String(), PlanHash: original.PlanHash, RunID: original.RunID.String(), NamespaceName: original.NamespaceName, NamespaceUID: original.NamespaceUid.String(), WorkflowName: original.WorkflowName, WorkflowUID: original.WorkflowUid}
 	}
-	observed := biz.RunAuthorityCandidate{TenantID: original.TenantID.String(), ExecutionID: original.ExecutionID.String(), OperationID: original.OperationID.String(), SpecHash: original.SpecHash, AttemptID: original.AttemptID.String(), PlanHash: original.PlanHash, RunID: original.RunID.String(), NamespaceName: original.NamespaceName, NamespaceUID: original.NamespaceUid.String(), WorkflowName: original.WorkflowName, WorkflowUID: original.WorkflowUid}
 	if observed != authority || observed.OperationID != current.execution.OperationID || observed.SpecHash != current.execution.SpecHash || observed.NamespaceName != current.execution.Snapshot.Environment.NamespaceName || observed.NamespaceUID != current.execution.Snapshot.Environment.NamespaceUID {
 		return biz.ExecutionRuntime{}, false, biz.ErrRunAuthorityConflict
 	}
@@ -237,11 +243,14 @@ func readRuntime(ctx context.Context, tx pgx.Tx, tenantID, executionID pgtype.UU
 		state.CloseRequestedAt = close.RequestedAt.Time.UTC()
 	}
 	state.OwnerRevision = revision
+	if recovered := state.CloseAuthority; recovered != nil {
+		if state.CloseGeneration == 0 || !validEarlyCloseCandidate(*recovered) || recovered.TenantID != admitted.TenantID || recovered.ExecutionID != admitted.ExecutionID || recovered.OperationID != admitted.OperationID || recovered.SpecHash != admitted.SpecHash || recovered.NamespaceName != admitted.Snapshot.Environment.NamespaceName || recovered.NamespaceUID != admitted.Snapshot.Environment.NamespaceUID { return nil, biz.ErrPersistence }
+	}
 	admitted.OwnerRevision = revision
 	if !identity.DatabaseNow.Valid || identity.DatabaseNow.InfinityModifier != pgtype.Finite {
 		return nil, biz.ErrPersistence
 	}
-	return &runtimeTransaction{queries: queries, tenantID: tenantID, executionID: executionID, execution: admitted, state: state, now: identity.DatabaseNow.Time.UTC()}, nil
+	return &runtimeTransaction{transaction: tx, queries: queries, tenantID: tenantID, executionID: executionID, execution: admitted, state: state, now: identity.DatabaseNow.Time.UTC()}, nil
 }
 
 func saveRuntime(ctx context.Context, current *runtimeTransaction) error {
@@ -424,6 +433,11 @@ func (repository *Repository) ConfirmRuntimeClosed(ctx context.Context, authorit
 		if !validCloseEvidence(authority, current.state.CloseReason, evidence) {
 			return false, biz.ErrRuntimeNotReady
 		}
+		// Recheck retained Run identities under the same lock as observations.
+		// A second late observation cannot race the earlier external proof.
+		dispatch, err := submission.ReadInTransaction(ctx, current.transaction, authority.TenantID, authority.ExecutionID)
+		if err != nil { return false, err }
+		if len(dispatch.ConfirmedRuns) > 1 || (len(dispatch.ConfirmedRuns) == 1 && dispatch.ConfirmedRuns[0].RunID != authority.RunID) || (current.state.CloseAuthority != nil && len(dispatch.ConfirmedRuns) != 1) { return false, biz.ErrRunAuthorityConflict }
 		if current.state.ClosedAt != nil {
 			return false, nil
 		}
@@ -448,6 +462,7 @@ func (repository *Repository) ConfirmRuntimeClosed(ctx context.Context, authorit
 			return false, biz.ErrRuntimeNotReady
 		}
 		current.state.CloseEvidence = &evidence
+		current.state.CloseReviewReason = ""
 		closed := current.now
 		current.state.ClosedAt = &closed
 		return true, nil

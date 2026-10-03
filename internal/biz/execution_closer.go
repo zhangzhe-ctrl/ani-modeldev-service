@@ -20,6 +20,16 @@ type UndispatchedCloser interface {
 	CloseUndispatched(context.Context, string, string) (ExecutionRuntime, error)
 }
 
+type OwnerCloseRecovery interface {
+	FenceOwnerClose(context.Context, string, string) (ExecutionRuntime, error)
+	RecordClosingRun(context.Context, RunAuthorityCandidate) (ExecutionRuntime, error)
+	MarkOwnerCloseReview(context.Context, string, string, string) (ExecutionRuntime, error)
+}
+
+type ClosingRunVerifier interface {
+	VerifyClosingRun(context.Context, Execution, PipelineDispatch, string) (RunAuthorityCandidate, error)
+}
+
 type ExecutionCloser struct {
 	runtime *ManagedRuntime
 	runs    ManagedRunCloser
@@ -57,12 +67,20 @@ func (closer *ExecutionCloser) Reconcile(ctx context.Context, tenant, execution 
 			return ManagedRuntimeResult{}, ErrRuntimeNotReady
 		}
 		state, err := unbound.CloseUndispatched(ctx, tenant, execution)
-		if err != nil {
+		if err == nil {
+			return runtimeResult(ManagedRuntimeResult{Execution: admitted}, state, false)
+		}
+		if !errors.Is(err, ErrRuntimeNotReady) {
 			return ManagedRuntimeResult{}, err
 		}
-		return runtimeResult(ManagedRuntimeResult{Execution: admitted}, state, false)
-	}
-	if err != nil {
+		recovery, ok := runtime.repository.(OwnerCloseRecovery)
+		if !ok { return ManagedRuntimeResult{}, ErrRuntimeNotReady }
+		if _, err := recovery.FenceOwnerClose(ctx, tenant, execution); err != nil { return ManagedRuntimeResult{}, err }
+		dispatch, err := runtime.steps.repository.Get(ctx, tenant, execution)
+		if err != nil { return ManagedRuntimeResult{}, err }
+		authority, err = closer.recoverRun(ctx, admitted, dispatch, "")
+		if err != nil { return ManagedRuntimeResult{}, err }
+	} else if err != nil {
 		return ManagedRuntimeResult{}, err
 	}
 	dispatch, err := runtime.steps.repository.Get(ctx, tenant, execution)
@@ -90,6 +108,16 @@ func (closer *ExecutionCloser) Reconcile(ctx context.Context, tenant, execution 
 		}
 	}
 	result.Runtime = state
+	if dispatch.State != PipelineDispatchConfirmed || len(dispatch.ConfirmedRuns) == 0 {
+		authority, err = closer.recoverRun(ctx, admitted, dispatch, owner.RunID)
+		if err != nil { return ManagedRuntimeResult{}, err }
+		if authority.RunAuthorityCandidate != owner { return ManagedRuntimeResult{}, ErrRunAuthorityConflict }
+		state, err = runtime.repository.GetRuntime(ctx, tenant, execution)
+		if err != nil { return ManagedRuntimeResult{}, err }
+		dispatch, err = runtime.steps.repository.Get(ctx, tenant, execution)
+		if err != nil { return ManagedRuntimeResult{}, err }
+		result.Authority, result.Runtime = authority, state
+	}
 	// A stopped KFP waiter cannot stop external training by itself. Even when
 	// KFP is temporarily unavailable, make the independent training stop attempt
 	// after the committed fence; neither failure may imply CLOSED.
@@ -98,7 +126,7 @@ func (closer *ExecutionCloser) Reconcile(ctx context.Context, tenant, execution 
 		if state.TrainingHandle == nil {
 			handle, findErr := runtime.trainer.FindTraining(ctx, *state.Training)
 			if findErr != nil {
-				return ManagedRuntimeResult{}, errors.Join(runErr, findErr)
+				return ManagedRuntimeResult{}, closer.review(ctx, tenant, execution, "TRAINJOB_CREATE_UNRESOLVED", errors.Join(runErr, findErr))
 			}
 			state, err = runtime.repository.RecordTrainingHandle(ctx, owner, handle)
 			if err != nil {
@@ -126,7 +154,7 @@ func (closer *ExecutionCloser) Reconcile(ctx context.Context, tenant, execution 
 	// remain a reconciliation concern, with the shared creation fence retained.
 	for _, run := range dispatch.ConfirmedRuns {
 		if run.RunID != owner.RunID {
-			return ManagedRuntimeResult{}, ErrRunAuthorityConflict
+			return ManagedRuntimeResult{}, closer.review(ctx, tenant, execution, "MULTIPLE_RUNS", ErrRunAuthorityConflict)
 		}
 	}
 	evidence, err := closer.writers.VerifyOwnerWritersAbsent(ctx, admitted, owner, state.Workspace)
@@ -142,4 +170,24 @@ func (closer *ExecutionCloser) Reconcile(ctx context.Context, tenant, execution 
 		return ManagedRuntimeResult{}, err
 	}
 	return runtimeResult(result, state, false)
+}
+
+func (closer *ExecutionCloser) recoverRun(ctx context.Context, admitted Execution, dispatch PipelineDispatch, runID string) (RunAuthority, error) {
+	recovery, ok := closer.runtime.repository.(OwnerCloseRecovery)
+	verifier, verifies := closer.writers.(ClosingRunVerifier)
+	if !ok || !verifies { return RunAuthority{}, ErrRuntimeNotReady }
+	if len(dispatch.ConfirmedRuns) > 1 { return RunAuthority{}, closer.review(ctx, admitted.TenantID, admitted.ExecutionID, "MULTIPLE_RUNS", ErrRunAuthorityConflict) }
+	if runID == "" && len(dispatch.ConfirmedRuns) == 1 { runID = dispatch.ConfirmedRuns[0].RunID }
+	owner, err := verifier.VerifyClosingRun(ctx, admitted, dispatch, runID)
+	if err != nil { return RunAuthority{}, closer.review(ctx, admitted.TenantID, admitted.ExecutionID, "KFP_CREATE_UNRESOLVED", err) }
+	state, err := recovery.RecordClosingRun(ctx, owner)
+	if err != nil { return RunAuthority{}, err }
+	return RunAuthority{RunAuthorityCandidate: owner, OwnerRevision: state.OwnerRevision}, nil
+}
+
+func (closer *ExecutionCloser) review(ctx context.Context, tenant, execution, reason string, cause error) error {
+	recovery, ok := closer.runtime.repository.(OwnerCloseRecovery)
+	if !ok { return cause }
+	_, err := recovery.MarkOwnerCloseReview(ctx, tenant, execution, reason)
+	return errors.Join(cause, err)
 }
