@@ -243,11 +243,11 @@ func waitGovernanceDeliveryContractStop(t *testing.T, directory string, fixture 
 		// The read above checked the complete original and owner revision 1;
 		// no command response supplies the contents of this observation.
 		report := struct {
-			Schema string `json:"schema"`
-			OperationID string `json:"operation_id"`
-			ExecutionID string `json:"execution_id"`
+			Schema            string `json:"schema"`
+			OperationID       string `json:"operation_id"`
+			ExecutionID       string `json:"execution_id"`
 			ExecutionSpecHash string `json:"execution_spec_hash"`
-			Revision uint64 `json:"revision"`
+			Revision          uint64 `json:"revision"`
 		}{"ani.cpu-p01.delivery-observation.v1", target.OperationID, target.ExecutionID, target.SpecHash, 1}
 		raw, err := json.Marshal(report)
 		if err != nil || len(raw) > 1024 {
