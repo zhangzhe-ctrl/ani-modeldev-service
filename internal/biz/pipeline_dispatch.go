@@ -133,6 +133,9 @@ type PipelineConfirmedRun struct {
 }
 
 type PipelineDispatch struct {
+	// OwnerRevision covers the execution aggregate, including observations
+	// which retain the same submission state. It is never a sending permit.
+	OwnerRevision uint64
 	AttemptID  string
 	Plan       PipelineDispatchPlan
 	PlanHash   string

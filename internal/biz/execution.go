@@ -56,6 +56,9 @@ func validAuditActor(value string) bool {
 // observations are separate facts and must not rewrite this admission.
 type Execution struct {
 	Admission
+	// OwnerRevision identifies the committed aggregate facts observed in the
+	// same transaction. Replaying an existing fact never advances it.
+	OwnerRevision uint64
 	// Close is an observed durable fact, never a creation permit. A nil value
 	// does not authorize work; a creator must check the shared identity lock.
 	Close *CloseRecord
@@ -119,6 +122,7 @@ type CloseRecord struct {
 // Replayed identifies this delivery's outcome, not a persisted close fact.
 type CloseReceipt struct {
 	CloseRecord
+	OwnerRevision uint64
 	Replayed bool
 }
 
