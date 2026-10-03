@@ -79,6 +79,12 @@ for material and readiness boundaries. An explicit `runtime` block additionally
 assembles the durable dispatch worker, dedicated managed-step TLS listener,
 current Kubernetes/KFP identity checks, Trainer, workspace and publication
 verification. See [runtime configuration](configs/examples/managed-runtime.yaml).
+The runtime also scans the configured tenant/environment for bound executions
+with a durable close intent or an expired original deadline. It resumes closing
+after restart, stops the verified KFP Run and TrainJob, and requires terminal
+controller and writer evidence before recording CLOSED. Missing/uncertain
+observations retain the creation fence and remain unresolved. Reconciliation
+before a Run authority exists is not yet part of this worker.
 Its `/readyz` reports whether these configured service entry points can serve;
 it does not establish cluster or business acceptance. The same Governance mTLS
 listener serves execution detail, published artifact listing and download grants.
@@ -117,6 +123,15 @@ The image must provide `/opt/venv/bin/python` with CPU PyTorch. No image is pull
 
 ```sh
 ./scripts/test-main-flow
+```
+
+The focused owner-stop case uses the same Fedora database/image settings. It
+waits for an actual slow-stop optimizer step, commits USER_STOP through mTLS,
+rebuilds the owner and its database connection, and checks automatic closure
+without creating another Run or TrainJob:
+
+```sh
+go test -tags cpu_mainflow -count=1 -v -run '^TestMainFlowOwnerStop' ./internal/data/submittest
 ```
 
 The output directory retains the independently downloaded checkpoint, model
