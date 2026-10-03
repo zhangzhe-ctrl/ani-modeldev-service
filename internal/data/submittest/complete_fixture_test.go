@@ -74,6 +74,7 @@ func newCompleteFixture(t *testing.T) *completeFixture {
 	// Freeze the actual locally qualified image manifest used by Podman. The
 	// external TrainJob substitute may not replace it with a synthetic digest.
 	snapshot.Program.ImageDigest = f.image
+	snapshot.Program.Command = []string{"/opt/venv/bin/python", "-I", "/opt/cpu03/train_mlp.py"}
 	snapshot.Input.Object.SizeBytes = int64(len(data))
 	snapshot.Input.Object.SHA256 = completeHash(data)
 	snapshot.Program.ResolvedArgs = []string{"--data", "/inputs/data.csv", "--output", "/outputs", "--expected-input-sha256", snapshot.Input.Object.SHA256, "--expected-input-bytes", fmt.Sprint(len(data)), "--learning-rate", "0.01"}
@@ -237,7 +238,9 @@ func (f *completeFixture) makeTrainingChildren(name string) {
 func (f *completeFixture) runTraining(name string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	args := []string{"run", "--rm", "--pull=never", "--network", "none", "--http-proxy=false", "--cpus", "2", "--memory", "2g", "--memory-swap", "2g", "--pids-limit", "256", "--cap-drop", "all", "--security-opt", "no-new-privileges", "--read-only", "--userns", "keep-id:uid=10001,gid=10001", "--volume", f.source + ":/source:ro,Z", "--volume", filepath.Join(f.root, f.workspace.InputSubpath) + ":/inputs:ro,Z", "--volume", filepath.Join(f.root, f.workspace.TrainingSubpath) + ":/outputs:rw,Z", "--entrypoint", "/opt/venv/bin/python", f.image, "-I", "/source/train_mlp.py"}
+	command := f.request.Admission.Snapshot.Program.Command
+	args := []string{"run", "--rm", "--pull=never", "--network", "none", "--http-proxy=false", "--cpus", "2", "--memory", "2g", "--memory-swap", "2g", "--pids-limit", "256", "--cap-drop", "all", "--security-opt", "no-new-privileges", "--read-only", "--userns", "keep-id:uid=10001,gid=10001", "--volume", filepath.Join(f.root, f.workspace.InputSubpath) + ":/inputs:ro,Z", "--volume", filepath.Join(f.root, f.workspace.TrainingSubpath) + ":/outputs:rw,Z", "--entrypoint", command[0], f.image}
+	args = append(args, command[1:]...)
 	args = append(args, f.request.Admission.Snapshot.Program.ResolvedArgs...)
 	output, err := exec.CommandContext(ctx, "podman", args...).CombinedOutput()
 	f.mu.Lock()
