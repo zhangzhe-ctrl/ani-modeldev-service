@@ -67,7 +67,7 @@ func TestGovernanceContractProvider(t *testing.T) {
 		t.Fatal("GOVERNANCE_CONTRACT_PREFLIGHT: synthetic client key unavailable")
 	}
 	for name, raw := range map[string][]byte{
-		"ca.pem": ca,
+		"ca.pem":         ca,
 		"governance.pem": pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: fixture.certificates.Governance.Certificate[0]}),
 		"governance.key": pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: key}),
 	} {
@@ -119,21 +119,21 @@ func TestGovernanceContractProvider(t *testing.T) {
 }
 
 type governanceContractHandshake struct {
-	Schema string `json:"schema"`
+	Schema  string `json:"schema"`
 	Address string `json:"address"`
-	TLS struct {
-		CAFile string `json:"ca_file"`
+	TLS     struct {
+		CAFile   string `json:"ca_file"`
 		CertFile string `json:"cert_file"`
-		KeyFile string `json:"key_file"`
+		KeyFile  string `json:"key_file"`
 	} `json:"tls"`
 	Scope struct {
 		ResourceTenantID string `json:"resource_tenant_id"`
-		Actor string `json:"actor"`
+		Actor            string `json:"actor"`
 	} `json:"scope"`
-	Intent cpup01.Intent `json:"intent"`
+	Intent  cpup01.Intent `json:"intent"`
 	Release struct {
-		ReleaseID string `json:"release_id"`
-		ReleaseDigest string `json:"release_digest"`
+		ReleaseID         string `json:"release_id"`
+		ReleaseDigest     string `json:"release_digest"`
 		BindingGeneration uint64 `json:"binding_generation"`
 	} `json:"release"`
 	AcceptedAt time.Time `json:"accepted_at"`
@@ -143,7 +143,7 @@ func waitGovernanceContractStop(t *testing.T, directory string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	ticker := time.NewTicker(50*time.Millisecond)
+	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {
