@@ -56,6 +56,11 @@ func prepareMainFlowAdmission(t *testing.T, ctx context.Context, f *completeFixt
 	release.PipelineIRSHA256, release.Runtime = snapshot.Release.PipelineIRSHA256, snapshot.Release.Runtime
 	release.Program.ImageVersionID, release.Program.ImageDigest = snapshot.Program.ImageVersionID, f.image
 	release.Program.Command = snapshot.Program.Command
+	// Only this registered test-fixture recipe is selectable here. The user
+	// Intent cannot provide a command, an argv template or a recipe token.
+	if args := snapshot.Program.ResolvedArgs; len(args) >= 2 && args[len(args)-2] == "--recipe" && args[len(args)-1] == "slow-stop" {
+		release.Program.ArgsTemplate = append(release.Program.ArgsTemplate, cpup01.ReleaseArgument{Literal: "--recipe"}, cpup01.ReleaseArgument{Literal: "slow-stop"})
+	}
 	release.Resources, release.Workspace, release.OutputContract = snapshot.Resources, snapshot.Workspace, snapshot.OutputContract
 	release.ExecutionTimeoutSeconds = uint32(time.Hour / time.Second)
 	rawRelease, err := json.Marshal(release)

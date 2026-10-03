@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,11 +48,25 @@ func TestMainFlowOwnerStopRecoversIntentAndTerminatesActualTraining(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	startup := os.Getenv("ANI_MODELDEV_MAINFLOW_STARTUP")
+	limit := 90 * time.Second
+	if startup != "" {
+		limit = 6 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
 	open := postgres.Prepare(t)
 	pool := open()
-	acceptThroughCommandRPC(t, ctx, execution.New(pool), f.request.Admission)
+	store := s3.New(s3.Options{Region: "us-east-1", Credentials: aws.CredentialsProviderFunc(func(context.Context) (aws.Credentials, error) {
+		return aws.Credentials{AccessKeyID: "synthetic-key", SecretAccessKey: "synthetic-secret"}, nil
+	}), BaseEndpoint: aws.String(f.storage.URL), UsePathStyle: true, HTTPClient: f.storage.Client(), RetryMaxAttempts: 1, RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired, ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired})
+	if startup != "" {
+		resolver, selection, intent := prepareMainFlowAdmission(t, ctx, f, pool, store)
+		query := startMainFlowQuery(t, open(), store, f.request.Admission, resolver)
+		awaitBusinessAdmission(t, ctx, f, query, execution.New(pool), selection, intent)
+	} else {
+		acceptThroughCommandRPC(t, ctx, execution.New(pool), f.request.Admission)
+	}
 	roots := x509.NewCertPool()
 	roots.AddCert(f.kfp.Certificate())
 	runs, err := kfp.New(kfp.Config{ConnectionRef: f.request.Admission.Snapshot.Environment.KFPConnectionRef, Endpoint: f.kfp.URL, RootCAs: roots, Timeout: 5 * time.Second}, tokenProviderFunc(func(context.Context, string, cpup01.EnvironmentBindingSnapshot) (string, error) {
@@ -64,16 +79,17 @@ func TestMainFlowOwnerStopRecoversIntentAndTerminatesActualTraining(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := submitter.Submit(ctx, f.request); err != nil {
+	dispatchWorker, err := biz.NewDispatchWorker(submission.New(pool), submitter, biz.PipelineDispatchBinding{TenantID: f.request.Admission.TenantID, Environment: f.request.Admission.Snapshot.Environment, Owner: f.request.Owner}, 10, 100*time.Millisecond)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if count, err := dispatchWorker.DispatchOnce(ctx); err != nil || count != 1 {
+		t.Fatalf("OWNER_CLOSE_PREFLIGHT: worker did not dispatch the committed admission: count=%d %v", count, err)
 	}
 	kube, err := dynamic.NewForConfig(&rest.Config{Host: f.kube.URL, BearerToken: "synthetic-kube-owner", Timeout: 10 * time.Second, TLSClientConfig: rest.TLSClientConfig{CAData: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.kube.Certificate().Raw})}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := s3.New(s3.Options{Region: "us-east-1", Credentials: aws.CredentialsProviderFunc(func(context.Context) (aws.Credentials, error) {
-		return aws.Credentials{AccessKeyID: "synthetic-key", SecretAccessKey: "synthetic-secret"}, nil
-	}), BaseEndpoint: aws.String(f.storage.URL), UsePathStyle: true, HTTPClient: f.storage.Client(), RetryMaxAttempts: 1, RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired, ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired})
 	assemble := func(pool *pgxpool.Pool) (*biz.ManagedSteps, *biz.ManagedRuntime, *runtimeproof.Verifier) {
 		identity, err := stepidentity.New(kube, "ani-modeldev-managed-step")
 		if err != nil {
@@ -131,16 +147,23 @@ func TestMainFlowOwnerStopRecoversIntentAndTerminatesActualTraining(t *testing.T
 
 	// Deliver through the real Governance mTLS receiver before discarding every
 	// business owner and its PG pool. A CLOSING receipt does not stop the writer.
-	query := startMainFlowQuery(t, pool, store, f.request.Admission)
-	connection, err := grpc.NewClient(query.address, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS13, RootCAs: query.certificates.Roots, ServerName: "ani-modeldev-service", Certificates: []tls.Certificate{query.certificates.Governance}})))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer connection.Close()
-	commandCall := metadata.NewOutgoingContext(ctx, metadata.Pairs("x-ani-tenant-id", f.request.Admission.TenantID, "x-ani-actor", f.request.Admission.Actor, "x-ani-request-id", "11111111-9999-4333-8444-555555555555"))
-	receipt, err := modeldevv1.NewModelDevCommandServiceClient(connection).ApplyCloseIntent(commandCall, &modeldevv1.ApplyCloseIntentRequest{Identity: f.stepContext("train-wait").Identity, ResourceTenantId: f.request.Admission.TenantID, RequestedActorId: f.request.Admission.Actor, IntentGeneration: 1, Reason: modeldevv1.CloseReason_CLOSE_REASON_USER_STOP, RequestedAt: timestamppb.New(time.Now().UTC().Truncate(time.Microsecond))})
-	if err != nil || !receipt.GetDurablyRecorded() || receipt.GetCloseGeneration() == 0 {
-		t.Fatalf("OWNER_CLOSE_PREFLIGHT: real close command was not committed: %v", err)
+	var closeGeneration uint64
+	if startup != "" {
+		writeOwnerCloseSignal(t, startup, "training-started.json", map[string]any{"operation_id": f.request.Admission.OperationID, "execution_id": f.request.Admission.ExecutionID})
+		closeGeneration = awaitBusinessCloseIntent(t, ctx, startup, f, execution.New(pool))
+	} else {
+		query := startMainFlowQuery(t, pool, store, f.request.Admission)
+		connection, err := grpc.NewClient(query.address, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS13, RootCAs: query.certificates.Roots, ServerName: "ani-modeldev-service", Certificates: []tls.Certificate{query.certificates.Governance}})))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer connection.Close()
+		commandCall := metadata.NewOutgoingContext(ctx, metadata.Pairs("x-ani-tenant-id", f.request.Admission.TenantID, "x-ani-actor", f.request.Admission.Actor, "x-ani-request-id", "11111111-9999-4333-8444-555555555555"))
+		receipt, err := modeldevv1.NewModelDevCommandServiceClient(connection).ApplyCloseIntent(commandCall, &modeldevv1.ApplyCloseIntentRequest{Identity: f.stepContext("train-wait").Identity, ResourceTenantId: f.request.Admission.TenantID, RequestedActorId: f.request.Admission.Actor, IntentGeneration: 1, Reason: modeldevv1.CloseReason_CLOSE_REASON_USER_STOP, RequestedAt: timestamppb.New(time.Now().UTC().Truncate(time.Microsecond))})
+		if err != nil || !receipt.GetDurablyRecorded() || receipt.GetCloseGeneration() == 0 {
+			t.Fatalf("OWNER_CLOSE_PREFLIGHT: real close command was not committed: %v", err)
+		}
+		closeGeneration = receipt.CloseGeneration
 	}
 	stop()
 	stop = nil
@@ -148,7 +171,7 @@ func TestMainFlowOwnerStopRecoversIntentAndTerminatesActualTraining(t *testing.T
 	pool = open()
 	steps, managed, proof := assemble(pool)
 	intent, err := execution.New(pool).GetCloseIntent(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
-	if err != nil || intent.Generation != receipt.CloseGeneration || intent.Reason != biz.CloseReasonUserStop {
+	if err != nil || intent.Generation != closeGeneration || intent.Reason != biz.CloseReasonUserStop {
 		t.Fatalf("OWNER_CLOSE_PREFLIGHT: restarted owner lost committed USER_STOP: %v", err)
 	}
 	select {
@@ -165,11 +188,39 @@ func TestMainFlowOwnerStopRecoversIntentAndTerminatesActualTraining(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result, err := worker.ReconcileOnce(ctx); err != nil || result.Examined != 1 || result.Closed != 1 || result.Unresolved != 0 {
-		t.Fatalf("OWNER_CLOSE_NOT_IMPLEMENTED: restarted owner did not discover and close committed USER_STOP: %+v %v", result, err)
+	workerContext, stopWorker := context.WithCancel(ctx)
+	workerDone := make(chan error, 1)
+	go func() {
+		workerDone <- worker.Run(workerContext)
+		close(workerDone)
+	}()
+	defer func() { stopWorker(); <-workerDone }()
+	closeContext, cancelClose := context.WithTimeout(ctx, 15*time.Second)
+	defer cancelClose()
+	closeTicker := time.NewTicker(50 * time.Millisecond)
+	defer closeTicker.Stop()
+	var closed biz.ExecutionRuntime
+	for {
+		closed, err = lifecycle.New(pool).GetRuntime(closeContext, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
+		if err != nil {
+			t.Fatalf("OWNER_CLOSE_NOT_IMPLEMENTED: cannot observe automatic owner closure: %v", err)
+		}
+		if closed.ClosedAt != nil {
+			break
+		}
+		select {
+		case err := <-workerDone:
+			t.Fatalf("OWNER_CLOSE_NOT_IMPLEMENTED: owner worker exited before CLOSED: %v", err)
+		case <-closeContext.Done():
+			t.Fatalf("OWNER_CLOSE_NOT_IMPLEMENTED: automatic owner did not close USER_STOP: %+v", closed)
+		case <-closeTicker.C:
+		}
 	}
-	closed, err := lifecycle.New(pool).GetRuntime(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
-	if err != nil || closed.ClosedAt == nil || closed.CloseGeneration != intent.Generation || closed.CloseReason != "USER_STOP" || closed.Observation == nil || !closed.Observation.WritersAbsent || closed.CloseEvidence == nil || closed.Publication != nil {
+	stopWorker()
+	if err := <-workerDone; err != nil {
+		t.Fatalf("owner worker failed during shutdown: %v", err)
+	}
+	if closed.CloseGeneration != intent.Generation || closed.CloseReason != "USER_STOP" || closed.Observation == nil || !closed.Observation.WritersAbsent || closed.CloseEvidence == nil || closed.Publication != nil {
 		t.Fatalf("OWNER_CLOSE_NOT_IMPLEMENTED: USER_STOP lacks durable writer-free CLOSED: %+v %v", closed, err)
 	}
 	select {
@@ -184,8 +235,8 @@ func TestMainFlowOwnerStopRecoversIntentAndTerminatesActualTraining(t *testing.T
 		t.Fatal("owner did not stop both KFP and the actual training process")
 	}
 	client, stop = startMainFlowStepHandler(t, service.NewRuntimeStep(steps, managed))
-	if _, err := client.EnsureTraining(bootstrapCall(ctx, f, "synthetic-bound-train-wait"), &modeldevv1.EnsureTrainingRequest{Context: f.stepContext("train-wait")}); err == nil {
-		t.Fatal("closed execution granted a new EnsureTraining")
+	if replay, err := client.EnsureTraining(bootstrapCall(ctx, f, "synthetic-bound-train-wait"), &modeldevv1.EnsureTrainingRequest{Context: f.stepContext("train-wait")}); err == nil && (!replay.GetReplayed() || replay.GetStatus().GetTrainjob().GetUid() != completeTrainUID || replay.GetStatus().GetStates().GetCloseState() != modeldevv1.CloseState_CLOSE_STATE_CLOSED) {
+		t.Fatal("closed execution did not replay only its original fenced TrainJob")
 	}
 	f.mu.Lock()
 	creates, runCreates := f.creates, f.runCreates
@@ -194,6 +245,68 @@ func TestMainFlowOwnerStopRecoversIntentAndTerminatesActualTraining(t *testing.T
 		t.Fatalf("stop/recovery repeated creation: TrainJob=%d Run=%d", creates, runCreates)
 	}
 	t.Log("OWNER_CLOSE: actual slow-stop MLP terminated; all writer exits observed; recovered USER_STOP persisted CLOSED; subsequent Ensure cannot create")
+	if startup != "" {
+		writeOwnerCloseSignal(t, startup, "closed.json", map[string]any{"operation_id": f.request.Admission.OperationID, "execution_id": f.request.Admission.ExecutionID, "close_generation": closed.CloseGeneration})
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			if _, err := os.Stat(filepath.Join(filepath.Dir(startup), "stop")); err == nil {
+				return
+			}
+			select {
+			case <-ctx.Done():
+				t.Fatal("BFF_STOP_NOT_IMPLEMENTED: no BFF CLOSED query acknowledgement")
+			case <-ticker.C:
+			}
+		}
+	}
+}
+
+func writeOwnerCloseSignal(t *testing.T, startup, name string, value any) {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(filepath.Dir(startup), name)
+	file, err := os.OpenFile(path+".pending", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		t.Fatal("cannot reserve owner-close handshake")
+	}
+	_, writeErr := file.Write(raw)
+	closeErr := file.Close()
+	if writeErr != nil || closeErr != nil || os.Rename(path+".pending", path) != nil {
+		t.Fatal("cannot publish owner-close handshake")
+	}
+}
+
+func awaitBusinessCloseIntent(t *testing.T, ctx context.Context, startup string, f *completeFixture, repository biz.ExecutionRepository) uint64 {
+	t.Helper()
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		intent, err := repository.GetCloseIntent(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
+		if err == nil {
+			if intent.OperationID != f.request.Admission.OperationID || intent.SpecHash != f.request.Admission.SpecHash || intent.Reason != biz.CloseReasonUserStop || intent.Generation == 0 || intent.SourceGeneration != 1 {
+				t.Fatal("BFF Stop delivery changed the original execution or USER_STOP identity")
+			}
+			t.Log("BFF_STOP_DELIVERED: real BFF stop command committed in ModelDev")
+			return intent.Generation
+		}
+		if !errors.Is(err, biz.ErrExecutionNotFound) {
+			t.Fatalf("BFF Stop receipt read failed: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(filepath.Dir(startup), "stop")); err == nil {
+			t.Fatal("BFF_STOP_NOT_IMPLEMENTED: BFF stopped before close intent delivery")
+		}
+		select {
+		case <-f.trainingDone:
+			t.Fatal("BFF_STOP_NOT_IMPLEMENTED: actual training exited before BFF Stop delivery")
+		case <-ctx.Done():
+			t.Fatal("BFF_STOP_NOT_IMPLEMENTED: no durable close intent from BFF")
+		case <-ticker.C:
+		}
+	}
 }
 
 func awaitOwnerCloseOptimizerStep(t *testing.T, ctx context.Context, f *completeFixture) {
