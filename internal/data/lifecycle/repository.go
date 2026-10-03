@@ -34,16 +34,28 @@ var _ biz.ExecutionRuntimeRepository = (*Repository)(nil)
 // the fixed historical migration reader remains usable without swallowing an
 // undefined-table error or invalidating its transaction.
 func ReadInTransaction(ctx context.Context, transaction pgx.Tx, tenant, execution string) (biz.ExecutionRuntime, error) {
-	if ctx == nil || transaction == nil { return biz.ExecutionRuntime{}, biz.ErrPersistence }
+	if ctx == nil || transaction == nil {
+		return biz.ExecutionRuntime{}, biz.ErrPersistence
+	}
 	tenantID, err := databaseID(tenant)
-	if err != nil { return biz.ExecutionRuntime{}, err }
+	if err != nil {
+		return biz.ExecutionRuntime{}, err
+	}
 	executionID, err := databaseID(execution)
-	if err != nil { return biz.ExecutionRuntime{}, err }
+	if err != nil {
+		return biz.ExecutionRuntime{}, err
+	}
 	available, err := lifecyclesql.New(transaction).RuntimeSchemaAvailable(ctx)
-	if err != nil { return biz.ExecutionRuntime{}, biz.ErrPersistence }
-	if !available { return biz.ExecutionRuntime{}, biz.ErrExecutionNotFound }
+	if err != nil {
+		return biz.ExecutionRuntime{}, biz.ErrPersistence
+	}
+	if !available {
+		return biz.ExecutionRuntime{}, biz.ErrExecutionNotFound
+	}
 	current, err := readRuntime(ctx, transaction, tenantID, executionID)
-	if err != nil { return biz.ExecutionRuntime{}, err }
+	if err != nil {
+		return biz.ExecutionRuntime{}, err
+	}
 	return current.state, nil
 }
 

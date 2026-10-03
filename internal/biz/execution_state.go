@@ -21,7 +21,7 @@ const (
 type DeliveryState string
 
 const (
-	DeliveryStatePending DeliveryState = "PENDING"
+	DeliveryStatePending   DeliveryState = "PENDING"
 	DeliveryStatePublished DeliveryState = "PUBLISHED"
 )
 
@@ -91,7 +91,9 @@ func ProjectRuntimeStates(base ExecutionStates, runtime ExecutionRuntime) (Execu
 		states.Compute = ComputeStatePreparing
 	}
 	if runtime.Training != nil {
-		if runtime.Workspace == nil { return ExecutionStates{}, ErrInvalidExecutionStateFacts }
+		if runtime.Workspace == nil {
+			return ExecutionStates{}, ErrInvalidExecutionStateFacts
+		}
 		states.Compute = ComputeStateTraining
 	}
 	if runtime.TrainingHandle != nil && runtime.Training == nil {
@@ -105,7 +107,9 @@ func ProjectRuntimeStates(base ExecutionStates, runtime ExecutionRuntime) (Execu
 		case "RUNNING", "UNKNOWN":
 			states.Compute = ComputeStateTraining
 		case "SUCCEEDED":
-			if !runtime.Observation.WritersAbsent { return ExecutionStates{}, ErrInvalidExecutionStateFacts }
+			if !runtime.Observation.WritersAbsent {
+				return ExecutionStates{}, ErrInvalidExecutionStateFacts
+			}
 			states.Compute = ComputeStateSucceeded
 		case "FAILED":
 			states.Compute = ComputeStateFailed
@@ -120,7 +124,9 @@ func ProjectRuntimeStates(base ExecutionStates, runtime ExecutionRuntime) (Execu
 		states.Delivery = DeliveryStatePublished
 	}
 	if runtime.CloseGeneration > 0 {
-		if runtime.CloseRequestedAt.IsZero() { return ExecutionStates{}, ErrInvalidExecutionStateFacts }
+		if runtime.CloseRequestedAt.IsZero() {
+			return ExecutionStates{}, ErrInvalidExecutionStateFacts
+		}
 		states.Close = CloseStateClosing
 	}
 	if runtime.ClosedAt != nil {

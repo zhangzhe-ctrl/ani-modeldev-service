@@ -43,6 +43,8 @@ func executionStates(ctx context.Context, transaction pgx.Tx, execution biz.Exec
 		return biz.ExecutionStates{}, biz.ErrPersistence
 	}
 	states, err = biz.ProjectRuntimeStates(states, runtime)
-	if err != nil { return biz.ExecutionStates{}, biz.ErrPersistence }
+	if err != nil {
+		return biz.ExecutionStates{}, biz.ErrPersistence
+	}
 	return states, nil
 }
