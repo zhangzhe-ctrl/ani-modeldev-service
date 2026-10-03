@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"io"
 	"path/filepath"
 	"reflect"
@@ -17,11 +16,7 @@ import (
 	conf "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/conf/v1"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/execution"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/input"
-	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/testsupport/commandtls"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/connectivity"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -33,7 +28,7 @@ func TestAdmissionMaterialsOmittedKeepsDurableCommandsWithoutAdmission(t *testin
 		t.Fatal("ADMISSION_MATERIAL_PREFLIGHT: command-only fixture unexpectedly configured admission; behavior NOT_RUN")
 	}
 	fixture := configuredAdmissionFixture{config: config, openPool: openPool, certificates: certificates, applicationName: applicationName}
-	connection, _ := startAdmissionMaterialApp(t, fixture)
+	connection, _ := startConfiguredAdmissionApp(t, fixture)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	tenantID := uuid.NewString()
@@ -108,7 +103,7 @@ func TestAdmissionMaterialsFailStartupWithoutFallbackOrPoolLeak(t *testing.T) {
 					t.Error("ADMISSION_MATERIAL_CLEANUP: exact task-owned connection cleanup failed")
 				}
 			})
-			connection, stop := startAdmissionMaterialApp(t, fixture)
+			connection, stop := startConfiguredAdmissionApp(t, fixture)
 			if countConfiguredAdmissionConnections(t, observer, fixture.applicationName) == 0 {
 				t.Fatal("ADMISSION_MATERIAL_PREFLIGHT: actual runtime pool not observable; cleanup behavior NOT_RUN")
 			}
@@ -140,7 +135,7 @@ func TestAdmissionMaterialsEmptyCatalogueStartsButCannotResolveRelease(t *testin
 	// Facts and READY input remain real and pinned. Only the explicitly
 	// configured catalogue is empty; startup must not invent a Release.
 	fixture.config.Command.AdmissionResolution.CatalogueDirectory = t.TempDir()
-	connection, _ := startAdmissionMaterialApp(t, fixture)
+	connection, _ := startConfiguredAdmissionApp(t, fixture)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	requestID := uuid.NewString()
@@ -174,56 +169,6 @@ func TestAdmissionMaterialsEmptyCatalogueStartsButCannotResolveRelease(t *testin
 		t.Fatalf("ADMISSION_MATERIAL_BEHAVIOR: rejected candidate persisted command facts: executions=%d identities=%d closes=%d dispatches=%d error=%v", executions, identities, closes, dispatches, err)
 	}
 	assertProductionNotReadyWithoutBusinessAdapters(t, fixture.config.Server.Admin.Addr)
-}
-
-// Only the new material-boundary tests share this app lifecycle. The existing
-// positive startup fixture and its independent assertions stay unchanged.
-func startAdmissionMaterialApp(t *testing.T, fixture configuredAdmissionFixture) (*grpc.ClientConn, func()) {
-	t.Helper()
-	app, err := buildApp(fixture.config, newRuntimeLogger(io.Discard))
-	if err != nil {
-		t.Fatalf("ADMISSION_MATERIAL_BEHAVIOR: explicit usable startup materials rejected: %v", err)
-	}
-	done := make(chan error, 1)
-	go func() { done <- app.Run() }()
-	stopped := false
-	stop := func() {
-		if stopped {
-			return
-		}
-		stopped = true
-		if err := app.Stop(); err != nil {
-			t.Errorf("stop admission material app: %v", err)
-		}
-		select {
-		case err := <-done:
-			if err != nil {
-				t.Errorf("admission material app exited: %v", err)
-			}
-		case <-time.After(6 * time.Second):
-			t.Error("admission material app did not stop within its bound")
-		}
-	}
-	t.Cleanup(stop)
-	waitForHTTP(t, "http://"+fixture.config.Server.Admin.Addr+"/healthz")
-	connection, err := grpc.NewClient(fixture.config.Server.Grpc.Addr, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
-		MinVersion: tls.VersionTLS13, RootCAs: fixture.certificates.Roots, ServerName: commandtls.ServerDNSName,
-		Certificates: []tls.Certificate{fixture.certificates.Governance},
-	})))
-	if err != nil {
-		t.Fatalf("ADMISSION_MATERIAL_PREFLIGHT: TLS client configuration failed; wire behavior NOT_RUN: %v", err)
-	}
-	t.Cleanup(func() { _ = connection.Close() })
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	connection.Connect()
-	for state := connection.GetState(); state != connectivity.Ready; state = connection.GetState() {
-		if !connection.WaitForStateChange(ctx, state) {
-			t.Fatalf("ADMISSION_MATERIAL_PREFLIGHT: actual mTLS channel unavailable; wire behavior NOT_RUN: %v", ctx.Err())
-		}
-	}
-	t.Log("ADMISSION_MATERIAL_PREFLIGHT PASS: actual buildApp/Run and mTLS command listener")
-	return connection, stop
 }
 
 func requireAdmissionMaterialPoolReleased(t *testing.T, observer *pgxpool.Pool, applicationName string) {

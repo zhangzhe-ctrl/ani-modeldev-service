@@ -39,48 +39,9 @@ import (
 
 func TestConfiguredAdmissionResolvesPinnedFilesAndDurableReadyInput(t *testing.T) {
 	fixture := prepareConfiguredAdmission(t)
-	app, err := buildApp(fixture.config, newRuntimeLogger(io.Discard))
-	if err != nil {
-		t.Fatalf("ADMISSION_STARTUP_BEHAVIOR: complete real startup materials rejected: %v", err)
-	}
-	done := make(chan error, 1)
-	go func() { done <- app.Run() }()
-	stopped := false
-	stop := func() {
-		if stopped {
-			return
-		}
-		stopped = true
-		if err := app.Stop(); err != nil {
-			t.Errorf("stop configured admission app: %v", err)
-		}
-		select {
-		case err := <-done:
-			if err != nil {
-				t.Errorf("configured admission app exited: %v", err)
-			}
-		case <-time.After(6 * time.Second):
-			t.Error("configured admission app did not stop within its bound")
-		}
-	}
-	t.Cleanup(stop)
-	waitForHTTP(t, "http://"+fixture.config.Server.Admin.Addr+"/healthz")
-	connection, err := grpc.NewClient(fixture.config.Server.Grpc.Addr, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
-		MinVersion: tls.VersionTLS13, RootCAs: fixture.certificates.Roots, ServerName: commandtls.ServerDNSName,
-		Certificates: []tls.Certificate{fixture.certificates.Governance},
-	})))
-	if err != nil {
-		t.Fatalf("ADMISSION_STARTUP_PREFLIGHT: client configuration failed; behavior NOT_RUN: %v", err)
-	}
-	t.Cleanup(func() { _ = connection.Close() })
+	connection, stop := startConfiguredAdmissionApp(t, fixture)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	connection.Connect()
-	for state := connection.GetState(); state != connectivity.Ready; state = connection.GetState() {
-		if !connection.WaitForStateChange(ctx, state) {
-			t.Fatalf("ADMISSION_STARTUP_PREFLIGHT: real mTLS channel unavailable; behavior NOT_RUN: %v", ctx.Err())
-		}
-	}
 	t.Log("ADMISSION_STARTUP_PREFLIGHT PASS: real catalogue and pinned facts files, recovered READY PostgreSQL input, actual buildApp mTLS listener")
 	beforeRequest := proto.Clone(fixture.request)
 	rpcContext := metadata.NewOutgoingContext(ctx, metadata.Pairs(
@@ -139,6 +100,54 @@ func TestConfiguredAdmissionResolvesPinnedFilesAndDurableReadyInput(t *testing.T
 			t.Fatal("ADMISSION_STARTUP_BEHAVIOR: listener remained reachable after app exit")
 		}
 	}
+}
+
+func startConfiguredAdmissionApp(t *testing.T, fixture configuredAdmissionFixture) (*grpc.ClientConn, func()) {
+	t.Helper()
+	app, err := buildApp(fixture.config, newRuntimeLogger(io.Discard))
+	if err != nil {
+		t.Fatalf("ADMISSION_STARTUP_BEHAVIOR: explicit usable startup materials rejected: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- app.Run() }()
+	stopped := false
+	stop := func() {
+		if stopped {
+			return
+		}
+		stopped = true
+		if err := app.Stop(); err != nil {
+			t.Errorf("stop configured admission app: %v", err)
+		}
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Errorf("configured admission app exited: %v", err)
+			}
+		case <-time.After(6 * time.Second):
+			t.Error("configured admission app did not stop within its bound")
+		}
+	}
+	t.Cleanup(stop)
+	waitForHTTP(t, "http://"+fixture.config.Server.Admin.Addr+"/healthz")
+	connection, err := grpc.NewClient(fixture.config.Server.Grpc.Addr, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+		MinVersion: tls.VersionTLS13, RootCAs: fixture.certificates.Roots, ServerName: commandtls.ServerDNSName,
+		Certificates: []tls.Certificate{fixture.certificates.Governance},
+	})))
+	if err != nil {
+		t.Fatalf("ADMISSION_STARTUP_PREFLIGHT: client configuration failed; behavior NOT_RUN: %v", err)
+	}
+	t.Cleanup(func() { _ = connection.Close() })
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	connection.Connect()
+	for state := connection.GetState(); state != connectivity.Ready; state = connection.GetState() {
+		if !connection.WaitForStateChange(ctx, state) {
+			t.Fatalf("ADMISSION_STARTUP_PREFLIGHT: real mTLS channel unavailable; behavior NOT_RUN: %v", ctx.Err())
+		}
+	}
+	t.Log("ADMISSION_STARTUP_PREFLIGHT PASS: actual buildApp/Run and mTLS command listener")
+	return connection, stop
 }
 
 type configuredAdmissionFixture struct {
