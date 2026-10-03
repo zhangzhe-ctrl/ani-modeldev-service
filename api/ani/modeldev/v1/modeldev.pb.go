@@ -36,21 +36,29 @@ const (
 	ComputeState_COMPUTE_STATE_SUCCEEDED            ComputeState = 7
 	ComputeState_COMPUTE_STATE_FAILED               ComputeState = 8
 	ComputeState_COMPUTE_STATE_CANCELED             ComputeState = 9
+	// The original attempt has a local no-send observation and no stronger
+	// submission observation. This state does not grant permission to resend.
+	ComputeState_COMPUTE_STATE_SUBMISSION_NOT_SENT ComputeState = 10
+	// One or more Run creation observations are retained. This establishes
+	// neither Run authority nor queued/running computation, even for one Run.
+	ComputeState_COMPUTE_STATE_SUBMISSION_CONFIRMED ComputeState = 11
 )
 
 // Enum value maps for ComputeState.
 var (
 	ComputeState_name = map[int32]string{
-		0: "COMPUTE_STATE_UNSPECIFIED",
-		1: "COMPUTE_STATE_ACCEPTED",
-		2: "COMPUTE_STATE_SUBMITTING",
-		3: "COMPUTE_STATE_SUBMISSION_UNCERTAIN",
-		4: "COMPUTE_STATE_QUEUED",
-		5: "COMPUTE_STATE_PREPARING",
-		6: "COMPUTE_STATE_TRAINING",
-		7: "COMPUTE_STATE_SUCCEEDED",
-		8: "COMPUTE_STATE_FAILED",
-		9: "COMPUTE_STATE_CANCELED",
+		0:  "COMPUTE_STATE_UNSPECIFIED",
+		1:  "COMPUTE_STATE_ACCEPTED",
+		2:  "COMPUTE_STATE_SUBMITTING",
+		3:  "COMPUTE_STATE_SUBMISSION_UNCERTAIN",
+		4:  "COMPUTE_STATE_QUEUED",
+		5:  "COMPUTE_STATE_PREPARING",
+		6:  "COMPUTE_STATE_TRAINING",
+		7:  "COMPUTE_STATE_SUCCEEDED",
+		8:  "COMPUTE_STATE_FAILED",
+		9:  "COMPUTE_STATE_CANCELED",
+		10: "COMPUTE_STATE_SUBMISSION_NOT_SENT",
+		11: "COMPUTE_STATE_SUBMISSION_CONFIRMED",
 	}
 	ComputeState_value = map[string]int32{
 		"COMPUTE_STATE_UNSPECIFIED":          0,
@@ -63,6 +71,8 @@ var (
 		"COMPUTE_STATE_SUCCEEDED":            7,
 		"COMPUTE_STATE_FAILED":               8,
 		"COMPUTE_STATE_CANCELED":             9,
+		"COMPUTE_STATE_SUBMISSION_NOT_SENT":  10,
+		"COMPUTE_STATE_SUBMISSION_CONFIRMED": 11,
 	}
 )
 
@@ -3240,11 +3250,15 @@ func (x *AcceptExecutionRequest) GetIntent() *UserIntent {
 }
 
 type AcceptExecutionResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Identity      *v1.ExecutionIdentity  `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
-	Replayed      bool                   `protobuf:"varint,2,opt,name=replayed,proto3" json:"replayed,omitempty"`
-	States        *ExecutionStates       `protobuf:"bytes,3,opt,name=states,proto3" json:"states,omitempty"`
-	Revision      uint64                 `protobuf:"varint,4,opt,name=revision,proto3" json:"revision,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Identity *v1.ExecutionIdentity  `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
+	// Whether this Admission already existed, not whether its states changed.
+	Replayed bool             `protobuf:"varint,2,opt,name=replayed,proto3" json:"replayed,omitempty"`
+	States   *ExecutionStates `protobuf:"bytes,3,opt,name=states,proto3" json:"states,omitempty"`
+	// Nonzero committed execution-aggregate version from the same transaction
+	// as states. Replays observe the current version without advancing it.
+	// New facts fail atomically at uint64 maximum; existing facts remain readable.
+	Revision      uint64 `protobuf:"varint,4,opt,name=revision,proto3" json:"revision,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5686,7 +5700,7 @@ const file_ani_modeldev_v1_modeldev_proto_rawDesc = "" +
 	"closeState\x12\x1a\n" +
 	"\breplayed\x18\x03 \x01(\bR\breplayed\x12;\n" +
 	"\vaccepted_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"acceptedAt*\xb5\x02\n" +
+	"acceptedAt*\x84\x03\n" +
 	"\fComputeState\x12\x1d\n" +
 	"\x19COMPUTE_STATE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16COMPUTE_STATE_ACCEPTED\x10\x01\x12\x1c\n" +
@@ -5697,7 +5711,10 @@ const file_ani_modeldev_v1_modeldev_proto_rawDesc = "" +
 	"\x16COMPUTE_STATE_TRAINING\x10\x06\x12\x1b\n" +
 	"\x17COMPUTE_STATE_SUCCEEDED\x10\a\x12\x18\n" +
 	"\x14COMPUTE_STATE_FAILED\x10\b\x12\x1a\n" +
-	"\x16COMPUTE_STATE_CANCELED\x10\t*\xa3\x01\n" +
+	"\x16COMPUTE_STATE_CANCELED\x10\t\x12%\n" +
+	"!COMPUTE_STATE_SUBMISSION_NOT_SENT\x10\n" +
+	"\x12&\n" +
+	"\"COMPUTE_STATE_SUBMISSION_CONFIRMED\x10\v*\xa3\x01\n" +
 	"\rDeliveryState\x12\x1e\n" +
 	"\x1aDELIVERY_STATE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16DELIVERY_STATE_PENDING\x10\x01\x12\x1d\n" +
