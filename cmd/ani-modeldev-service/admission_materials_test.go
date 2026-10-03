@@ -64,8 +64,8 @@ func TestAdmissionMaterialsOmittedKeepsDurableCommandsWithoutAdmission(t *testin
 
 func TestAdmissionMaterialsFailStartupWithoutFallbackOrPoolLeak(t *testing.T) {
 	tests := []struct {
-		name string
-		change func(*testing.T, *conf.AdmissionResolution)
+		name    string
+		change  func(*testing.T, *conf.AdmissionResolution)
 		message string
 	}{
 		{
