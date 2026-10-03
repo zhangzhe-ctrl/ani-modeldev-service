@@ -69,11 +69,11 @@ func (client *Client) FindClosingRun(ctx context.Context, plan biz.PipelineDispa
 			if run.DisplayName != plan.DisplayName {
 				continue
 			}
-			if found != "" {
-				return "", biz.ErrRunAuthorityConflict
-			}
 			if _, err := client.GetManagedRun(ctx, plan, run.RunID); err != nil {
 				return "", err
+			}
+			if found != "" {
+				return "", &biz.AmbiguousClosingRunsError{RunIDs: []string{found, run.RunID}}
 			}
 			found = run.RunID
 		}

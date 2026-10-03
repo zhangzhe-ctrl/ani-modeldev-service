@@ -441,7 +441,7 @@ func (repository *Repository) ConfirmRuntimeClosed(ctx context.Context, authorit
 		if err != nil {
 			return false, err
 		}
-		if len(dispatch.ConfirmedRuns) > 1 || (len(dispatch.ConfirmedRuns) == 1 && dispatch.ConfirmedRuns[0].RunID != authority.RunID) || (current.state.CloseAuthority != nil && len(dispatch.ConfirmedRuns) != 1) {
+		if current.state.CloseReviewReason == "MULTIPLE_RUNS" || len(dispatch.ConfirmedRuns) > 1 || (len(dispatch.ConfirmedRuns) == 1 && dispatch.ConfirmedRuns[0].RunID != authority.RunID) || (current.state.CloseAuthority != nil && len(dispatch.ConfirmedRuns) != 1) {
 			return false, biz.ErrRunAuthorityConflict
 		}
 		if current.state.ClosedAt != nil {

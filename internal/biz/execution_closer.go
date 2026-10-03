@@ -24,7 +24,14 @@ type OwnerCloseRecovery interface {
 	FenceOwnerClose(context.Context, string, string) (ExecutionRuntime, error)
 	RecordClosingRun(context.Context, RunAuthorityCandidate) (ExecutionRuntime, error)
 	MarkOwnerCloseReview(context.Context, string, string, string) (ExecutionRuntime, error)
+	RecordClosingRunAmbiguity(context.Context, PipelineDispatch, []string) (ExecutionRuntime, error)
 }
+
+// AmbiguousClosingRunsError contains independently verified KFP Run identities.
+// The owner retains them in the original submission history before failing closed.
+type AmbiguousClosingRunsError struct { RunIDs []string }
+func (*AmbiguousClosingRunsError) Error() string { return "MULTIPLE_KFP_RUNS" }
+func (*AmbiguousClosingRunsError) Unwrap() error { return ErrRunAuthorityConflict }
 
 type ClosingRunVerifier interface {
 	VerifyClosingRun(context.Context, Execution, PipelineDispatch, string) (RunAuthorityCandidate, error)
@@ -201,6 +208,11 @@ func (closer *ExecutionCloser) recoverRun(ctx context.Context, admitted Executio
 	}
 	owner, err := verifier.VerifyClosingRun(ctx, admitted, dispatch, runID)
 	if err != nil {
+		var ambiguous *AmbiguousClosingRunsError
+		if errors.As(err, &ambiguous) {
+			_, recordErr := recovery.RecordClosingRunAmbiguity(ctx, dispatch, ambiguous.RunIDs)
+			return RunAuthority{}, errors.Join(err, recordErr)
+		}
 		return RunAuthority{}, closer.review(ctx, admitted.TenantID, admitted.ExecutionID, "KFP_CREATE_UNRESOLVED", err)
 	}
 	state, err := recovery.RecordClosingRun(ctx, owner)
