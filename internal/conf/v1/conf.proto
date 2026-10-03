@@ -21,6 +21,19 @@ message GovernanceCommand {
   string certificate_file = 3;
   string private_key_file = 4;
   string governance_dns_name = 5;
+  // Presence enables candidate resolution from explicitly pinned mounted
+  // materials. It does not establish environment or business readiness.
+  AdmissionResolution admission_resolution = 6;
+}
+
+message AdmissionResolution {
+  string catalogue_directory = 1;
+  repeated AdmissionFactsFile facts_files = 2;
+}
+
+message AdmissionFactsFile {
+  string path = 1;
+  string sha256 = 2;
 }
 
 message Server {
