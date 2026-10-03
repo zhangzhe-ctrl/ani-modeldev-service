@@ -24,7 +24,9 @@ type Query struct {
 
 func NewQuery(repository biz.ArtifactQueryRepository, signer biz.ArtifactSigner, logs ...biz.TrainingLogReader) *Query {
 	query := &Query{repository: repository, signer: signer}
-	if len(logs) == 1 { query.logs = logs[0] }
+	if len(logs) == 1 {
+		query.logs = logs[0]
+	}
 	return query
 }
 
@@ -67,26 +69,44 @@ func queryError(err error, requestID string) error {
 }
 
 func (query *Query) GetExecutionLogs(ctx context.Context, request *modeldevv1.GetExecutionLogsRequest) (*modeldevv1.GetExecutionLogsResponse, error) {
-    scope, err := queryScope(ctx, modeldevv1.ModelDevQueryService_GetExecutionLogs_FullMethodName)
-    if err != nil { return nil, err }
-    if request==nil || !queryID(request.ExecutionId) || len(request.ProtoReflect().GetUnknown())!=0 ||
-        (request.LogId!=nil && !queryID(*request.LogId)) || request.TailLines>1000 || request.MaxBytes>65536 {
-        return nil, status.Error(codes.InvalidArgument,"invalid training log query")
-    }
-    if query==nil || query.repository==nil { return nil, queryError(biz.ErrPersistence,scope.RequestID) }
-    record, err := query.repository.GetQueryRecord(ctx,scope.TenantID,request.ExecutionId)
-    if err!=nil { return nil,queryError(err,scope.RequestID) }
-    source, err := biz.TrainingLogSourceFor(record,request.GetLogId())
-    if err!=nil { return nil,queryError(err,scope.RequestID) }
-    if query.logs==nil { return nil,queryError(biz.ErrTrainingLogsUnavailable,scope.RequestID) }
-    options := biz.TrainingLogOptions{TailLines:request.TailLines,MaxBytes:request.MaxBytes}
-    if options.TailLines==0 { options.TailLines=200 }
-    if options.MaxBytes==0 { options.MaxBytes=16384 }
-    result, err := query.logs.ReadTrainingLogs(ctx,source,options)
-    if err!=nil { return nil,queryError(err,scope.RequestID) }
-    response := &modeldevv1.GetExecutionLogsResponse{Source:&trainingv1.LogRef{LogId:source.LogID,ResourceUid:source.PodUID,ContainerName:source.ContainerName},Truncated:result.Truncated,ObservedAt:timestamppb.New(result.ObservedAt)}
-    for _, line := range result.Lines { response.Lines=append(response.Lines,&modeldevv1.LogLine{Timestamp:timestamppb.New(line.Timestamp),Text:line.Text}) }
-    return response,nil
+	scope, err := queryScope(ctx, modeldevv1.ModelDevQueryService_GetExecutionLogs_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+	if request == nil || !queryID(request.ExecutionId) || len(request.ProtoReflect().GetUnknown()) != 0 ||
+		(request.LogId != nil && !queryID(*request.LogId)) || request.TailLines > 1000 || request.MaxBytes > 65536 {
+		return nil, status.Error(codes.InvalidArgument, "invalid training log query")
+	}
+	if query == nil || query.repository == nil {
+		return nil, queryError(biz.ErrPersistence, scope.RequestID)
+	}
+	record, err := query.repository.GetQueryRecord(ctx, scope.TenantID, request.ExecutionId)
+	if err != nil {
+		return nil, queryError(err, scope.RequestID)
+	}
+	source, err := biz.TrainingLogSourceFor(record, request.GetLogId())
+	if err != nil {
+		return nil, queryError(err, scope.RequestID)
+	}
+	if query.logs == nil {
+		return nil, queryError(biz.ErrTrainingLogsUnavailable, scope.RequestID)
+	}
+	options := biz.TrainingLogOptions{TailLines: request.TailLines, MaxBytes: request.MaxBytes}
+	if options.TailLines == 0 {
+		options.TailLines = 200
+	}
+	if options.MaxBytes == 0 {
+		options.MaxBytes = 16384
+	}
+	result, err := query.logs.ReadTrainingLogs(ctx, source, options)
+	if err != nil {
+		return nil, queryError(err, scope.RequestID)
+	}
+	response := &modeldevv1.GetExecutionLogsResponse{Source: &trainingv1.LogRef{LogId: source.LogID, ResourceUid: source.PodUID, ContainerName: source.ContainerName}, Truncated: result.Truncated, ObservedAt: timestamppb.New(result.ObservedAt)}
+	for _, line := range result.Lines {
+		response.Lines = append(response.Lines, &modeldevv1.LogLine{Timestamp: timestamppb.New(line.Timestamp), Text: line.Text})
+	}
+	return response, nil
 }
 
 func (query *Query) GetExecution(ctx context.Context, request *modeldevv1.GetExecutionRequest) (*modeldevv1.GetExecutionResponse, error) {
