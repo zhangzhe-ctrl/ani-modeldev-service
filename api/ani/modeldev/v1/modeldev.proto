@@ -534,6 +534,9 @@ message GetExecutionConfigurationResponse {
   // Absent until the owner's verified prepare result binds the actual PVC UID.
   ani.training.v1.WorkspaceRef workspace = 4;
   ExecutionStates states = 5;
+  // Immutable committed command envelope for authenticated managed component
+  // canonicalization. Returning it grants no command delivery authority.
+  AcceptExecutionRequest admission = 6;
 }
 
 // Ensure accepts only execution/authority references. ModelDev derives the

@@ -4,6 +4,7 @@ package conf
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -50,7 +51,40 @@ func (c *Bootstrap) Validate() error {
 	if grpcPort == adminPort {
 		return fmt.Errorf("grpc and admin listeners must use distinct ports")
 	}
+	if c.Runtime != nil {
+		if c.Command == nil { return fmt.Errorf("managed runtime requires the durable command connection") }
+		if err := validateManagedRuntime(c.Runtime, grpcPort, adminPort); err != nil { return err }
+	}
 	return validateDuration("shutdown", c.Server.ShutdownTimeout, maximumTimeout)
+}
+
+func validateManagedRuntime(config *ManagedRuntime, commandPort, adminPort int) error {
+	if config.Step == nil || config.Kubernetes == nil || config.Pipeline == nil || config.ObjectStorage == nil {
+		return fmt.Errorf("managed runtime requires step, Kubernetes, pipeline and storage configuration")
+	}
+	if err := validateListener("managed step", config.Step.Network, config.Step.Addr, config.Step.Timeout); err != nil { return err }
+	_, portText, _ := net.SplitHostPort(config.Step.Addr)
+	port, _ := strconv.Atoi(portText)
+	if port == commandPort || port == adminPort { return fmt.Errorf("managed step listener requires a separate port") }
+	for _, reference := range []string{config.CertificateFile, config.PrivateKeyFile, config.BindingFile, config.Kubernetes.CaFile, config.Kubernetes.TokenFile, config.Pipeline.CaFile, config.Pipeline.TokenFile, config.ObjectStorage.CaFile, config.ObjectStorage.CredentialsFile} {
+		if !filepath.IsAbs(reference) || filepath.Clean(reference) != reference || strings.ContainsRune(reference, 0) { return fmt.Errorf("managed runtime materials require absolute file references") }
+	}
+	for _, address := range []string{config.Kubernetes.Endpoint, config.Pipeline.Endpoint, config.ObjectStorage.Endpoint} {
+		endpoint, err := url.Parse(address)
+		if err != nil || endpoint.Scheme != "https" || endpoint.Host == "" || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.ForceQuery || endpoint.Fragment != "" || endpoint.RawPath != "" || strings.TrimSpace(address) != address {
+			return fmt.Errorf("managed runtime requires explicit HTTPS endpoints")
+		}
+	}
+	if len(config.BindingSha256) != 64 || strings.Trim(config.BindingSha256, "0123456789abcdef") != "" || config.TokenAudience == "" || len(config.TokenAudience) > 2048 || strings.ContainsAny(config.TokenAudience, " \t\r\n") {
+		return fmt.Errorf("managed runtime requires a pinned binding and token audience")
+	}
+	if config.ObjectStorage.ConnectionId == "" || config.ObjectStorage.Region == "" || config.ObjectStorage.MaxObjectBytes <= 0 {
+		return fmt.Errorf("managed storage requires connection, region and a positive read limit")
+	}
+	if err := validateDuration("managed API", config.ApiTimeout, maximumTimeout); err != nil { return err }
+	if err := validateDuration("dispatch interval", config.DispatchInterval, time.Minute); err != nil { return err }
+	if config.DispatchInterval.AsDuration() < 100*time.Millisecond || config.DispatchBatchSize == 0 || config.DispatchBatchSize > 100 { return fmt.Errorf("dispatch requires interval at least 100ms and batch size 1..100") }
+	return nil
 }
 
 var commandDNSName = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$`)

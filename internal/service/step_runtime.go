@@ -21,11 +21,21 @@ import (
 )
 
 func (step *Step) GetExecutionConfiguration(ctx context.Context, request *modeldevv1.GetExecutionConfigurationRequest) (*modeldevv1.GetExecutionConfigurationResponse, error) {
-	token, claim, err := step.runtimeRequest(ctx, request, request.GetContext(), modeldevv1.PipelineStep_PIPELINE_STEP_PREPARE)
+	requestedStep := request.GetContext().GetStep()
+	tasks := map[modeldevv1.PipelineStep]string{
+		modeldevv1.PipelineStep_PIPELINE_STEP_PREPARE: "prepare",
+		modeldevv1.PipelineStep_PIPELINE_STEP_TRAIN_WAIT: "train-wait",
+		modeldevv1.PipelineStep_PIPELINE_STEP_COLLECT: "collect",
+		modeldevv1.PipelineStep_PIPELINE_STEP_PUBLISH: "publish",
+		modeldevv1.PipelineStep_PIPELINE_STEP_CLOSE: "close",
+	}
+	task, supported := tasks[requestedStep]
+	if !supported { return nil, runtimeError(biz.ErrInvalidAdmission) }
+	token, claim, err := step.runtimeRequest(ctx, request, request.GetContext(), requestedStep)
 	if err != nil {
 		return nil, err
 	}
-	result, err := step.runtime.Configuration(ctx, token, claim)
+	result, err := step.runtime.Configuration(ctx, token, claim, task)
 	if err != nil {
 		return nil, runtimeError(err)
 	}
@@ -37,9 +47,12 @@ func (step *Step) GetExecutionConfiguration(ctx context.Context, request *modeld
 	if err != nil {
 		return nil, runtimeError(biz.ErrManagedStepUnavailable)
 	}
+	intent, err := contractpb.EncodeIntent(result.Execution.Intent)
+	if err != nil { return nil, runtimeError(biz.ErrManagedStepUnavailable) }
 	return &modeldevv1.GetExecutionConfigurationResponse{
 		Identity: runtimeIdentity(result.Execution), Snapshot: snapshot,
 		Authority: authority, Workspace: encodeRuntimeWorkspace(result.Runtime.Workspace), States: states,
+		Admission: &modeldevv1.AcceptExecutionRequest{Identity: runtimeIdentity(result.Execution), ResourceTenantId: result.Execution.TenantID, AdmittedActorId: result.Execution.Actor, IntentHash: result.Execution.IntentHash, Snapshot: snapshot, AcceptedAt: timestamppb.New(result.Execution.AcceptedAt), Intent: intent},
 	}, nil
 }
 

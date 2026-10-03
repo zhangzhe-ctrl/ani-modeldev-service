@@ -11,6 +11,41 @@ message Bootstrap {
   // Absent keeps the unready runtime shell. Presence requires every input and
   // assembles the real Governance command listener without plaintext fallback.
   GovernanceCommand command = 2;
+  // Presence assembles the managed execution main flow alongside command.
+  ManagedRuntime runtime = 3;
+}
+
+message ManagedRuntime {
+  Server.GRPC step = 1;
+  string certificate_file = 2;
+  string private_key_file = 3;
+  HTTPSWorkloadConnection kubernetes = 4;
+  HTTPSWorkloadConnection pipeline = 5;
+  ObjectStorageConnection object_storage = 6;
+  // JSON PipelineDispatchBinding with the tenant, complete frozen environment
+  // and owner configuration. It contains no credentials and is SHA256 pinned.
+  string binding_file = 7;
+  string binding_sha256 = 8;
+  string token_audience = 9;
+  google.protobuf.Duration api_timeout = 10;
+  google.protobuf.Duration dispatch_interval = 11;
+  uint32 dispatch_batch_size = 12;
+}
+
+message HTTPSWorkloadConnection {
+  string endpoint = 1;
+  string ca_file = 2;
+  // Mounted current workload credential, never a forwarded user token.
+  string token_file = 3;
+}
+
+message ObjectStorageConnection {
+  string endpoint = 1;
+  string ca_file = 2;
+  string region = 3;
+  string credentials_file = 4;
+  string connection_id = 5;
+  int64 max_object_bytes = 6;
 }
 
 message GovernanceCommand {

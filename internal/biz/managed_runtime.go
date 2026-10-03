@@ -100,8 +100,13 @@ func runtimeResult(result ManagedRuntimeResult, state ExecutionRuntime, replayed
 	result.Authority.OwnerRevision = state.OwnerRevision
 	return result, nil
 }
-func (runtime *ManagedRuntime) Configuration(ctx context.Context, token string, request BeginManagedExecutionRequest) (ManagedRuntimeResult, error) {
-	return runtime.authenticate(ctx, token, request, "prepare")
+func (runtime *ManagedRuntime) Configuration(ctx context.Context, token string, request BeginManagedExecutionRequest, task string) (ManagedRuntimeResult, error) {
+	switch task {
+	case "prepare", "train-wait", "collect", "publish", "close":
+		return runtime.authenticate(ctx, token, request, task)
+	default:
+		return ManagedRuntimeResult{}, ErrManagedStepUnauthorized
+	}
 }
 func (runtime *ManagedRuntime) Prepared(ctx context.Context, token string, request BeginManagedExecutionRequest, workspace WorkspaceBinding, input cpup01.InputRef) (ManagedRuntimeResult, error) {
 	result, err := runtime.authenticate(ctx, token, request, "prepare")

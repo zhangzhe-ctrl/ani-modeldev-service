@@ -32,6 +32,7 @@ func buildApp(bc *conf.Bootstrap, logger *slog.Logger) (*application, error) {
 	if err := bc.Validate(); err != nil {
 		return nil, err
 	}
+	if bc.Runtime != nil { return buildRuntimeApp(bc, logger) }
 	// The full training/observation/publication chain is not assembled yet.
 	// Durable command delivery alone cannot grant overall business readiness.
 	readiness := server.NewReadiness()
