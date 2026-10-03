@@ -32,6 +32,7 @@ import (
 
 type ownerConfig struct {
 	TenantID            string         `json:"tenant_id"`
+	NamespaceUID        string         `json:"namespace_uid"`
 	ContextFile         string         `json:"context_file"`
 	TokenFile           string         `json:"token_file"`
 	Target              string         `json:"grpc_target"`
