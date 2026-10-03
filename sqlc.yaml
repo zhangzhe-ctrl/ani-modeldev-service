@@ -10,6 +10,8 @@ sql:
       - "migrations/0010_pipeline_confirmed_runs.up.sql"
       - "migrations/0011_submission_not_sent.up.sql"
       - "migrations/0012_execution_owner_revision.up.sql"
+      - "migrations/0013_run_authority.up.sql"
+      - "migrations/0014_execution_runtime.up.sql"
     queries: "internal/data/execution/queries.sql"
     gen:
       go:

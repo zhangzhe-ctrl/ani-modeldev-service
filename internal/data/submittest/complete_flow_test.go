@@ -10,6 +10,8 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -64,7 +66,9 @@ func runCompleteMainFlow(t *testing.T, rejectedInput bool) {
 	admissions := execution.New(pool)
 	dispatch := submission.New(pool)
 	facts := lifecycle.New(pool)
-	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
+	limit:=150*time.Second
+	if os.Getenv("ANI_MODELDEV_QUERY_HANDSHAKE")!="" { limit=6*time.Minute }
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
 	acceptThroughCommandRPC(t, ctx, admissions, f.request.Admission)
 	provider := tokenProviderFunc(func(_ context.Context, tenant string, env cpup01.EnvironmentBindingSnapshot) (string, error) {
@@ -306,16 +310,24 @@ func runCompleteMainFlow(t *testing.T, rejectedInput bool) {
 	if creates != 1 || runCreates != 1 {
 		t.Fatalf("main flow repeated creation: Run=%d TrainJob=%d", runCreates, creates)
 	}
-	// This verifier directory has no training mount. It consumes only objects
-	// referenced by the durable publication; this is not BFF/L4 authorization.
+	// Reconnect to the actual query handler and download solely with its short
+	// lived grants. No S3 credentials or original training mount enter verifier.
+	query := startMainFlowQuery(t, pool, store, original.Admission)
+	assertQueryAccess(t, ctx, query, original.Admission)
+	listed, err := query.ListExecutionArtifacts(queryCall(ctx, original.Admission, modeldevv1.ModelDevQueryService_ListExecutionArtifacts_FullMethodName), &modeldevv1.ListExecutionArtifactsRequest{ExecutionId:original.ExecutionID})
+	if err != nil || len(listed.GetArtifacts()) != len(stored.Publication.Files) { t.Fatal("published artifact query failed") }
 	independent := t.TempDir()
 	for _, file := range stored.Publication.Files {
-		object, err := store.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(file.Object.Bucket), Key: aws.String(file.Object.Key), VersionId: file.Object.VersionID})
-		if err != nil {
-			t.Fatal(err)
-		}
-		data, err := io.ReadAll(object.Body)
-		object.Body.Close()
+		grant, err := query.AuthorizeArtifactDownload(queryCall(ctx, original.Admission, modeldevv1.ModelDevQueryService_AuthorizeArtifactDownload_FullMethodName), &modeldevv1.AuthorizeArtifactDownloadRequest{ArtifactId:file.ArtifactID})
+		if err != nil || grant.GetArtifact().GetSha256()!=file.File.SHA256 || grant.GetArtifact().GetSizeBytes()!=file.File.SizeBytes || grant.GetExpiresAt().AsTime().After(time.Now().Add(61*time.Second)) { t.Fatal("verified artifact download grant failed") }
+		link, err := url.Parse(grant.DownloadUrl)
+		if err != nil || link.Query().Get("versionId")!=*file.Object.VersionID || link.Query().Get("X-Amz-Expires")!="60" || link.Query().Get("X-Amz-Signature")=="" { t.Fatal("download was not bounded to the fixed object version") }
+		req,err:=http.NewRequestWithContext(ctx,http.MethodGet,grant.DownloadUrl,nil); if err!=nil { t.Fatal("invalid download URL") }
+		response,err:=f.storage.Client().Do(req)
+		if err!=nil { t.Fatal("independent authorized download unavailable") }
+		data, err := io.ReadAll(io.LimitReader(response.Body,file.File.SizeBytes+1))
+		response.Body.Close()
+		if response.StatusCode!=http.StatusOK { t.Fatal("independent authorized download refused") }
 		if err != nil || int64(len(data)) != file.File.SizeBytes || completeHash(data) != file.File.SHA256 {
 			t.Fatal("independent download byte verification failed")
 		}
@@ -323,6 +335,8 @@ func runCompleteMainFlow(t *testing.T, rejectedInput bool) {
 			t.Fatal(err)
 		}
 	}
+	assertPublishedQueryBoundaries(t,ctx,query,original.Admission,stored.Publication.Files)
+	independent=consumeThroughGovernance(t,ctx,f,query,stored.Publication,independent)
 	reload := exec.CommandContext(ctx, "podman", "run", "--rm", "--pull=never", "--network", "none", "--http-proxy=false", "--cpus", "2", "--memory", "2g", "--memory-swap", "2g", "--pids-limit", "256", "--cap-drop", "all", "--security-opt", "no-new-privileges", "--read-only", "--userns", "keep-id:uid=10001,gid=10001", "--volume", f.source+":/source:ro,Z", "--volume", independent+":/download:ro,Z", "--entrypoint", "/opt/venv/bin/python", f.image, "-I", "/source/tests/reload_checkpoint.py", "/download")
 	forward, err := reload.CombinedOutput()
 	if err != nil {

@@ -47,7 +47,8 @@ func buildRuntimeApp(config *conf.Bootstrap, logger *slog.Logger) (*application,
 		return nil, errors.New(message)
 	}
 	middlewares := observability.ServerMiddleware(logger)
-	command, err := buildCommandServerWithPool(config.Server.Grpc, config.Command, pool, middlewares...)
+	query := service.NewQuery(execution.New(pool), objectstore.NewDownloadSigner(clients.store, config.Runtime.ObjectStorage.ConnectionId))
+	command, err := buildCommandServerWithQuery(config.Server.Grpc, config.Command, pool, query, middlewares...)
 	if err != nil {
 		return failed("managed command listener configuration invalid")
 	}

@@ -36,6 +36,10 @@ type CommandTLS struct {
 // configured private CA and current certificate validity; a prior TLS handshake
 // is not permanent access.
 func NewGovernanceCommandServer(c *conf.Server_GRPC, security CommandTLS, command modeldevv1.ModelDevCommandServiceServer, admission modeldevv1.ModelDevAdmissionServiceServer, middlewares ...middleware.Middleware) (*kratosgrpc.Server, error) {
+	return newGovernanceServer(c, security, command, admission, nil, middlewares...)
+}
+
+func newGovernanceServer(c *conf.Server_GRPC, security CommandTLS, command modeldevv1.ModelDevCommandServiceServer, admission modeldevv1.ModelDevAdmissionServiceServer, query modeldevv1.ModelDevQueryServiceServer, middlewares ...middleware.Middleware) (*kratosgrpc.Server, error) {
 	if c == nil || security.ClientCAs == nil || len(security.Certificate.Certificate) == 0 || security.Certificate.PrivateKey == nil || security.GovernanceDNSName == "" || strings.ContainsAny(security.GovernanceDNSName, "* /\t\r\n") || command == nil {
 		return nil, errors.New("explicit command TLS and handler configuration required")
 	}
@@ -68,6 +72,8 @@ func NewGovernanceCommandServer(c *conf.Server_GRPC, security CommandTLS, comman
 		allowed := info.FullMethod == modeldevv1.ModelDevCommandService_ApplyCloseIntent_FullMethodName ||
 			info.FullMethod == modeldevv1.ModelDevCommandService_AcceptExecution_FullMethodName ||
 			(admission != nil && info.FullMethod == modeldevv1.ModelDevAdmissionService_ResolveAdmission_FullMethodName)
+		isQuery := query != nil && (info.FullMethod == modeldevv1.ModelDevQueryService_GetExecution_FullMethodName || info.FullMethod == modeldevv1.ModelDevQueryService_ListExecutionArtifacts_FullMethodName || info.FullMethod == modeldevv1.ModelDevQueryService_AuthorizeArtifactDownload_FullMethodName)
+		allowed = allowed || isQuery
 		if !allowed {
 			return nil, status.Error(codes.PermissionDenied, "Governance delivery does not permit this method")
 		}
@@ -97,6 +103,15 @@ func NewGovernanceCommandServer(c *conf.Server_GRPC, security CommandTLS, comman
 		if !canonicalID(delivery.TenantID) || !canonicalID(delivery.RequestID) || !validGovernanceCommandActor(delivery.Actor) {
 			return nil, denied
 		}
+		if isQuery {
+			// Only this freshly authenticated BFF workload can assert the current
+			// actor's exact method and tenant-wide data permission. Ordinary command
+			// delivery, admission history and user-supplied headers grant none.
+			if single("x-ani-authorized-method") != info.FullMethod || single("x-ani-data-scope") != "tenant-all" {
+				return nil, status.Error(codes.PermissionDenied, "current query authorization required")
+			}
+			return next(service.WithVerifiedGovernanceQuery(ctx, delivery, info.FullMethod), request)
+		}
 		return next(service.WithVerifiedGovernanceDelivery(ctx, delivery), request)
 	}
 	s := kratosgrpc.NewServer(
@@ -115,6 +130,9 @@ func NewGovernanceCommandServer(c *conf.Server_GRPC, security CommandTLS, comman
 	modeldevv1.RegisterModelDevCommandServiceServer(s, command)
 	if admission != nil {
 		modeldevv1.RegisterModelDevAdmissionServiceServer(s, admission)
+	}
+	if query != nil {
+		modeldevv1.RegisterModelDevQueryServiceServer(s, query)
 	}
 	return s, nil
 }

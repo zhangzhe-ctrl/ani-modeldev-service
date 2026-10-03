@@ -60,6 +60,20 @@ func ReadInTransaction(ctx context.Context, transaction pgx.Tx, tenant, executio
 	if err != nil {
 		return biz.ExecutionRuntime{}, err
 	}
+	if current.state.Publication != nil {
+		// Query callers reuse the writer's complete publication validation. A
+		// stored candidate cannot become downloadable merely by being JSON.
+		row, err := submissionsql.New(transaction).GetRunAuthorityRow(ctx, submissionsql.GetRunAuthorityRowParams{TenantID: tenantID, ExecutionID: executionID})
+		revision, valid := pgvalue.Uint64(row.OwnerRevision)
+		admitted := current.execution
+		if err != nil || !valid || revision != current.state.OwnerRevision || row.TenantID.String() != admitted.TenantID || row.ExecutionID.String() != admitted.ExecutionID || row.OperationID.String() != admitted.OperationID || row.SpecHash != admitted.SpecHash || row.NamespaceName != admitted.Snapshot.Environment.NamespaceName || row.NamespaceUid.String() != admitted.Snapshot.Environment.NamespaceUID {
+			return biz.ExecutionRuntime{}, biz.ErrPersistence
+		}
+		authority := biz.RunAuthorityCandidate{RunID: row.RunID.String(), WorkflowUID: row.WorkflowUid}
+		if validPublication(admitted, authority, current.state, *current.state.Publication, false) != nil {
+			return biz.ExecutionRuntime{}, biz.ErrPersistence
+		}
+	}
 	return current.state, nil
 }
 
@@ -356,7 +370,7 @@ func (repository *Repository) RecordTrainingObservation(ctx context.Context, aut
 
 func (repository *Repository) RecordPublication(ctx context.Context, authority biz.RunAuthorityCandidate, publication biz.RuntimePublication) (biz.ExecutionRuntime, bool, error) {
 	return repository.mutate(ctx, authority, func(current *runtimeTransaction) (bool, error) {
-		if err := validPublication(current.execution, authority, current.state, publication); err != nil {
+		if err := validPublication(current.execution, authority, current.state, publication, true); err != nil {
 			return false, err
 		}
 		if current.state.Publication != nil {

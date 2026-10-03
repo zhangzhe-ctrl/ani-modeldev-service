@@ -8,5 +8,5 @@ import (
 )
 
 func NewGovernanceQueryServer(c *conf.Server_GRPC, security CommandTLS, command modeldevv1.ModelDevCommandServiceServer, admission modeldevv1.ModelDevAdmissionServiceServer, query modeldevv1.ModelDevQueryServiceServer, middlewares ...middleware.Middleware) (*kratosgrpc.Server, error) {
- return NewGovernanceCommandServer(c, security, command, admission, middlewares...)
+ return newGovernanceServer(c, security, command, admission, query, middlewares...)
 }

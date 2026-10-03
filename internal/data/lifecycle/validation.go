@@ -135,14 +135,16 @@ func mergeObservation(state biz.ExecutionRuntime, observation biz.TrainingRuntim
 	return merged, nil
 }
 
-func validPublication(execution biz.Execution, authority biz.RunAuthorityCandidate, state biz.ExecutionRuntime, publication biz.RuntimePublication) error {
+func validPublication(execution biz.Execution, authority biz.RunAuthorityCandidate, state biz.ExecutionRuntime, publication biz.RuntimePublication, requireFreshObservation bool) error {
 	if state.Observation == nil || state.Observation.Outcome != "SUCCEEDED" || !state.Observation.WritersAbsent || state.TrainingHandle == nil {
 		return biz.ErrRuntimeNotReady
 	}
 	if _, err := databaseID(publication.ID); err != nil {
 		return biz.ErrRuntimeConflict
 	}
-	if !validOpaqueID(publication.LogicalKey) || !validOpaqueID(publication.ReceiptID) || publication.Upload.RunID != authority.RunID || publication.Upload.WorkflowUID != authority.WorkflowUID || !validOpaqueID(publication.Upload.TaskID) || !validOpaqueID(publication.Upload.PodUID) || publication.Upload.ContainerName == "" || publication.Upload.CompletedAt.IsZero() || publication.Upload.ObservedAt.Before(publication.Upload.CompletedAt) || publication.VerifiedAt.Before(publication.Upload.ObservedAt) || publication.VerifiedAt.Before(state.Observation.ObservedAt) {
+	// A write must be freshly verified. Later close observations do not revoke
+	// the immutable publication already stored by that successful write.
+	if !validOpaqueID(publication.LogicalKey) || !validOpaqueID(publication.ReceiptID) || publication.Upload.RunID != authority.RunID || publication.Upload.WorkflowUID != authority.WorkflowUID || !validOpaqueID(publication.Upload.TaskID) || !validOpaqueID(publication.Upload.PodUID) || publication.Upload.ContainerName == "" || publication.Upload.CompletedAt.IsZero() || publication.Upload.ObservedAt.Before(publication.Upload.CompletedAt) || publication.VerifiedAt.Before(publication.Upload.ObservedAt) || requireFreshObservation && publication.VerifiedAt.Before(state.Observation.ObservedAt) {
 		return biz.ErrRuntimeConflict
 	}
 	files := make([]cpup01.OutputFile, 0, len(publication.Files))

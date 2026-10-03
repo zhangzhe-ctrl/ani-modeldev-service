@@ -42,6 +42,10 @@ func buildCommandServer(listener *conf.Server_GRPC, config *conf.GovernanceComma
 // The runtime composition shares this restricted pool with all durable ports;
 // this builder never takes ownership of the caller's pool.
 func buildCommandServerWithPool(listener *conf.Server_GRPC, config *conf.GovernanceCommand, pool *pgxpool.Pool, middlewares ...middleware.Middleware) (*kratosgrpc.Server, error) {
+	return buildCommandServerWithQuery(listener, config, pool, nil, middlewares...)
+}
+
+func buildCommandServerWithQuery(listener *conf.Server_GRPC, config *conf.GovernanceCommand, pool *pgxpool.Pool, query modeldevv1.ModelDevQueryServiceServer, middlewares ...middleware.Middleware) (*kratosgrpc.Server, error) {
 	failed := func(message string) (*kratosgrpc.Server, error) { return nil, errors.New(message) }
 	ca, err := readCommandMaterial(config.ClientCaFile, 1<<20)
 	if err != nil {
@@ -82,7 +86,7 @@ func buildCommandServerWithPool(listener *conf.Server_GRPC, config *conf.Governa
 		}
 		admission = service.NewAdmission(biz.NewManagedAdmissionResolver(releases, input.New(pool), facts))
 	}
-	s, err := server.NewGovernanceCommandServer(listener, server.CommandTLS{Certificate: certificate, ClientCAs: roots, GovernanceDNSName: config.GovernanceDnsName}, command, admission, middlewares...)
+	s, err := server.NewGovernanceQueryServer(listener, server.CommandTLS{Certificate: certificate, ClientCAs: roots, GovernanceDNSName: config.GovernanceDnsName}, command, admission, query, middlewares...)
 	if err != nil {
 		return failed("command listener configuration invalid")
 	}

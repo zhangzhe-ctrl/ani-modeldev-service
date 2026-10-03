@@ -132,6 +132,18 @@ func (r *Repository) Get(ctx context.Context, tenant, execution string) (biz.Exe
 		return biz.Execution{}, biz.ErrPersistence
 	}
 	defer rollbackExecutionTransaction(transaction)
+	result, err := readExecution(ctx, transaction, tenantID, executionID)
+	if err != nil {
+		return biz.Execution{}, err
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return biz.Execution{}, biz.ErrPersistence
+	}
+	return result, nil
+}
+
+// readExecution keeps all aggregate facts within its caller's transaction.
+func readExecution(ctx context.Context, transaction pgx.Tx, tenantID, executionID pgtype.UUID) (biz.Execution, error) {
 	queries := executionsql.New(transaction)
 	row, err := queries.GetExecution(ctx, executionsql.GetExecutionParams{
 		TenantID: tenantID, ExecutionID: executionID,
@@ -155,9 +167,6 @@ func (r *Repository) Get(ctx context.Context, tenant, execution string) (biz.Exe
 	result.States, err = executionStates(ctx, transaction, result)
 	if err != nil {
 		return biz.Execution{}, err
-	}
-	if err := transaction.Commit(ctx); err != nil {
-		return biz.Execution{}, biz.ErrPersistence
 	}
 	return result, nil
 }

@@ -28,6 +28,12 @@ type Certificates struct {
 }
 
 func New(t testing.TB) Certificates {
+	return NewForServer(t, ServerDNSName)
+}
+
+// NewForServer keeps a cross-repository test aligned with its production
+// client's fixed server name. This creates only a private synthetic test CA.
+func NewForServer(t testing.TB, serverName string) Certificates {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -46,7 +52,7 @@ func New(t testing.TB) Certificates {
 	roots := x509.NewCertPool()
 	roots.AddCert(ca)
 	result := Certificates{Roots: roots, ca: ca, key: key}
-	result.Server = result.issue(t, ServerDNSName, x509.ExtKeyUsageServerAuth, nil)
+	result.Server = result.issue(t, serverName, x509.ExtKeyUsageServerAuth, nil)
 	result.Governance = result.ClientCertificate(t, nil)
 	return result
 }

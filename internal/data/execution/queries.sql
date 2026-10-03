@@ -27,6 +27,17 @@ VALUES (
 )
 ON CONFLICT DO NOTHING;
 
+-- The tenant filter precedes returning any artifact association. Two matches
+-- reject a duplicated artifact identity instead of choosing an arbitrary Run.
+-- name: FindPublishedArtifactExecution :many
+SELECT execution_id
+FROM modeldev_execution_runtimes
+WHERE tenant_id = sqlc.arg(tenant_id)::uuid
+  AND publication_id IS NOT NULL
+  AND (facts->'Publication'->'Files') @>
+      jsonb_build_array(jsonb_build_object('ArtifactID', sqlc.arg(artifact_id)::text))
+LIMIT 2;
+
 -- name: LockExecutionIdentity :one
 SELECT tenant_id, execution_id, operation_id, spec_hash, close_generation, owner_revision
 FROM modeldev_execution_identities
