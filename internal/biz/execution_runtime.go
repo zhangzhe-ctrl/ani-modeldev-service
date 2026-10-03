@@ -135,6 +135,17 @@ type ManagedCloseEvidence struct {
 	Resources          []RuntimeResource
 	SkippedTasks       []ManagedSkippedTask
 	ObservedAt         time.Time
+	OwnerTermination   *ManagedOwnerTermination
+}
+
+// OwnerTermination is independent controller evidence for background close.
+// A successful terminate request alone does not establish either terminal fact.
+type ManagedOwnerTermination struct {
+	RunState                string
+	RunFinishedAt           time.Time
+	WorkflowPhase           string
+	WorkflowFinishedAt      time.Time
+	WorkflowResourceVersion string
 }
 
 type ManagedSkippedTask struct {

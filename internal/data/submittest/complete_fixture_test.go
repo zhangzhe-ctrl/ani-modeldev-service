@@ -46,6 +46,10 @@ type completeFixture struct {
 	versions            map[string]string
 	skipped             map[string]bool
 	creates, runCreates int
+	runStops, trainStops int
+	runStoppedAt        string
+	trainingContainer   string
+	trainingStarted     bool
 	trainingDone        chan struct{}
 	trainingErr         error
 	trainingLog         []byte
@@ -54,7 +58,7 @@ type completeFixture struct {
 
 func newCompleteFixture(t *testing.T) *completeFixture {
 	t.Helper()
-	f := &completeFixture{t: t, root: t.TempDir(), objects: map[string]map[string]any{}, blobs: map[string][]byte{}, versions: map[string]string{}, trainingDone: make(chan struct{})}
+	f := &completeFixture{t: t, root: t.TempDir(), objects: map[string]map[string]any{}, blobs: map[string][]byte{}, versions: map[string]string{}, trainingDone: make(chan struct{}), trainingContainer: "cpu-p01-mainflow-" + uuid.NewString()}
 	f.image = os.Getenv("CPU_P01_MLP_IMAGE")
 	if f.image == "" {
 		t.Fatal("CPU_MAINFLOW_PREFLIGHT: real CPU image missing; behavior NOT_RUN")
@@ -118,6 +122,13 @@ func newCompleteFixture(t *testing.T) *completeFixture {
 	t.Cleanup(f.kfp.Close)
 	f.storage = httptest.NewTLSServer(http.HandlerFunc(f.storageRequest))
 	t.Cleanup(f.storage.Close)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := f.stopActualTraining(ctx); err != nil {
+			t.Errorf("actual training cleanup failed: %v", err)
+		}
+	})
 	return f
 }
 
@@ -179,6 +190,7 @@ func (f *completeFixture) kubeRequest(w http.ResponseWriter, r *http.Request) {
 		m["generation"] = 1
 		f.objects[trainPath+"/"+name] = job
 		f.makeTrainingChildren(name)
+		f.trainingStarted = true
 		go f.runTraining(name)
 		w.WriteHeader(201)
 		_ = json.NewEncoder(w).Encode(job)
@@ -191,6 +203,16 @@ func (f *completeFixture) kubeRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		job["spec"].(map[string]any)["suspend"] = true
+		f.trainStops++
+		// Controller acceptance alone is not termination. Release the fixture
+		// mutex so the actual process waiter can record its observed exit.
+		f.mu.Unlock()
+		err := f.stopActualTraining(r.Context())
+		f.mu.Lock()
+		if err != nil {
+			w.WriteHeader(503)
+			return
+		}
 		_ = json.NewEncoder(w).Encode(job)
 		return
 	}
@@ -239,7 +261,7 @@ func (f *completeFixture) runTraining(name string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	command := f.request.Admission.Snapshot.Program.Command
-	args := []string{"run", "--rm", "--pull=never", "--network", "none", "--http-proxy=false", "--cpus", "2", "--memory", "2g", "--memory-swap", "2g", "--pids-limit", "256", "--cap-drop", "all", "--security-opt", "no-new-privileges", "--read-only", "--userns", "keep-id:uid=10001,gid=10001", "--volume", filepath.Join(f.root, f.workspace.InputSubpath) + ":/inputs:ro,Z", "--volume", filepath.Join(f.root, f.workspace.TrainingSubpath) + ":/outputs:rw,Z", "--entrypoint", command[0], f.image}
+	args := []string{"run", "--rm", "--name", f.trainingContainer, "--pull=never", "--network", "none", "--http-proxy=false", "--cpus", "2", "--memory", "2g", "--memory-swap", "2g", "--pids-limit", "256", "--cap-drop", "all", "--security-opt", "no-new-privileges", "--read-only", "--userns", "keep-id:uid=10001,gid=10001", "--volume", filepath.Join(f.root, f.workspace.InputSubpath) + ":/inputs:ro,Z", "--volume", filepath.Join(f.root, f.workspace.TrainingSubpath) + ":/outputs:rw,Z", "--entrypoint", command[0], f.image}
 	args = append(args, command[1:]...)
 	args = append(args, f.request.Admission.Snapshot.Program.ResolvedArgs...)
 	output, err := exec.CommandContext(ctx, "podman", args...).CombinedOutput()
@@ -266,6 +288,34 @@ func (f *completeFixture) runTraining(name string) {
 	close(f.trainingDone)
 }
 
+func (f *completeFixture) stopActualTraining(ctx context.Context) error {
+	f.mu.Lock()
+	started, container := f.trainingStarted, f.trainingContainer
+	f.mu.Unlock()
+	if !started {
+		return nil
+	}
+	select {
+	case <-f.trainingDone:
+		return nil
+	default:
+	}
+	if output, err := exec.CommandContext(ctx, "podman", "stop", "--time", "1", container).CombinedOutput(); err != nil {
+		select {
+		case <-f.trainingDone:
+			return nil
+		default:
+			return fmt.Errorf("stop task-owned training container: %w: %s", err, output)
+		}
+	}
+	select {
+	case <-f.trainingDone:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func (f *completeFixture) kfpRequest(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -276,6 +326,29 @@ func (f *completeFixture) kfpRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == "POST" && r.URL.Path == "/apis/v2beta1/runs" {
 		f.runCreates++
+	} else if r.Method == "POST" && r.URL.Path == "/apis/v2beta1/runs/"+completeRunID+":terminate" {
+		f.runStops++
+		f.runStoppedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		// Only KFP's external step processes are simulated here. Prepare has
+		// already returned from real component work; no training exit is set.
+		nodes := map[string]any{}
+		for _, step := range []string{"prepare", "train-wait", "collect", "publish", "close"} {
+			pod := f.objects["/api/v1/namespaces/"+f.workspace.NamespaceName+"/pods/main-"+step]
+			if pod == nil {
+				continue
+			}
+			phase := pod["status"].(map[string]any)["phase"].(string)
+			if phase != "Succeeded" && phase != "Failed" {
+				phase = "Failed"
+				pod["status"] = map[string]any{"phase": phase, "containerStatuses": []any{map[string]any{"name": "main", "restartCount": 0, "state": map[string]any{"terminated": map[string]any{"exitCode": 143, "reason": "KFPStopped", "finishedAt": f.runStoppedAt}}}}}
+			}
+			nodes["main-"+step] = map[string]any{"id": "main-" + step, "name": "main-flow." + step, "type": "Pod", "phase": phase, "finishedAt": f.runStoppedAt}
+		}
+		workflow := f.objects["/apis/argoproj.io/v1alpha1/namespaces/"+f.workspace.NamespaceName+"/workflows/main-flow"]
+		workflow["metadata"].(map[string]any)["labels"] = map[string]any{"workflows.argoproj.io/completed": "true"}
+		workflow["status"] = map[string]any{"phase": "Failed", "finishedAt": f.runStoppedAt, "conditions": []any{map[string]any{"type": "Completed", "status": "True"}}, "nodes": nodes}
+		_ = json.NewEncoder(w).Encode(map[string]any{})
+		return
 	} else if r.Method != "GET" || r.URL.Path != "/apis/v2beta1/runs/"+completeRunID {
 		w.WriteHeader(400)
 		return
@@ -297,7 +370,11 @@ func (f *completeFixture) kfpRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		tasks = append(tasks, map[string]string{"run_id": completeRunID, "task_id": step + "-task", "display_name": step, "pod_name": "main-" + step, "state": state})
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"run_id": completeRunID, "experiment_id": s.Environment.ExperimentID, "display_name": "md-" + f.request.Admission.ExecutionID, "pipeline_version_reference": map[string]string{"pipeline_id": s.Release.PipelineID, "pipeline_version_id": s.Release.PipelineVersionID}, "runtime_config": map[string]any{"parameters": map[string]string{"execution_id": f.request.Admission.ExecutionID, "spec_hash": f.request.Admission.SpecHash}, "pipeline_root": f.request.Owner.PipelineRoot}, "service_account": s.Environment.Identities.KFPStepServiceAccount, "state": "RUNNING", "run_details": map[string]any{"task_details": tasks}})
+	run := map[string]any{"run_id": completeRunID, "experiment_id": s.Environment.ExperimentID, "display_name": "md-" + f.request.Admission.ExecutionID, "pipeline_version_reference": map[string]string{"pipeline_id": s.Release.PipelineID, "pipeline_version_id": s.Release.PipelineVersionID}, "runtime_config": map[string]any{"parameters": map[string]string{"execution_id": f.request.Admission.ExecutionID, "spec_hash": f.request.Admission.SpecHash}, "pipeline_root": f.request.Owner.PipelineRoot}, "service_account": s.Environment.Identities.KFPStepServiceAccount, "state": "RUNNING", "run_details": map[string]any{"task_details": tasks}}
+	if f.runStoppedAt != "" {
+		run["state"], run["finished_at"] = "CANCELED", f.runStoppedAt
+	}
+	_ = json.NewEncoder(w).Encode(run)
 }
 
 func (f *completeFixture) storageRequest(w http.ResponseWriter, r *http.Request) {
