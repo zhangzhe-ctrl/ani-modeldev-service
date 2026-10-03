@@ -81,6 +81,9 @@ CPU 的 resource_state 恒 NOT_APPLICABLE，不是关闭证明。训练成功后
 compute=SUCCEEDED、delivery=FAILED；Stop 不能抹掉既有计算终态。
 
 CreateRun 前持久 SUBMITTING；网络结果不明进入 SUBMISSION_UNCERTAIN，不回到盲重发。
+当前提交观察还明确区分 SUBMISSION_NOT_SENT 与 SUBMISSION_CONFIRMED：前者不是重发许可，
+后者只保留创建观察，不等于 Run 权威或 QUEUED。四轴与 owner revision 来自同一持久快照；
+精确映射及回执重放规则见[命令投递](cpu-p01-command-delivery.md#持久-admission-回执)。
 Begin 只有在真实受管步骤身份、Pod/Namespace/Workflow/Run 关联均已核验后 CAS 绑定。
 第二 Run 不接管，不获得训练创建许可。
 

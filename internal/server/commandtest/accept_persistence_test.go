@@ -136,7 +136,7 @@ func TestGovernanceAcceptCommitFailureHasNoACKAndPreservesEarlierClose(t *testin
 	detail, ok := details[0].(*modeldevv1.ErrorDetail)
 	md, _ := metadata.FromOutgoingContext(delivery)
 	wantDetail := &modeldevv1.ErrorDetail{
-		Reason: modeldevv1.ErrorReason_ERROR_REASON_UPSTREAM_UNAVAILABLE,
+		Reason:      modeldevv1.ErrorReason_ERROR_REASON_UPSTREAM_UNAVAILABLE,
 		SafeMessage: "command persistence unavailable", CorrelationId: md.Get("x-ani-request-id")[0],
 	}
 	if !ok || !proto.Equal(detail, wantDetail) {
