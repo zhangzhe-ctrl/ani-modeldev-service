@@ -337,7 +337,7 @@ func TestOwnerRevisionRollsBackWithDeferredCommitFailures(t *testing.T) {
 }
 
 type revisionCommitTrace struct {
-	mu sync.Mutex
+	mu   sync.Mutex
 	seen map[string]bool
 }
 
@@ -421,8 +421,8 @@ func TestOwnerRevisionGetReturnsFactsFromOneDatabaseSnapshot(t *testing.T) {
 			defer release()
 			type readResult struct {
 				execution biz.Execution
-				dispatch biz.PipelineDispatch
-				err error
+				dispatch  biz.PipelineDispatch
+				err       error
 			}
 			done := make(chan readResult, 1)
 			go func() {
@@ -488,10 +488,10 @@ func TestOwnerRevisionGetReturnsFactsFromOneDatabaseSnapshot(t *testing.T) {
 // rows, choose isolation, or inspect arguments; the returned value still comes
 // from the unmodified public Get and real PostgreSQL transaction.
 type revisionReadTrace struct {
-	query string
+	query   string
 	reached chan struct{}
-	resume chan struct{}
-	paused atomic.Bool
+	resume  chan struct{}
+	paused  atomic.Bool
 }
 
 type revisionReadTraceKey struct{}
