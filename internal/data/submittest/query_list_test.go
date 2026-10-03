@@ -20,6 +20,7 @@ func TestMainFlowQueryListFiltersCurrentTenantBeforePagination(t *testing.T) {
     ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
     defer cancel()
     base := dispatchRequest(t).Admission
+    base.Actor = "governance:user:42"
     first := base
     first.ExecutionID = "10000000-1111-4222-8333-444444444444"
     first.OperationID = "10000000-1111-4222-8333-555555555555"
