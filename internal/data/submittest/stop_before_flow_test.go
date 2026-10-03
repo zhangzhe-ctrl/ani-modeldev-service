@@ -39,19 +39,25 @@ func TestMainFlowStopBeforeAdmissionClosesLateAdmissionWithoutCreating(t *testin
 	f := newCompleteFixture(t)
 	startup := os.Getenv("ANI_MODELDEV_MAINFLOW_STARTUP")
 	limit := 30 * time.Second
-	if startup != "" { limit = 6 * time.Minute }
+	if startup != "" {
+		limit = 6 * time.Minute
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
 	open := postgres.Prepare(t)
 	pool := open()
 	var generation uint64
 	if startup != "" {
-		store := s3.New(s3.Options{Region: "us-east-1", Credentials: aws.CredentialsProviderFunc(func(context.Context) (aws.Credentials, error) { return aws.Credentials{AccessKeyID: "synthetic-key", SecretAccessKey: "synthetic-secret"}, nil }), BaseEndpoint: aws.String(f.storage.URL), UsePathStyle: true, HTTPClient: f.storage.Client(), RetryMaxAttempts: 1, RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired, ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired})
+		store := s3.New(s3.Options{Region: "us-east-1", Credentials: aws.CredentialsProviderFunc(func(context.Context) (aws.Credentials, error) {
+			return aws.Credentials{AccessKeyID: "synthetic-key", SecretAccessKey: "synthetic-secret"}, nil
+		}), BaseEndpoint: aws.String(f.storage.URL), UsePathStyle: true, HTTPClient: f.storage.Client(), RetryMaxAttempts: 1, RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired, ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired})
 		resolver, selection, intent := prepareMainFlowAdmission(t, ctx, f, pool, store)
 		query := startMainFlowQuery(t, open(), store, f.request.Admission, resolver)
 		awaitBusinessAdmission(t, ctx, f, query, execution.New(pool), selection, intent)
 		close, err := execution.New(pool).GetCloseIntent(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
-		if err != nil || close.OperationID != f.request.Admission.OperationID || close.SpecHash != f.request.Admission.SpecHash || close.Generation != 1 || close.SourceGeneration != 1 || close.Reason != biz.CloseReasonUserStop { t.Fatalf("BFF_STOP_BEFORE_NOT_IMPLEMENTED: late admission has no original stop tombstone: %+v %v", close, err) }
+		if err != nil || close.OperationID != f.request.Admission.OperationID || close.SpecHash != f.request.Admission.SpecHash || close.Generation != 1 || close.SourceGeneration != 1 || close.Reason != biz.CloseReasonUserStop {
+			t.Fatalf("BFF_STOP_BEFORE_NOT_IMPLEMENTED: late admission has no original stop tombstone: %+v %v", close, err)
+		}
 		generation = close.Generation
 	} else {
 		generation = applyOwnerStop(t, ctx, f, pool)
@@ -98,8 +104,14 @@ func TestMainFlowStopBeforeAdmissionClosesLateAdmissionWithoutCreating(t *testin
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
 		for {
-			if _, err := os.Stat(filepath.Join(filepath.Dir(startup), "stop")); err == nil { return }
-			select { case <-ctx.Done(): t.Fatal("BFF_STOP_BEFORE_NOT_IMPLEMENTED: BFF did not acknowledge CLOSED query"); case <-ticker.C: }
+			if _, err := os.Stat(filepath.Join(filepath.Dir(startup), "stop")); err == nil {
+				return
+			}
+			select {
+			case <-ctx.Done():
+				t.Fatal("BFF_STOP_BEFORE_NOT_IMPLEMENTED: BFF did not acknowledge CLOSED query")
+			case <-ticker.C:
+			}
 		}
 	}
 }
