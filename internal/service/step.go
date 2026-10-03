@@ -131,7 +131,7 @@ func managedStepCredentials(ctx context.Context) (tenant, token string, ok bool)
 		return "", "", false
 	}
 	token = strings.TrimPrefix(credentials[0], "Bearer ")
-	if token == "" {
+	if token == "" || len(token) > 16384 {
 		return "", "", false
 	}
 	for _, character := range token {
