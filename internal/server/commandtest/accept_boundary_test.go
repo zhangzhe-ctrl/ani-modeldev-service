@@ -34,7 +34,7 @@ func TestGovernanceAcceptRejectsInvalidWireBeforePersistence(t *testing.T) {
 	controlTarget, _ := validAcceptCommand(t)
 	proveAcceptBoundaryControl(t, ctx, client, reader, controlTarget)
 	for _, test := range []struct {
-		name string
+		name   string
 		change func(*modeldevv1.AcceptExecutionRequest)
 	}{
 		{"missing identity", func(r *modeldevv1.AcceptExecutionRequest) { r.Identity = nil }},
@@ -44,11 +44,21 @@ func TestGovernanceAcceptRejectsInvalidWireBeforePersistence(t *testing.T) {
 		{"missing nested Runtime", func(r *modeldevv1.AcceptExecutionRequest) { r.Snapshot.Release.Runtime = nil }},
 		{"missing object immutability", func(r *modeldevv1.AcceptExecutionRequest) { r.Snapshot.Input.Object.Immutability = nil }},
 		{"unknown outer field", func(r *modeldevv1.AcceptExecutionRequest) { r.ProtoReflect().SetUnknown([]byte{0xa0, 0x06, 0x01}) }},
-		{"unknown identity field", func(r *modeldevv1.AcceptExecutionRequest) { r.Identity.ProtoReflect().SetUnknown([]byte{0xa0, 0x06, 0x01}) }},
-		{"unknown accepted time field", func(r *modeldevv1.AcceptExecutionRequest) { r.AcceptedAt.ProtoReflect().SetUnknown([]byte{0xa0, 0x06, 0x01}) }},
-		{"unknown intent field", func(r *modeldevv1.AcceptExecutionRequest) { r.Intent.ProtoReflect().SetUnknown([]byte{0xa0, 0x06, 0x01}) }},
-		{"unknown nested identity refs", func(r *modeldevv1.AcceptExecutionRequest) { r.Snapshot.Environment.Identities.ProtoReflect().SetUnknown([]byte{0xa0, 0x06, 0x01}) }},
-		{"unknown nested output enum", func(r *modeldevv1.AcceptExecutionRequest) { r.Snapshot.OutputContract.RequiredFiles[0].Role = trainingv1.FileRole(999) }},
+		{"unknown identity field", func(r *modeldevv1.AcceptExecutionRequest) {
+			r.Identity.ProtoReflect().SetUnknown([]byte{0xa0, 0x06, 0x01})
+		}},
+		{"unknown accepted time field", func(r *modeldevv1.AcceptExecutionRequest) {
+			r.AcceptedAt.ProtoReflect().SetUnknown([]byte{0xa0, 0x06, 0x01})
+		}},
+		{"unknown intent field", func(r *modeldevv1.AcceptExecutionRequest) {
+			r.Intent.ProtoReflect().SetUnknown([]byte{0xa0, 0x06, 0x01})
+		}},
+		{"unknown nested identity refs", func(r *modeldevv1.AcceptExecutionRequest) {
+			r.Snapshot.Environment.Identities.ProtoReflect().SetUnknown([]byte{0xa0, 0x06, 0x01})
+		}},
+		{"unknown nested output enum", func(r *modeldevv1.AcceptExecutionRequest) {
+			r.Snapshot.OutputContract.RequiredFiles[0].Role = trainingv1.FileRole(999)
+		}},
 		{"malformed intent hash", func(r *modeldevv1.AcceptExecutionRequest) { r.IntentHash = "untrusted-intent-hash" }},
 		{"mismatched intent hash", func(r *modeldevv1.AcceptExecutionRequest) { r.IntentHash = strings.Repeat("0", 64) }},
 		{"malformed spec hash", func(r *modeldevv1.AcceptExecutionRequest) { r.Identity.ExecutionSpecHash = "untrusted-spec-hash" }},
@@ -168,7 +178,7 @@ func TestGovernanceAcceptRequiresVerifiedContextAndNonNilBody(t *testing.T) {
 	md, _ := metadata.FromOutgoingContext(acceptCommandContext(ctx, request))
 	for _, test := range []struct {
 		name string
-		ctx context.Context
+		ctx  context.Context
 	}{
 		{"no delivery context", ctx},
 		{"raw incoming metadata", metadata.NewIncomingContext(ctx, md)},
