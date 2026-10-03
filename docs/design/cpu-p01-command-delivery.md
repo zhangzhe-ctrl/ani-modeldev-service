@@ -19,14 +19,33 @@
 每个 RPC 重新验证实际 TLS peer 的证书当前有效期，长连接不能延长过期身份。
 这是本分支现有 mTLS 工作负载信任合同，不声称已使用 IAM 在线 Grant/撤权。
 只有 Command 的精确 unary 方法及实际装配后的 `ResolveAdmission` 可进入；后者复用
-相同认证边界，只返回未持久受理的候选。当前 AcceptExecution 明确 Unimplemented，
+相同认证边界，只返回未持久受理的候选。`AcceptExecution` 接收已冻结的受理命令；
 Query/Step 尚未装配，stream与其他方法不获得此入口权限。
 
 单值 `x-ani-tenant-id`、`x-ani-actor`、`x-ani-request-id` 来自上述认证工作负载的声明。
 对关闭投递，它们关联已冻结命令；对候选解析，Governance 仍须在调用前检查当前用户授权。
 UUID metadata 必须规范非零；actor 必须是非零 uint32 的规范 `governance:user:<id>` 或 `governance:access-key:<id>`。
-入站 scope 与 Close body 的租户/actor 一致；缺可信 scope、重复头、非法字段/enum/time、unknown protobuf字段不能写库。
+入站 scope 与 Accept/Close body 的租户/actor 一致；缺可信 scope、重复头、非法字段/enum/time、unknown protobuf字段不能写库。
 RPC只返回有限安全错误与已定义ErrorDetail，不回显SQL、连接、证书或凭据。
+
+## 持久 Admission 回执
+
+`AcceptExecution` 复用共享严格 Proto codec 与 Admission envelope 校验，保持原用户意图、
+快照、hash、actor、accepted_at 和 deadline。它不重新选择当前 Release，也不延长迟到命令
+的有效期。租户与 actor 断言匹配当次可信投递上下文后，才交给真实 repository.Accept。
+完整同件重放返回原 Admission，异参冲突返回 COMMAND_CONFLICT；成功 COMMIT 后才 ACK。
+
+ACK 的四轴状态与非零 owner revision 来自同一已锁定 identity 事务。Get 使用同一 RR
+快照。execution 复用 submission 的事务内完整解码与关系校验，不通过第二个独立 Get
+拼接状态；损坏或未知持久事实不能折叠成 ACCEPTED。未提交或结果不明时没有成功回执。
+revision 与已提交事实的增量/重放和旧版本升级规则见[持久化](cpu-p01-persistence.md#执行聚合-owner-revision)。
+
+当前已实现的事实集合映射为：无 dispatch 是 ACCEPTED，已有 dispatch 分别保留 SUBMITTING、
+SUBMISSION_NOT_SENT、SUBMISSION_UNCERTAIN、SUBMISSION_CONFIRMED。仅确认 Run 创建观察
+不代表 Run 权威或 QUEUED；未发送也不是重新发送许可。已持久关闭独立映射 CLOSING，缺失
+关闭事实为 OPEN；两者均不推断计算终态。当前 CPU 未有发布写者，delivery=PENDING、
+resource=NOT_APPLICABLE。后续运行/发布事实接入时必须扩展同一投影，不能沿用这些值冒充完成。
+重放本身不增加版本，但可返回其他事务已推进的新状态与版本；消费者不能用旧回执覆盖新状态。
 
 ## 显式装配
 
@@ -46,4 +65,6 @@ cmd读取有界文件、建立实际PG连接并注册mTLS listener，缺材料/�
 配置9eb241b与实际生产装配dcfe7c0 RED→c5e9bf3 GREEN；监听端口启动失败遗留数据库连接的983a40c RED→674f0f7 GREEN，覆盖真实连接释放。
 夹带凭据字段的c9bd53e RED→674f0f7修复；最终格式版本d8d4218的完整证书/metadata/body/方法隔离/持久失败套件及race通过。
 这些检查使用真实TLS socket、独占PG schema和测试CA；最终组合门禁单独记录，模块通过不替代全仓或LIVE结果。
-本阶段无真实Governance投递worker、Accept状态/revision、KFP/Trainer、目标集群mTLS、L1–L4或AC16/17整链验收结论。
+上述历史关闭证据不覆盖新增 AcceptExecution；新增持久回执的固定源码、RED/GREEN与最终门禁
+单独保存于本轮 `accept-execution-checkpoint.md`。无真实Governance投递worker、KFP/Trainer、
+目标集群mTLS、L1–L4或AC16/17整链验收结论。

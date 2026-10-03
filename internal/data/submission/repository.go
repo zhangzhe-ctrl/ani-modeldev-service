@@ -168,19 +168,7 @@ func (repository *Repository) Get(ctx context.Context, tenant, execution string)
 		return biz.PipelineDispatch{}, biz.ErrPersistence
 	}
 	defer rollback(transaction)
-	queries := submissionsql.New(transaction)
-	row, err := queries.GetPipelineDispatch(ctx, submissionsql.GetPipelineDispatchParams{TenantID: tenantID, ExecutionID: executionID})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return biz.PipelineDispatch{}, biz.ErrExecutionNotFound
-	}
-	if err != nil {
-		return biz.PipelineDispatch{}, biz.ErrPersistence
-	}
-	admission, err := queries.GetAdmission(ctx, submissionsql.GetAdmissionParams{TenantID: tenantID, ExecutionID: executionID})
-	if err != nil {
-		return biz.PipelineDispatch{}, biz.ErrPersistence
-	}
-	dispatch, err := readDispatch(ctx, queries, row, admission)
+	dispatch, err := readInTransaction(ctx, transaction, tenantID, executionID)
 	if err != nil {
 		return biz.PipelineDispatch{}, err
 	}

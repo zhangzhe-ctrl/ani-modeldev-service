@@ -59,6 +59,8 @@ type Execution struct {
 	// OwnerRevision identifies the committed aggregate facts observed in the
 	// same transaction. Replaying an existing fact never advances it.
 	OwnerRevision uint64
+	// States projects the validated facts observed in that same transaction.
+	States ExecutionStates
 	// Close is an observed durable fact, never a creation permit. A nil value
 	// does not authorize work; a creator must check the shared identity lock.
 	Close *CloseRecord
@@ -77,7 +79,10 @@ const CloseReasonUserStop CloseReason = "USER_STOP"
 
 type CloseState string
 
-const CloseStateClosing CloseState = "CLOSING"
+const (
+	CloseStateOpen    CloseState = "OPEN"
+	CloseStateClosing CloseState = "CLOSING"
+)
 
 // CloseIntent is a trusted Governance USER_STOP delivery. SourceGeneration is
 // the sender's deduplication sequence, never the ModelDev creation fence.

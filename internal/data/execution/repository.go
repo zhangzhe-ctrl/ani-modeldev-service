@@ -93,6 +93,10 @@ func (r *Repository) Accept(ctx context.Context, admission biz.Admission) (biz.A
 	if err != nil {
 		return biz.AcceptReceipt{}, err
 	}
+	execution.States, err = executionStates(ctx, transaction, execution)
+	if err != nil {
+		return biz.AcceptReceipt{}, err
+	}
 	if err := transaction.Commit(ctx); err != nil {
 		return biz.AcceptReceipt{}, biz.ErrPersistence
 	}
@@ -145,6 +149,10 @@ func (r *Repository) Get(ctx context.Context, tenant, execution string) (biz.Exe
 		return biz.Execution{}, err
 	}
 	result.OwnerRevision, err = currentOwnerRevision(ctx, queries, tenantID, executionID)
+	if err != nil {
+		return biz.Execution{}, err
+	}
+	result.States, err = executionStates(ctx, transaction, result)
 	if err != nil {
 		return biz.Execution{}, err
 	}
