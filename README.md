@@ -80,8 +80,21 @@ assembles the durable dispatch worker, dedicated managed-step TLS listener,
 current Kubernetes/KFP identity checks, Trainer, workspace and publication
 verification. See [runtime configuration](configs/examples/managed-runtime.yaml).
 Its `/readyz` reports whether these configured service entry points can serve;
-it does not establish cluster or business acceptance. Query capabilities outside
-this slice remain unavailable.
+it does not establish cluster or business acceptance. The same Governance mTLS
+listener serves execution detail, published artifact listing and download grants.
+Each query requires the BFF's current actor authorization, exact RPC delegation
+and tenant-wide data scope; command delivery or the historical admission actor
+does not grant read access. Other query capabilities remain unavailable.
+
+Artifact metadata contains only the public filename, role, size, digest and
+publication time. Downloads resolve the durable artifact ID to its verified,
+fixed S3 VersionID and return a 60-second HTTPS GET URL. The current BFF applies
+`Cache-Control: no-store`; do not persist or log a returned URL. Ordinary callers
+use the existing BFF detail, artifacts and artifact-content routes, never the
+internal command or managed-step ports. The query RPC delegation uses
+`x-ani-authorized-method` and `x-ani-data-scope: tenant-all`, set only by the
+authenticated Governance client after its current permission checks. Permissions
+with narrower data scopes remain denied until that scope is implemented.
 
 ## Run the CPU main flow on Fedora
 
