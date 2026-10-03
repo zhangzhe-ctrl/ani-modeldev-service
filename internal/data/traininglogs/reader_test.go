@@ -11,6 +11,7 @@ import (
     "strings"
     "sync/atomic"
     "testing"
+    "time"
 
     "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
     "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/traininglogs"
@@ -20,7 +21,7 @@ import (
 
 func TestTrainingLogsBoundedTailRejectsPodUIDReplacement(t *testing.T) {
     source := biz.TrainingLogSource{LogID: "11111111-2222-4333-8444-555555555555", Namespace: "training", NamespaceUID: "namespace-uid", PodName: "actual-training", PodUID: "original-pod-uid", OwnerUID: "original-job-uid", OwnerName: "actual-training-job", OwnerKind: "Job", OwnerAPIVersion: "batch/v1", ContainerName: "node"}
-    var replace, logsRead atomic.Bool
+    var replace, logsRead, hang atomic.Bool
     peer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         if r.Header.Get("Authorization") != "Bearer synthetic-log-owner" || r.Method != http.MethodGet { w.WriteHeader(http.StatusForbidden); return }
         w.Header().Set("Content-Type", "application/json")
@@ -32,6 +33,7 @@ func TestTrainingLogsBoundedTailRejectsPodUIDReplacement(t *testing.T) {
             if replace.Load() && logsRead.Load() { uid = "replacement-pod-uid" }
             _ = json.NewEncoder(w).Encode(map[string]any{"apiVersion":"v1", "kind":"Pod", "metadata":map[string]any{"name":source.PodName,"namespace":source.Namespace,"uid":uid,"ownerReferences":[]any{map[string]any{"apiVersion":source.OwnerAPIVersion,"kind":source.OwnerKind,"name":source.OwnerName,"uid":source.OwnerUID,"controller":true}}}, "spec":map[string]any{"containers":[]any{map[string]any{"name":"node"}}}, "status":map[string]any{"containerStatuses":[]any{map[string]any{"name":"node","restartCount":0}}}})
         case "/api/v1/namespaces/training/pods/actual-training/log":
+            if hang.Load() { <-r.Context().Done(); return }
             q := r.URL.Query()
             if q.Get("container") != "node" || q.Get("timestamps") != "true" || q.Get("follow") == "true" || q.Get("previous") == "true" { t.Error("unbounded or caller-selected training log source"); w.WriteHeader(http.StatusBadRequest); return }
             lines, _ := strconv.Atoi(q.Get("tailLines")); limit, _ := strconv.Atoi(q.Get("limitBytes"))
@@ -60,4 +62,10 @@ func TestTrainingLogsBoundedTailRejectsPodUIDReplacement(t *testing.T) {
     replace.Store(true)
     logsRead.Store(false)
     if _, err := reader.ReadTrainingLogs(context.Background(), source, biz.TrainingLogOptions{TailLines:2,MaxBytes:256}); !errors.Is(err,biz.ErrTrainingLogsUnavailable) { t.Fatalf("same-name replacement returned another Pod's logs: %v",err) }
+    replace.Store(false)
+    hang.Store(true)
+    ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+    defer cancel()
+    began := time.Now()
+    if _, err := reader.ReadTrainingLogs(ctx, source, biz.TrainingLogOptions{TailLines:2,MaxBytes:256}); err == nil || time.Since(began) > time.Second { t.Fatalf("training log request ignored its caller deadline: %v", err) }
 }
