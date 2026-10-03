@@ -11,11 +11,11 @@ import (
 
 func TestUint64PreservesExactIntegerValueAndRejectsLossyConversion(t *testing.T) {
 	tests := []struct {
-		name string
+		name        string
 		coefficient string
-		exponent int32
-		want uint64
-		valid bool
+		exponent    int32
+		want        uint64
+		valid       bool
 	}{
 		{"zero", "0", 0, 0, true},
 		{"scaled zero", "0", -2, 0, true},
@@ -62,7 +62,7 @@ func TestUint64PreservesExactIntegerValueAndRejectsLossyConversion(t *testing.T)
 
 func TestUint64RejectsMissingAndNonfiniteNumericValues(t *testing.T) {
 	tests := []struct {
-		name string
+		name  string
 		value pgtype.Numeric
 	}{
 		{"null", pgtype.Numeric{}},
