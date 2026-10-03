@@ -2,6 +2,7 @@ package execution_test
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -79,5 +80,78 @@ func TestAcceptReceiptConcurrentDeliveriesHaveOneFirstAcceptanceAndDurableReplay
 	}
 	if !reflect.DeepEqual(replayed.Execution, stored) {
 		t.Fatal("replayed receipt changed the original committed execution fact")
+	}
+}
+
+func TestAcceptReceiptAfterEarlierCloseIsFirstAndPreservesCloseOnReplay(t *testing.T) {
+	openRuntimePool := preparePostgreSQL(t)
+	writerPool := openRuntimePool()
+	repository := execution.New(writerPool)
+	command, stop := validAdmission(t), userStopIntent(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	closed, err := repository.ApplyCloseIntent(ctx, stop)
+	if err != nil {
+		t.Fatalf("commit earlier close fixture: %v", err)
+	}
+	assertInitialCloseTombstone(t, closed.CloseRecord, stop)
+	first, err := repository.Accept(ctx, command)
+	if err != nil || first.Replayed {
+		t.Fatalf("the first Admission after an earlier close must report first acceptance: %v", err)
+	}
+	assertOriginalAdmission(t, first.Execution, command)
+	if !reflect.DeepEqual(first.Close, &closed.CloseRecord) {
+		t.Fatal("first admission receipt lost or changed the earlier close")
+	}
+	writerPool.Close()
+
+	reconnected := execution.New(openRuntimePool())
+	stored, err := reconnected.Get(ctx, command.TenantID, command.ExecutionID)
+	if err != nil || !reflect.DeepEqual(stored, first.Execution) {
+		t.Fatalf("reconnected Get changed the admitted execution or earlier close: %v", err)
+	}
+	replayed, err := reconnected.Accept(ctx, command)
+	if err != nil || !replayed.Replayed || !reflect.DeepEqual(replayed.Execution, stored) {
+		t.Fatalf("reconnected delivery must replay the original execution and close: %v", err)
+	}
+	persistedClose, err := reconnected.GetCloseIntent(ctx, stop.TenantID, stop.ExecutionID)
+	if err != nil || !reflect.DeepEqual(persistedClose, closed.CloseRecord) {
+		t.Fatalf("admission or replay changed the original independent close fact: %v", err)
+	}
+}
+
+func TestAcceptReceiptConflictReturnsEntireZeroReceiptAndPreservesOriginal(t *testing.T) {
+	openRuntimePool := preparePostgreSQL(t)
+	repository := execution.New(openRuntimePool())
+	command := validAdmission(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	first, err := repository.Accept(ctx, command)
+	if err != nil || first.Replayed {
+		t.Fatalf("initial Admission fixture must commit once: %v", err)
+	}
+	candidate := command
+	candidate.Intent.Name = "conflicting-admission-receipt"
+	refreshAdmissionHashes(t, &candidate)
+	failed, err := repository.Accept(ctx, candidate)
+	assertEmptyAcceptReceiptFailure(t, failed, err, biz.ErrAdmissionConflict)
+	reconnected := execution.New(openRuntimePool())
+	stored, err := reconnected.Get(ctx, command.TenantID, command.ExecutionID)
+	if err != nil || !reflect.DeepEqual(stored, first.Execution) {
+		t.Fatalf("a rejected conflict changed the original committed execution: %v", err)
+	}
+	replayed, err := reconnected.Accept(ctx, command)
+	if err != nil || !replayed.Replayed || !reflect.DeepEqual(replayed.Execution, stored) {
+		t.Fatalf("a rejected conflict changed the original command's replay: %v", err)
+	}
+}
+
+func assertEmptyAcceptReceiptFailure(t *testing.T, got biz.AcceptReceipt, err, want error) {
+	t.Helper()
+	if !errors.Is(err, want) || err.Error() != want.Error() {
+		t.Errorf("want stable %s without storage/identity details, got %v", want, err)
+	}
+	if !reflect.DeepEqual(got, biz.AcceptReceipt{}) {
+		t.Error("failed admission returned a nonzero command receipt")
 	}
 }
