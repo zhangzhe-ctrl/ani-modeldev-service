@@ -83,6 +83,9 @@ func newCompleteFixture(t *testing.T) *completeFixture {
 		m := meta("main-"+step, completeStepUID(step))
 		m["ownerReferences"] = []any{map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "Workflow", "name": "main-flow", "uid": completeWorkflowUID, "controller": true}}
 		f.objects["/api/v1/namespaces/"+ns+"/pods/main-"+step] = map[string]any{"apiVersion": "v1", "kind": "Pod", "metadata": m, "spec": map[string]any{"serviceAccountName": snapshot.Environment.Identities.KFPStepServiceAccount, "volumes": []any{map[string]any{"name": "workspace", "persistentVolumeClaim": map[string]any{"claimName": f.workspace.PVCName}}}, "containers": []any{map[string]any{"name": "main", "volumeMounts": []any{map[string]any{"name": "workspace", "mountPath": "/workspace"}}}}}, "status": map[string]any{"phase": "Running"}}
+		if step == "close" {
+			f.objects["/api/v1/namespaces/"+ns+"/pods/main-"+step]["spec"] = map[string]any{"serviceAccountName": snapshot.Environment.Identities.KFPStepServiceAccount, "containers": []any{map[string]any{"name": "main"}}}
+		}
 	}
 	var runtime map[string]any
 	if err := json.Unmarshal([]byte(`{"apiVersion":"trainer.kubeflow.org/v1alpha1","kind":"ClusterTrainingRuntime","metadata":{"name":"cpu-runtime-v1","uid":"77777777-aaaa-4bbb-8ccc-111111111111"},"spec":{"mlPolicy":{"numNodes":1},"template":{"spec":{"failurePolicy":{"maxRestarts":0},"replicatedJobs":[{"name":"trainer","replicas":1,"template":{"metadata":{"labels":{"trainer.kubeflow.org/trainjob-ancestor-step":"trainer"}},"spec":{"parallelism":1,"completions":1,"backoffLimit":0,"template":{"spec":{"restartPolicy":"Never","automountServiceAccountToken":false,"securityContext":{"runAsNonRoot":true,"runAsUser":10001,"fsGroup":10001},"containers":[{"name":"node","image":"registry.example.test/placeholder:never-used","securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}}}}]}}}}`), &runtime); err != nil {

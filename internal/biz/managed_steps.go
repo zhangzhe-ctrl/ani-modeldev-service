@@ -32,6 +32,7 @@ type BeginManagedExecutionResult struct {
 type RunAuthorityRepository interface {
 	Get(context.Context, string, string) (PipelineDispatch, error)
 	BindRunAuthority(context.Context, RunAuthorityCandidate) (RunAuthorityReceipt, error)
+	GetRunAuthority(context.Context, string, string) (RunAuthority, error)
 }
 
 type ManagedWorkloadVerifier interface {

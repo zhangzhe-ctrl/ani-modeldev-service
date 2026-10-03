@@ -101,40 +101,5 @@ func (command *Command) AcceptExecution(ctx context.Context, request *modeldevv1
 // This is only the transport mapping of the owner's same-transaction projection.
 // Unknown or absent axes cannot be repaired into a successful default receipt.
 func acceptExecutionStates(states biz.ExecutionStates) (*modeldevv1.ExecutionStates, bool) {
-	wire := &modeldevv1.ExecutionStates{}
-	switch states.Compute {
-	case biz.ComputeStateAccepted:
-		wire.ComputeState = modeldevv1.ComputeState_COMPUTE_STATE_ACCEPTED
-	case biz.ComputeStateSubmitting:
-		wire.ComputeState = modeldevv1.ComputeState_COMPUTE_STATE_SUBMITTING
-	case biz.ComputeStateSubmissionNotSent:
-		wire.ComputeState = modeldevv1.ComputeState_COMPUTE_STATE_SUBMISSION_NOT_SENT
-	case biz.ComputeStateSubmissionUncertain:
-		wire.ComputeState = modeldevv1.ComputeState_COMPUTE_STATE_SUBMISSION_UNCERTAIN
-	case biz.ComputeStateSubmissionConfirmed:
-		wire.ComputeState = modeldevv1.ComputeState_COMPUTE_STATE_SUBMISSION_CONFIRMED
-	default:
-		return nil, false
-	}
-	switch states.Delivery {
-	case biz.DeliveryStatePending:
-		wire.DeliveryState = modeldevv1.DeliveryState_DELIVERY_STATE_PENDING
-	default:
-		return nil, false
-	}
-	switch states.Resource {
-	case biz.ResourceStateNotApplicable:
-		wire.ResourceState = modeldevv1.ResourceState_RESOURCE_STATE_NOT_APPLICABLE
-	default:
-		return nil, false
-	}
-	switch states.Close {
-	case biz.CloseStateOpen:
-		wire.CloseState = modeldevv1.CloseState_CLOSE_STATE_OPEN
-	case biz.CloseStateClosing:
-		wire.CloseState = modeldevv1.CloseState_CLOSE_STATE_CLOSING
-	default:
-		return nil, false
-	}
-	return wire, true
+	return encodeRuntimeStates(states)
 }

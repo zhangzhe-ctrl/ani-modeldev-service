@@ -6,6 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/lifecycle"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/submission"
 )
 
@@ -33,5 +34,15 @@ func executionStates(ctx context.Context, transaction pgx.Tx, execution biz.Exec
 	if err != nil {
 		return biz.ExecutionStates{}, biz.ErrPersistence
 	}
+	runtime, err := lifecycle.ReadInTransaction(ctx, transaction, execution.TenantID, execution.ExecutionID)
+	if errors.Is(err, biz.ErrExecutionNotFound) {
+		// The fixed 0012 migration-upgrade reader has no runtime schema yet.
+		return states, nil
+	}
+	if err != nil || runtime.OwnerRevision != execution.OwnerRevision {
+		return biz.ExecutionStates{}, biz.ErrPersistence
+	}
+	states, err = biz.ProjectRuntimeStates(states, runtime)
+	if err != nil { return biz.ExecutionStates{}, biz.ErrPersistence }
 	return states, nil
 }

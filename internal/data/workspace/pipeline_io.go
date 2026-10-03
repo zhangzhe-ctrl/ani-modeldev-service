@@ -58,7 +58,26 @@ func PrepareInput(ctx context.Context, client *s3.Client, execution biz.Executio
 	if response.VersionId == nil || input.Object.VersionID == nil || *response.VersionId != *input.Object.VersionID || int64(len(data)) != input.Object.SizeBytes || pipelineContentHash(data) != input.Object.SHA256 {
 		return biz.WorkspaceBinding{}, biz.ErrInputVerification
 	}
-	manifest, err := json.Marshal(struct {
+	manifest, err := PreparedManifestBytes(execution, binding)
+	if err != nil { return biz.WorkspaceBinding{}, biz.ErrInputVerification }
+	inputs, err := openPipelineSubdirectory(root, want.InputSubpath)
+	if err != nil { return biz.WorkspaceBinding{}, err }
+	defer unix.Close(inputs)
+	reports, err := openPipelineSubdirectory(root, want.ReportsSubpath)
+	if err != nil { return biz.WorkspaceBinding{}, err }
+	defer unix.Close(reports)
+	if err := writePipelineFile(ctx, inputs, "data.csv", data); err != nil { return biz.WorkspaceBinding{}, err }
+	if err := writePipelineFile(ctx, reports, "prepared-manifest.json", manifest); err != nil { return biz.WorkspaceBinding{}, err }
+	binding.PreparedManifestSHA256, binding.PreparedManifestBytes = pipelineContentHash(manifest), int64(len(manifest))
+	return binding, nil
+}
+
+// PreparedManifestBytes is the shared byte contract for the prepare component
+// and the owner's independent verification. Encoding alone proves no I/O or
+// permission to use the claimed workspace.
+func PreparedManifestBytes(execution biz.Execution, binding biz.WorkspaceBinding) ([]byte, error) {
+	input := execution.Snapshot.Input
+	return json.Marshal(struct {
 		Schema string `json:"schema"`
 		TenantID string `json:"tenant_id"`
 		OperationID string `json:"operation_id"`
@@ -71,17 +90,6 @@ func PrepareInput(ctx context.Context, client *s3.Client, execution biz.Executio
 		PVCUID string `json:"pvc_uid"`
 	}{"ani.modeldev.prepared-manifest.v1", execution.TenantID, execution.OperationID, execution.ExecutionID, execution.SpecHash,
 		input.InputVersionID, input.Object.SHA256, input.Object.SizeBytes, binding.NamespaceUID, binding.PVCUID})
-	if err != nil { return biz.WorkspaceBinding{}, biz.ErrInputVerification }
-	inputs, err := openPipelineSubdirectory(root, want.InputSubpath)
-	if err != nil { return biz.WorkspaceBinding{}, err }
-	defer unix.Close(inputs)
-	reports, err := openPipelineSubdirectory(root, want.ReportsSubpath)
-	if err != nil { return biz.WorkspaceBinding{}, err }
-	defer unix.Close(reports)
-	if err := writePipelineFile(ctx, inputs, "data.csv", data); err != nil { return biz.WorkspaceBinding{}, err }
-	if err := writePipelineFile(ctx, reports, "prepared-manifest.json", manifest); err != nil { return biz.WorkspaceBinding{}, err }
-	binding.PreparedManifestSHA256, binding.PreparedManifestBytes = pipelineContentHash(manifest), int64(len(manifest))
-	return binding, nil
 }
 
 // UploadOutput sends independently collected actual files and the manifest.

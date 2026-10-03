@@ -12,11 +12,20 @@ const (
 	ComputeStateSubmissionNotSent   ComputeState = "SUBMISSION_NOT_SENT"
 	ComputeStateSubmissionUncertain ComputeState = "SUBMISSION_UNCERTAIN"
 	ComputeStateSubmissionConfirmed ComputeState = "SUBMISSION_CONFIRMED"
+	ComputeStatePreparing           ComputeState = "PREPARING"
+	ComputeStateTraining            ComputeState = "TRAINING"
+	ComputeStateSucceeded           ComputeState = "SUCCEEDED"
+	ComputeStateFailed              ComputeState = "FAILED"
 )
 
 type DeliveryState string
 
-const DeliveryStatePending DeliveryState = "PENDING"
+const (
+	DeliveryStatePending DeliveryState = "PENDING"
+	DeliveryStatePublished DeliveryState = "PUBLISHED"
+)
+
+const CloseStateClosed CloseState = "CLOSED"
 
 type ResourceState string
 
@@ -39,8 +48,8 @@ type ExecutionStateFacts struct {
 	Close      *CloseState
 }
 
-// Project describes the current CPU admission/submission fact set. Publishing
-// and runtime facts must extend this input when their writers are introduced.
+// Project describes the CPU admission/submission facts. ProjectRuntimeStates
+// adds the independently persisted lifecycle facts from the same transaction.
 // A close affects only its own axis; submission observations establish neither
 // queued computation nor a training outcome.
 func (facts ExecutionStateFacts) Project() (ExecutionStates, error) {
@@ -69,6 +78,56 @@ func (facts ExecutionStateFacts) Project() (ExecutionStates, error) {
 			return ExecutionStates{}, ErrInvalidExecutionStateFacts
 		}
 		states.Close = CloseStateClosing
+	}
+	return states, nil
+}
+
+// ProjectRuntimeStates overlays committed runtime facts on admission/submission
+// axes. It does not schedule a step, grant creation permission, or infer a
+// compute outcome from a close intent.
+func ProjectRuntimeStates(base ExecutionStates, runtime ExecutionRuntime) (ExecutionStates, error) {
+	states := base
+	if runtime.Workspace != nil {
+		states.Compute = ComputeStatePreparing
+	}
+	if runtime.Training != nil {
+		if runtime.Workspace == nil { return ExecutionStates{}, ErrInvalidExecutionStateFacts }
+		states.Compute = ComputeStateTraining
+	}
+	if runtime.TrainingHandle != nil && runtime.Training == nil {
+		return ExecutionStates{}, ErrInvalidExecutionStateFacts
+	}
+	if runtime.Observation != nil {
+		if runtime.TrainingHandle == nil || runtime.Observation.Handle != *runtime.TrainingHandle {
+			return ExecutionStates{}, ErrInvalidExecutionStateFacts
+		}
+		switch runtime.Observation.Outcome {
+		case "RUNNING", "UNKNOWN":
+			states.Compute = ComputeStateTraining
+		case "SUCCEEDED":
+			if !runtime.Observation.WritersAbsent { return ExecutionStates{}, ErrInvalidExecutionStateFacts }
+			states.Compute = ComputeStateSucceeded
+		case "FAILED":
+			states.Compute = ComputeStateFailed
+		default:
+			return ExecutionStates{}, ErrInvalidExecutionStateFacts
+		}
+	}
+	if runtime.Publication != nil {
+		if states.Compute != ComputeStateSucceeded || runtime.Observation == nil || !runtime.Observation.WritersAbsent {
+			return ExecutionStates{}, ErrInvalidExecutionStateFacts
+		}
+		states.Delivery = DeliveryStatePublished
+	}
+	if runtime.CloseGeneration > 0 {
+		if runtime.CloseRequestedAt.IsZero() { return ExecutionStates{}, ErrInvalidExecutionStateFacts }
+		states.Close = CloseStateClosing
+	}
+	if runtime.ClosedAt != nil {
+		if runtime.CloseGeneration == 0 || runtime.CloseEvidence == nil {
+			return ExecutionStates{}, ErrInvalidExecutionStateFacts
+		}
+		states.Close = CloseStateClosed
 	}
 	return states, nil
 }

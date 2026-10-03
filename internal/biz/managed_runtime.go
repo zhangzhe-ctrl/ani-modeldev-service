@@ -1,49 +1,143 @@
 package biz
 
 import (
-	"context"
-	"errors"
-	"github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01"
+ "context"
+ "errors"
+ "reflect"
+ "strings"
+
+ "github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01"
 )
 
 type ManagedRuntime struct {
-	steps        *ManagedSteps
-	repository   ExecutionRuntimeRepository
-	trainer      TrainingRuntime
-	workspaces   PreparedWorkspaceVerifier
-	publications PublicationVerifier
+ steps *ManagedSteps
+ repository ExecutionRuntimeRepository
+ trainer TrainingRuntime
+ workspaces PreparedWorkspaceVerifier
+ publications PublicationVerifier
 }
 
 func NewManagedRuntime(steps *ManagedSteps, repository ExecutionRuntimeRepository, trainer TrainingRuntime, workspaces PreparedWorkspaceVerifier, publications PublicationVerifier) (*ManagedRuntime, error) {
-	if steps == nil || repository == nil || trainer == nil || workspaces == nil || publications == nil {
-		return nil, ErrRuntimeNotReady
-	}
-	return &ManagedRuntime{steps: steps, repository: repository, trainer: trainer, workspaces: workspaces, publications: publications}, nil
+ if steps==nil || repository==nil || trainer==nil || workspaces==nil || publications==nil { return nil,ErrRuntimeNotReady }
+ return &ManagedRuntime{steps:steps,repository:repository,trainer:trainer,workspaces:workspaces,publications:publications},nil
 }
 
 type ManagedRuntimeResult struct {
-	States    ExecutionStates
-	Execution Execution
-	Authority RunAuthority
-	Runtime   ExecutionRuntime
-	Replayed  bool
+ States ExecutionStates
+ Execution Execution
+ Authority RunAuthority
+ Runtime ExecutionRuntime
+ Replayed bool
 }
 
-func (runtime *ManagedRuntime) Configuration(ctx context.Context, token string, request BeginManagedExecutionRequest) (ManagedRuntimeResult, error) {
-	return ManagedRuntimeResult{}, errors.New("MANAGED_RUNTIME_NOT_IMPLEMENTED")
+// Every callback rechecks current workload identity and the KFP-owned task
+// association. A previously issued receipt is never a bearer credential.
+func (runtime *ManagedRuntime) authenticate(ctx context.Context, token string, request BeginManagedExecutionRequest, task string)(ManagedRuntimeResult,error) {
+ if ctx==nil || token=="" || len(token)>16384 { return ManagedRuntimeResult{},ErrManagedStepUnauthorized }
+ if err:=ctx.Err();err!=nil{return ManagedRuntimeResult{},err}
+ if runtime==nil || runtime.steps==nil {return ManagedRuntimeResult{},ErrManagedStepUnavailable}
+ for _,id:=range []string{request.TenantID,request.OperationID,request.ExecutionID,request.Association.RunID,request.Association.NamespaceUID,request.Association.PodUID} {
+  if !validAdmissionID(id)||strings.ToLower(id)!=id{return ManagedRuntimeResult{},ErrInvalidAdmission}
+ }
+ if !closeSpecHashPattern.MatchString(request.SpecHash){return ManagedRuntimeResult{},ErrInvalidAdmission}
+ dispatch,err:=runtime.steps.repository.Get(ctx,request.TenantID,request.ExecutionID)
+ if errors.Is(err,ErrExecutionNotFound){return ManagedRuntimeResult{},ErrManagedStepUnauthorized};if err!=nil{return ManagedRuntimeResult{},ErrManagedStepUnavailable}
+ plan,a:=dispatch.Plan,request.Association
+ if plan.TenantID!=request.TenantID||plan.OperationID!=request.OperationID||plan.ExecutionID!=request.ExecutionID||plan.SpecHash!=request.SpecHash||plan.Environment.NamespaceName!=a.NamespaceName||plan.Environment.NamespaceUID!=a.NamespaceUID{return ManagedRuntimeResult{},ErrManagedStepUnauthorized}
+ if err=runtime.steps.workloads.Verify(ctx,token,plan,a);err!=nil{return ManagedRuntimeResult{},ErrManagedStepUnauthorized}
+ if err=runtime.steps.runs.VerifyManagedRun(ctx,plan,a,task);err!=nil{return ManagedRuntimeResult{},ErrManagedStepUnauthorized}
+ authority,err:=runtime.steps.repository.GetRunAuthority(ctx,plan.TenantID,plan.ExecutionID)
+ if err!=nil{return ManagedRuntimeResult{},ErrManagedStepUnauthorized}
+ expected:=RunAuthorityCandidate{TenantID:plan.TenantID,ExecutionID:plan.ExecutionID,OperationID:plan.OperationID,SpecHash:plan.SpecHash,AttemptID:dispatch.AttemptID,PlanHash:dispatch.PlanHash,RunID:a.RunID,NamespaceName:a.NamespaceName,NamespaceUID:a.NamespaceUID,WorkflowName:a.WorkflowName,WorkflowUID:a.WorkflowUID}
+ if authority.RunAuthorityCandidate!=expected{return ManagedRuntimeResult{},ErrManagedStepUnauthorized}
+ execution,err:=runtime.steps.executions.Get(ctx,plan.TenantID,plan.ExecutionID);if err!=nil{return ManagedRuntimeResult{},err}
+ state,err:=runtime.repository.GetRuntime(ctx,plan.TenantID,plan.ExecutionID);if err!=nil{return ManagedRuntimeResult{},err}
+ return runtimeResult(ManagedRuntimeResult{Execution:execution,Authority:authority},state,false)
 }
-func (runtime *ManagedRuntime) Prepared(ctx context.Context, token string, request BeginManagedExecutionRequest, workspace WorkspaceBinding, input cpup01.InputRef) (ManagedRuntimeResult, error) {
-	return ManagedRuntimeResult{}, errors.New("MANAGED_RUNTIME_NOT_IMPLEMENTED")
+func runtimeResult(result ManagedRuntimeResult,state ExecutionRuntime,replayed bool)(ManagedRuntimeResult,error) {
+ states,err:=ProjectRuntimeStates(result.Execution.States,state);if err!=nil{return ManagedRuntimeResult{},err}
+ result.Runtime=state;result.States=states;result.Replayed=replayed
+ result.Execution.OwnerRevision=state.OwnerRevision;result.Execution.States=states
+ result.Authority.OwnerRevision=state.OwnerRevision
+ return result,nil
 }
-func (runtime *ManagedRuntime) Ensure(ctx context.Context, token string, request BeginManagedExecutionRequest) (ManagedRuntimeResult, error) {
-	return ManagedRuntimeResult{}, errors.New("MANAGED_RUNTIME_NOT_IMPLEMENTED")
+func (runtime *ManagedRuntime) Configuration(ctx context.Context,token string,request BeginManagedExecutionRequest)(ManagedRuntimeResult,error){
+ return runtime.authenticate(ctx,token,request,"prepare")
 }
-func (runtime *ManagedRuntime) Status(ctx context.Context, token string, request BeginManagedExecutionRequest) (ManagedRuntimeResult, error) {
-	return ManagedRuntimeResult{}, errors.New("MANAGED_RUNTIME_NOT_IMPLEMENTED")
+func (runtime *ManagedRuntime) Prepared(ctx context.Context,token string,request BeginManagedExecutionRequest,workspace WorkspaceBinding,input cpup01.InputRef)(ManagedRuntimeResult,error){
+ result,err:=runtime.authenticate(ctx,token,request,"prepare");if err!=nil{return result,err}
+ if !reflect.DeepEqual(input,result.Execution.Snapshot.Input){return ManagedRuntimeResult{},ErrRuntimeConflict}
+ if err=runtime.workspaces.VerifyPrepared(ctx,result.Execution,request.Association,workspace);err!=nil{return ManagedRuntimeResult{},err}
+ state,replayed,err:=runtime.repository.RecordPrepared(ctx,result.Authority.RunAuthorityCandidate,workspace);if err!=nil{return ManagedRuntimeResult{},err}
+ return runtimeResult(result,state,replayed)
 }
-func (runtime *ManagedRuntime) Publish(ctx context.Context, token string, request BeginManagedExecutionRequest, candidate RuntimePublication) (ManagedRuntimeResult, error) {
-	return ManagedRuntimeResult{}, errors.New("MANAGED_RUNTIME_NOT_IMPLEMENTED")
+func (runtime *ManagedRuntime) Ensure(ctx context.Context,token string,request BeginManagedExecutionRequest)(ManagedRuntimeResult,error){
+ result,err:=runtime.authenticate(ctx,token,request,"train-wait");if err!=nil{return result,err}
+ reservation,err:=runtime.repository.ReserveTraining(ctx,result.Authority.RunAuthorityCandidate);if err!=nil{return ManagedRuntimeResult{},err}
+ state:=reservation.State
+ if state.TrainingHandle!=nil{return runtimeResult(result,state,true)}
+ if state.Training==nil{return ManagedRuntimeResult{},ErrRuntimeNotReady}
+ var handle TrainingHandle
+ if reservation.SendPermit {
+  // The only POST permit is returned by the first committed reservation.
+  // An unknown outcome leaves that reservation consumed permanently.
+  handle,err=runtime.trainer.CreateTraining(ctx,*state.Training)
+ } else {
+  handle,err=runtime.trainer.FindTraining(ctx,*state.Training)
+ }
+ if err!=nil{return ManagedRuntimeResult{},err}
+ state,err=runtime.repository.RecordTrainingHandle(ctx,result.Authority.RunAuthorityCandidate,handle);if err!=nil{return ManagedRuntimeResult{},err}
+ if state.CloseGeneration>0 {
+  if err=runtime.trainer.StopTraining(ctx,*state.Training,handle);err!=nil{return ManagedRuntimeResult{},err}
+ }
+ return runtimeResult(result,state,!reservation.SendPermit)
 }
-func (runtime *ManagedRuntime) Close(ctx context.Context, token string, request BeginManagedExecutionRequest, reason string) (ManagedRuntimeResult, error) {
-	return ManagedRuntimeResult{}, errors.New("MANAGED_RUNTIME_NOT_IMPLEMENTED")
+
+// observe recovers a lost creation response by deterministic lookup only. It
+// does not reissue creation and retains all previously observed writer UIDs.
+func (runtime *ManagedRuntime) observe(ctx context.Context,result ManagedRuntimeResult)(ExecutionRuntime,error){
+ state:=result.Runtime
+ if state.Training==nil{return state,ErrRuntimeNotReady}
+ if state.TrainingHandle==nil {
+  handle,err:=runtime.trainer.FindTraining(ctx,*state.Training);if err!=nil{return state,err}
+  state,err=runtime.repository.RecordTrainingHandle(ctx,result.Authority.RunAuthorityCandidate,handle);if err!=nil{return state,err}
+ }
+ history:=[]RuntimeResource(nil);if state.Observation!=nil{history=state.Observation.Resources}
+ observation,err:=runtime.trainer.ObserveTraining(ctx,*state.Training,*state.TrainingHandle,history);if err!=nil{return state,err}
+ return runtime.repository.RecordTrainingObservation(ctx,result.Authority.RunAuthorityCandidate,observation)
+}
+func (runtime *ManagedRuntime) Status(ctx context.Context,token string,request BeginManagedExecutionRequest)(ManagedRuntimeResult,error){
+ result,err:=runtime.authenticate(ctx,token,request,"train-wait");if err!=nil{return result,err}
+ state,err:=runtime.observe(ctx,result);if err!=nil{return ManagedRuntimeResult{},err}
+ return runtimeResult(result,state,false)
+}
+func (runtime *ManagedRuntime) Publish(ctx context.Context,token string,request BeginManagedExecutionRequest,candidate RuntimePublication)(ManagedRuntimeResult,error){
+ result,err:=runtime.authenticate(ctx,token,request,"close");if err!=nil{return result,err}
+ state:=result.Runtime
+ if state.Observation==nil||state.Observation.Outcome!="SUCCEEDED"||!state.Observation.WritersAbsent{return ManagedRuntimeResult{},ErrRuntimeNotReady}
+ publication,err:=runtime.publications.VerifyPublication(ctx,result.Execution,request.Association,candidate);if err!=nil{return ManagedRuntimeResult{},err}
+ state,replayed,err:=runtime.repository.RecordPublication(ctx,result.Authority.RunAuthorityCandidate,publication);if err!=nil{return ManagedRuntimeResult{},err}
+ return runtimeResult(result,state,replayed)
+}
+func (runtime *ManagedRuntime) Close(ctx context.Context,token string,request BeginManagedExecutionRequest,reason string)(ManagedRuntimeResult,error){
+ result,err:=runtime.authenticate(ctx,token,request,"close");if err!=nil{return result,err}
+ state,replayed,err:=runtime.repository.RequestRuntimeClose(ctx,result.Authority.RunAuthorityCandidate,reason);if err!=nil{return ManagedRuntimeResult{},err}
+ // The shared fence commits before any remote stop or observation. A failure
+ // below leaves durable CLOSING and cannot authorize another creation.
+ result.Runtime=state
+ if state.ClosedAt!=nil{return runtimeResult(result,state,true)}
+ if state.Training!=nil {
+  state,err=runtime.observe(ctx,result)
+  if err!=nil{return runtimeResult(result,state,replayed)}
+  if !state.Observation.WritersAbsent {
+   if err=runtime.trainer.StopTraining(ctx,*state.Training,*state.TrainingHandle);err!=nil{return ManagedRuntimeResult{},err}
+   result.Runtime=state
+   state,err=runtime.observe(ctx,result);if err!=nil{return runtimeResult(result,state,replayed)}
+  }
+  if !state.Observation.WritersAbsent{return runtimeResult(result,state,replayed)}
+ }
+ evidence,err:=runtime.publications.VerifyWritersAbsent(ctx,result.Execution,request.Association);if err!=nil{return runtimeResult(result,state,replayed)}
+ observation:=TrainingRuntimeObservation{};if state.Observation!=nil{observation=*state.Observation}
+ state,err=runtime.repository.ConfirmRuntimeClosed(ctx,result.Authority.RunAuthorityCandidate,state.CloseGeneration,observation,evidence);if err!=nil{return ManagedRuntimeResult{},err}
+ return runtimeResult(result,state,replayed)
 }
