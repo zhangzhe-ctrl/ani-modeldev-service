@@ -136,7 +136,9 @@ func bootstrapFixtureWithPool(t *testing.T, f *completeFixture, pool *pgxpool.Po
 func newFixtureRuntimeClient(t *testing.T, f *completeFixture, pool *pgxpool.Pool, kube dynamic.Interface, store *s3.Client, runs *kfp.Client) modeldevv1.ModelDevStepServiceClient {
 	t.Helper()
 	identity, err := stepidentity.New(kube, "ani-modeldev-managed-step")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	dispatch := submission.New(pool)
 	proof := runtimeproof.New(kube, runs, objectstore.NewVerifier(store, f.request.Admission.Snapshot.PublicationScope.StorageConnectionID, 64<<20), dispatch)
 	steps, err := biz.NewManagedSteps(dispatch, execution.New(pool), identity, runs)

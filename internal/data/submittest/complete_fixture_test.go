@@ -236,18 +236,28 @@ func (f *completeFixture) kubeRequest(w http.ResponseWriter, r *http.Request) {
 		// Only the actual container stdout is exposed. Kubernetes supplies its
 		// timestamp envelope; the test substitute preserves the original text.
 		lines := strings.Split(strings.TrimSuffix(string(f.trainingLog), "\n"), "\n")
-		if len(lines) > tail { lines = lines[len(lines)-tail:] }
+		if len(lines) > tail {
+			lines = lines[len(lines)-tail:]
+		}
 		var body strings.Builder
 		for _, line := range lines {
-			if line == "" { continue }
-			var record struct { Timestamp string `json:"timestamp"` }
+			if line == "" {
+				continue
+			}
+			var record struct {
+				Timestamp string `json:"timestamp"`
+			}
 			_ = json.Unmarshal([]byte(line), &record)
 			stamp := record.Timestamp
-			if _, err := time.Parse(time.RFC3339Nano, stamp); err != nil { stamp = time.Now().UTC().Format(time.RFC3339Nano) }
+			if _, err := time.Parse(time.RFC3339Nano, stamp); err != nil {
+				stamp = time.Now().UTC().Format(time.RFC3339Nano)
+			}
 			body.WriteString(stamp + " " + line + "\n")
 		}
 		raw := []byte(body.String())
-		if len(raw) > limit { raw = raw[:limit] }
+		if len(raw) > limit {
+			raw = raw[:limit]
+		}
 		w.Header().Set("Content-Type", "text/plain")
 		_, _ = w.Write(raw)
 		return

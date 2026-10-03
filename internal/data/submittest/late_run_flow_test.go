@@ -31,7 +31,10 @@ func TestMainFlowLateRunRecoveryFindsOriginalAndClosesWithoutRecreating(t *testi
 		if r.Method == http.MethodPost && r.URL.Path == "/apis/v2beta1/runs" {
 			f.kfpRequest(httptest.NewRecorder(), r)
 			close(started)
-			select { case <-release: case <-r.Context().Done(): }
+			select {
+			case <-release:
+			case <-r.Context().Done():
+			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`{"error":"response_lost"}`))
@@ -39,7 +42,10 @@ func TestMainFlowLateRunRecoveryFindsOriginalAndClosesWithoutRecreating(t *testi
 		}
 		if r.Method == http.MethodGet && r.URL.Path == "/apis/v2beta1/runs" {
 			w.Header().Set("Content-Type", "application/json")
-			if !visible.Load() { _, _ = w.Write([]byte(`{"runs":[],"total_size":0}`)); return }
+			if !visible.Load() {
+				_, _ = w.Write([]byte(`{"runs":[],"total_size":0}`))
+				return
+			}
 			get := r.Clone(r.Context())
 			copyURL := *r.URL
 			get.URL = &copyURL
@@ -64,43 +70,73 @@ func TestMainFlowLateRunRecoveryFindsOriginalAndClosesWithoutRecreating(t *testi
 	acceptThroughCommandRPC(t, ctx, execution.New(pool), f.request.Admission)
 	_, runs := assembleRecoveryOwner(t, f, pool)
 	submitter, err := biz.NewPipelineSubmitter(submission.New(pool), runs, time.Second)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	submitted := make(chan error, 1)
 	go func() { _, err := submitter.Submit(ctx, f.request); submitted <- err }()
-	select { case <-started: case <-ctx.Done(): t.Fatal("original CreateRun never reached external API") }
+	select {
+	case <-started:
+	case <-ctx.Done():
+		t.Fatal("original CreateRun never reached external API")
+	}
 	generation := applyOwnerStop(t, ctx, f, pool)
 	close(release)
-	if err := <-submitted; !errors.Is(err, biz.ErrPipelineSubmissionUncertain) { t.Fatalf("lost create response was not uncertain: %v", err) }
+	if err := <-submitted; !errors.Is(err, biz.ErrPipelineSubmissionUncertain) {
+		t.Fatalf("lost create response was not uncertain: %v", err)
+	}
 	original, err := submission.New(pool).Get(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
-	if err != nil || original.State != biz.PipelineDispatchUncertain { t.Fatalf("original uncertain attempt was not durable: %+v %v", original, err) }
+	if err != nil || original.State != biz.PipelineDispatchUncertain {
+		t.Fatalf("original uncertain attempt was not durable: %+v %v", original, err)
+	}
 	pool.Close()
 	pool = open()
 	worker, _ := assembleRecoveryOwner(t, f, pool)
 	batch, err := worker.ReconcileOnce(ctx)
 	unresolved, readErr := lifecycle.New(pool).GetRuntime(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
-	if err != nil || readErr != nil || batch.Unresolved != 1 || unresolved.ClosedAt != nil { t.Fatalf("unknown late create incorrectly closed: %+v %+v %v %v", batch, unresolved, err, readErr) }
+	if err != nil || readErr != nil || batch.Unresolved != 1 || unresolved.ClosedAt != nil {
+		t.Fatalf("unknown late create incorrectly closed: %+v %+v %v %v", batch, unresolved, err, readErr)
+	}
 	// Public runtime facts must keep a durable review reason across restart.
 	raw, err := json.Marshal(unresolved)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	var facts map[string]any
-	if err := json.Unmarshal(raw, &facts); err != nil { t.Fatal(err) }
-	if facts["CloseReviewReason"] != "KFP_CREATE_UNRESOLVED" { t.Fatalf("LATE_RUN_CLOSE_NOT_IMPLEMENTED: unknown create lacks durable NEEDS_REVIEW reason: %s", raw) }
+	if err := json.Unmarshal(raw, &facts); err != nil {
+		t.Fatal(err)
+	}
+	if facts["CloseReviewReason"] != "KFP_CREATE_UNRESOLVED" {
+		t.Fatalf("LATE_RUN_CLOSE_NOT_IMPLEMENTED: unknown create lacks durable NEEDS_REVIEW reason: %s", raw)
+	}
 	visible.Store(true)
 	pool.Close()
 	pool = open()
 	worker, runs = assembleRecoveryOwner(t, f, pool)
 	batch, err = worker.ReconcileOnce(ctx)
 	closed, readErr := lifecycle.New(pool).GetRuntime(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
-	if err != nil || readErr != nil || batch.Closed != 1 || closed.ClosedAt == nil || closed.CloseGeneration != generation || closed.CloseEvidence == nil || closed.CloseEvidence.RunID != completeRunID { t.Fatalf("LATE_RUN_CLOSE_NOT_IMPLEMENTED: original late run not found/stopped/closed: %+v %+v %v %v", batch, closed, err, readErr) }
-	if _, err := submission.New(pool).GetRunAuthority(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID); !errors.Is(err, biz.ErrExecutionNotFound) { t.Fatalf("owner close recovery granted late managed-step authority: %v", err) }
+	if err != nil || readErr != nil || batch.Closed != 1 || closed.ClosedAt == nil || closed.CloseGeneration != generation || closed.CloseEvidence == nil || closed.CloseEvidence.RunID != completeRunID {
+		t.Fatalf("LATE_RUN_CLOSE_NOT_IMPLEMENTED: original late run not found/stopped/closed: %+v %+v %v %v", batch, closed, err, readErr)
+	}
+	if _, err := submission.New(pool).GetRunAuthority(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID); !errors.Is(err, biz.ErrExecutionNotFound) {
+		t.Fatalf("owner close recovery granted late managed-step authority: %v", err)
+	}
 	recovered, err := submission.New(pool).Get(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
-	if err != nil || recovered.AttemptID != original.AttemptID || recovered.PlanHash != original.PlanHash || len(recovered.ConfirmedRuns) != 1 || recovered.ConfirmedRuns[0].RunID != completeRunID { t.Fatalf("late recovery replaced the original attempt: %+v %v", recovered, err) }
+	if err != nil || recovered.AttemptID != original.AttemptID || recovered.PlanHash != original.PlanHash || len(recovered.ConfirmedRuns) != 1 || recovered.ConfirmedRuns[0].RunID != completeRunID {
+		t.Fatalf("late recovery replaced the original attempt: %+v %v", recovered, err)
+	}
 	submitter, err = biz.NewPipelineSubmitter(submission.New(pool), runs, time.Second)
-	if err != nil { t.Fatal(err) }
-	if _, err := submitter.Submit(ctx, f.request); err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := submitter.Submit(ctx, f.request); err != nil {
+		t.Fatal(err)
+	}
 	f.mu.Lock()
 	creates, runCreates, runStops := f.creates, f.runCreates, f.runStops
 	f.mu.Unlock()
-	if creates != 0 || runCreates != 1 || runStops != 1 { t.Fatalf("recovery recreated or failed to stop: train=%d run=%d stops=%d", creates, runCreates, runStops) }
+	if creates != 0 || runCreates != 1 || runStops != 1 {
+		t.Fatalf("recovery recreated or failed to stop: train=%d run=%d stops=%d", creates, runCreates, runStops)
+	}
 	t.Log("LATE_RUN_CLOSE: close during CreateRun, lost response, durable NEEDS_REVIEW, restart, strict original Run recovery and CLOSED without another creation")
 }
