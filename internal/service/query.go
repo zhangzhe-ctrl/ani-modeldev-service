@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strings"
 
 	"github.com/google/uuid"
 	modeldevv1 "github.com/zhangzhe-ctrl/ani-modeldev-service/api/ani/modeldev/v1"
@@ -77,10 +78,18 @@ func (query *Query) GetExecution(ctx context.Context, request *modeldevv1.GetExe
 	if err != nil {
 		return nil, queryError(err, scope.RequestID)
 	}
+	view, err := executionView(record)
+	if err != nil {
+		return nil, queryError(err, scope.RequestID)
+	}
+	return &modeldevv1.GetExecutionResponse{Execution: view}, nil
+}
+
+func executionView(record biz.QueryRecord) (*modeldevv1.ExecutionView, error) {
 	value := record.Execution
 	states, valid := encodeRuntimeStates(value.States)
 	if !valid {
-		return nil, queryError(biz.ErrPersistence, scope.RequestID)
+		return nil, biz.ErrPersistence
 	}
 	view := &modeldevv1.ExecutionView{Identity: &trainingv1.ExecutionIdentity{OperationId: value.OperationID, ExecutionId: value.ExecutionID, ExecutionSpecHash: value.SpecHash}, Name: value.Intent.Name, Kind: trainingv1.ExecutionKind_EXECUTION_KIND_GENERAL_TRAINING, PresetId: value.Snapshot.Release.PresetID, ReleaseId: value.Snapshot.Release.ReleaseID, InputVersionId: value.Snapshot.Input.InputVersionID, ImageVersionId: value.Snapshot.Program.ImageVersionID, States: states, CloseGeneration: record.Runtime.CloseGeneration, AcceptedAt: timestamppb.New(value.AcceptedAt), DeadlineAt: timestamppb.New(value.Snapshot.DeadlineAt), ObservedAt: timestamppb.New(value.AcceptedAt)}
 	if value.Close != nil {
@@ -103,7 +112,50 @@ func (query *Query) GetExecution(ctx context.Context, request *modeldevv1.GetExe
 		view.CurrentStep = modeldevv1.PipelineStep_PIPELINE_STEP_CLOSE
 		view.ObservedAt = timestamppb.New(*record.Runtime.ClosedAt)
 	}
-	return &modeldevv1.GetExecutionResponse{Execution: view}, nil
+	return view, nil
+}
+
+func (query *Query) ListExecutions(ctx context.Context, request *modeldevv1.ListExecutionsRequest) (*modeldevv1.ListExecutionsResponse, error) {
+	scope, err := queryScope(ctx, modeldevv1.ModelDevQueryService_ListExecutions_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+	if request == nil || len(request.ProtoReflect().GetUnknown()) != 0 {
+		return nil, status.Error(codes.InvalidArgument, "invalid execution query")
+	}
+	filter := biz.ExecutionQuery{Limit: 20}
+	if page := request.Page; page != nil {
+		if len(page.ProtoReflect().GetUnknown()) != 0 || page.PageSize > 100 || (page.PageToken != "" && !queryID(page.PageToken)) {
+			return nil, status.Error(codes.InvalidArgument, "invalid execution page")
+		}
+		if page.PageSize > 0 { filter.Limit = int(page.PageSize) }
+		filter.AfterID = page.PageToken
+	}
+	if request.ComputeState != nil {
+		name, known := modeldevv1.ComputeState_name[int32(*request.ComputeState)]
+		if !known || *request.ComputeState == 0 { return nil, status.Error(codes.InvalidArgument, "invalid compute filter") }
+		filter.Compute = biz.ComputeState(strings.TrimPrefix(name, "COMPUTE_STATE_"))
+	}
+	if request.DeliveryState != nil {
+		name, known := modeldevv1.DeliveryState_name[int32(*request.DeliveryState)]
+		if !known || *request.DeliveryState == 0 { return nil, status.Error(codes.InvalidArgument, "invalid delivery filter") }
+		filter.Delivery = biz.DeliveryState(strings.TrimPrefix(name, "DELIVERY_STATE_"))
+	}
+	if request.CloseState != nil {
+		name, known := modeldevv1.CloseState_name[int32(*request.CloseState)]
+		if !known || *request.CloseState == 0 { return nil, status.Error(codes.InvalidArgument, "invalid close filter") }
+		filter.Close = biz.CloseState(strings.TrimPrefix(name, "CLOSE_STATE_"))
+	}
+	if query == nil || query.repository == nil { return nil, queryError(biz.ErrPersistence, scope.RequestID) }
+	records, next, err := query.repository.ListQueryRecords(ctx, scope.TenantID, filter)
+	if err != nil { return nil, queryError(err, scope.RequestID) }
+	response := &modeldevv1.ListExecutionsResponse{NextPageToken: next}
+	for _, record := range records {
+		view, err := executionView(record)
+		if err != nil { return nil, queryError(err, scope.RequestID) }
+		response.Executions = append(response.Executions, view)
+	}
+	return response, nil
 }
 
 func artifactView(record biz.QueryRecord, file biz.PublishedRuntimeFile) *modeldevv1.ArtifactView {

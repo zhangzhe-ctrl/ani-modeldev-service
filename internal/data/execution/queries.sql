@@ -38,6 +38,16 @@ WHERE tenant_id = sqlc.arg(tenant_id)::uuid
       jsonb_build_array(jsonb_build_object('ArtifactID', sqlc.arg(artifact_id)::text))
 LIMIT 2;
 
+-- A bounded scan within one tenant and snapshot. State filters use the same
+-- validated aggregate projection as GetExecution before filling a page.
+-- name: ListTenantExecutionIDs :many
+SELECT execution_id
+FROM modeldev_executions
+WHERE tenant_id = sqlc.arg(tenant_id)::uuid
+  AND execution_id > sqlc.arg(after_execution_id)::uuid
+ORDER BY execution_id
+LIMIT 128;
+
 -- name: LockExecutionIdentity :one
 SELECT tenant_id, execution_id, operation_id, spec_hash, close_generation, owner_revision
 FROM modeldev_execution_identities

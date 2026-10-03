@@ -72,7 +72,7 @@ func newGovernanceServer(c *conf.Server_GRPC, security CommandTLS, command model
 		allowed := info.FullMethod == modeldevv1.ModelDevCommandService_ApplyCloseIntent_FullMethodName ||
 			info.FullMethod == modeldevv1.ModelDevCommandService_AcceptExecution_FullMethodName ||
 			(admission != nil && info.FullMethod == modeldevv1.ModelDevAdmissionService_ResolveAdmission_FullMethodName)
-		isQuery := query != nil && (info.FullMethod == modeldevv1.ModelDevQueryService_GetExecution_FullMethodName || info.FullMethod == modeldevv1.ModelDevQueryService_ListExecutionArtifacts_FullMethodName || info.FullMethod == modeldevv1.ModelDevQueryService_AuthorizeArtifactDownload_FullMethodName)
+		isQuery := query != nil && (info.FullMethod == modeldevv1.ModelDevQueryService_GetExecution_FullMethodName || info.FullMethod == modeldevv1.ModelDevQueryService_ListExecutions_FullMethodName || info.FullMethod == modeldevv1.ModelDevQueryService_GetExecutionLogs_FullMethodName || info.FullMethod == modeldevv1.ModelDevQueryService_ListExecutionArtifacts_FullMethodName || info.FullMethod == modeldevv1.ModelDevQueryService_AuthorizeArtifactDownload_FullMethodName)
 		allowed = allowed || isQuery
 		if !allowed {
 			return nil, status.Error(codes.PermissionDenied, "Governance delivery does not permit this method")
