@@ -151,7 +151,7 @@ func TestRuntimeFailedCloseAcceptsObservedSkippedStepsAcrossReconnect(t *testing
 	}
 	exit := int32(42)
 	evidence := biz.ManagedCloseEvidence{RunID: authority.RunID, WorkflowUID: authority.WorkflowUID, ObservedAt: time.Now().UTC(),
-		Resources: []biz.RuntimeResource{{APIVersion: "v1", Kind: "Pod", Namespace: authority.NamespaceName, Name: "managed-prepare", UID: "prepare-failed-pod-uid", OwnerUID: authority.WorkflowUID, APIObjectPresent: true, Terminal: true, ExitCode: &exit}},
+		Resources:    []biz.RuntimeResource{{APIVersion: "v1", Kind: "Pod", Namespace: authority.NamespaceName, Name: "managed-prepare", UID: "prepare-failed-pod-uid", OwnerUID: authority.WorkflowUID, APIObjectPresent: true, Terminal: true, ExitCode: &exit}},
 		SkippedTasks: []biz.ManagedSkippedTask{{TaskName: "train-wait", TaskID: "skipped-train-wait"}, {TaskName: "collect", TaskID: "skipped-collect"}, {TaskName: "publish", TaskID: "skipped-publish"}},
 	}
 	closed, err := repository.ConfirmRuntimeClosed(ctx, authority, closing.CloseGeneration, biz.TrainingRuntimeObservation{}, evidence)

@@ -25,9 +25,9 @@ func TestComponentCloseMissingCandidatePreservesFailureAfterCloseAttempt(t *test
 	}
 	client := &failedCloseRPC{t: t}
 	config := component.Config{TenantID: "11111111-1111-4111-8111-111111111111", TokenFile: tokenFile, CandidateFile: filepath.Join(directory, "missing-candidate.json"), Context: &modeldevv1.StepContext{
-		Identity: &trainingv1.ExecutionIdentity{OperationId: "33333333-3333-4333-8333-333333333333", ExecutionId: "22222222-2222-4222-8222-222222222222", ExecutionSpecHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		Identity:    &trainingv1.ExecutionIdentity{OperationId: "33333333-3333-4333-8333-333333333333", ExecutionId: "22222222-2222-4222-8222-222222222222", ExecutionSpecHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
 		Association: &modeldevv1.RunAssociation{KfpRunId: "44444444-4444-4444-8444-444444444444", NamespaceName: "cpu-execution", NamespaceUid: "55555555-5555-4555-8555-555555555555", WorkflowName: "main-flow", WorkflowUid: "66666666-6666-4666-8666-666666666666", PodName: "main-close", PodUid: "77777777-7777-4777-8777-777777777777"},
-		Step: modeldevv1.PipelineStep_PIPELINE_STEP_CLOSE,
+		Step:        modeldevv1.PipelineStep_PIPELINE_STEP_CLOSE,
 	}}
 	runner, err := component.New(config, client, nil, nil)
 	if err != nil {
@@ -46,7 +46,7 @@ func TestComponentCloseMissingCandidatePreservesFailureAfterCloseAttempt(t *test
 // file and must retain that failure even when its close request fails too.
 type failedCloseRPC struct {
 	modeldevv1.ModelDevStepServiceClient
-	t *testing.T
+	t          *testing.T
 	closeCalls int
 }
 

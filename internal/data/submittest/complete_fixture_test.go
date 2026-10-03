@@ -278,14 +278,16 @@ func (f *completeFixture) kfpRequest(w http.ResponseWriter, r *http.Request) {
 	for _, step := range []string{"prepare", "train-wait", "collect", "publish", "close"} {
 		state := "RUNNING"
 		if f.skipped[step] {
-			tasks = append(tasks, map[string]string{"run_id": completeRunID, "task_id": step+"-task", "display_name": step, "pod_name": "", "state": "SKIPPED"})
+			tasks = append(tasks, map[string]string{"run_id": completeRunID, "task_id": step + "-task", "display_name": step, "pod_name": "", "state": "SKIPPED"})
 			continue
 		}
 		pod := f.objects["/api/v1/namespaces/"+s.Environment.NamespaceName+"/pods/main-"+step]
 		if pod["status"].(map[string]any)["phase"] == "Succeeded" {
 			state = "SUCCEEDED"
 		}
-		if pod["status"].(map[string]any)["phase"] == "Failed" { state = "FAILED" }
+		if pod["status"].(map[string]any)["phase"] == "Failed" {
+			state = "FAILED"
+		}
 		tasks = append(tasks, map[string]string{"run_id": completeRunID, "task_id": step + "-task", "display_name": step, "pod_name": "main-" + step, "state": state})
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"run_id": completeRunID, "experiment_id": s.Environment.ExperimentID, "display_name": "md-" + f.request.Admission.ExecutionID, "pipeline_version_reference": map[string]string{"pipeline_id": s.Release.PipelineID, "pipeline_version_id": s.Release.PipelineVersionID}, "runtime_config": map[string]any{"parameters": map[string]string{"execution_id": f.request.Admission.ExecutionID, "spec_hash": f.request.Admission.SpecHash}, "pipeline_root": f.request.Owner.PipelineRoot}, "service_account": s.Environment.Identities.KFPStepServiceAccount, "state": "RUNNING", "run_details": map[string]any{"task_details": tasks}})

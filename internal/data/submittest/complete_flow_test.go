@@ -129,7 +129,9 @@ func runCompleteMainFlow(t *testing.T, rejectedInput bool) {
 		return runner.Run(ctx, step)
 	}
 	invoke := func(step, candidate string) {
-		if err := tryInvoke(step, candidate); err != nil { t.Fatalf("component %s failed: %v", step, err) }
+		if err := tryInvoke(step, candidate); err != nil {
+			t.Fatalf("component %s failed: %v", step, err)
+		}
 	}
 	call := func(step string) context.Context {
 		return metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", "Bearer synthetic-bound-"+step, "x-ani-tenant-id", f.request.Admission.TenantID))
@@ -163,17 +165,29 @@ func runCompleteMainFlow(t *testing.T, rejectedInput bool) {
 		f.mu.Lock()
 		f.blobs["/"+original.Snapshot.Input.Object.Bucket+"/"+original.Snapshot.Input.Object.Key] = []byte("corrupt-fixed-version")
 		f.mu.Unlock()
-		if err := tryInvoke("prepare", candidatePath); err == nil { t.Fatal("corrupt input reached successful prepare") }
+		if err := tryInvoke("prepare", candidatePath); err == nil {
+			t.Fatal("corrupt input reached successful prepare")
+		}
 		f.mu.Lock()
-		f.objects["/api/v1/namespaces/"+f.workspace.NamespaceName+"/pods/main-prepare"]["status"] = map[string]any{"phase":"Failed", "containerStatuses":[]any{map[string]any{"name":"main", "restartCount":0, "state":map[string]any{"terminated":map[string]any{"exitCode":1, "finishedAt":time.Now().UTC().Format(time.RFC3339)}}}}}
-		f.skipped = map[string]bool{"train-wait":true,"collect":true,"publish":true}
-		for step := range f.skipped { delete(f.objects,"/api/v1/namespaces/"+f.workspace.NamespaceName+"/pods/main-"+step) }
+		f.objects["/api/v1/namespaces/"+f.workspace.NamespaceName+"/pods/main-prepare"]["status"] = map[string]any{"phase": "Failed", "containerStatuses": []any{map[string]any{"name": "main", "restartCount": 0, "state": map[string]any{"terminated": map[string]any{"exitCode": 1, "finishedAt": time.Now().UTC().Format(time.RFC3339)}}}}}
+		f.skipped = map[string]bool{"train-wait": true, "collect": true, "publish": true}
+		for step := range f.skipped {
+			delete(f.objects, "/api/v1/namespaces/"+f.workspace.NamespaceName+"/pods/main-"+step)
+		}
 		f.mu.Unlock()
-		if err := tryInvoke("close", filepath.Join(t.TempDir(),"no-publication-candidate.json")); err == nil { t.Fatal("failed pipeline was reported as successful") }
+		if err := tryInvoke("close", filepath.Join(t.TempDir(), "no-publication-candidate.json")); err == nil {
+			t.Fatal("failed pipeline was reported as successful")
+		}
 		failed, err := facts.GetRuntime(ctx, original.TenantID, original.ExecutionID)
-		if err != nil || failed.ClosedAt == nil || failed.CloseReason != "STEP_FAILED" || failed.Training != nil || failed.Publication != nil { t.Fatalf("FAILED_MAIN_FLOW_NOT_IMPLEMENTED: rejected input did not durably close without compute/publication: %+v %v", failed, err) }
-		f.mu.Lock(); creates := f.creates; f.mu.Unlock()
-		if creates != 0 { t.Fatal("rejected input created training") }
+		if err != nil || failed.ClosedAt == nil || failed.CloseReason != "STEP_FAILED" || failed.Training != nil || failed.Publication != nil {
+			t.Fatalf("FAILED_MAIN_FLOW_NOT_IMPLEMENTED: rejected input did not durably close without compute/publication: %+v %v", failed, err)
+		}
+		f.mu.Lock()
+		creates := f.creates
+		f.mu.Unlock()
+		if creates != 0 {
+			t.Fatal("rejected input created training")
+		}
 		t.Log("MAIN_FLOW_FAILURE: actual bad CSV rejected; no training or publication; skipped tasks proven; STEP_FAILED CLOSED persisted")
 		return
 	}
