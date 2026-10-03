@@ -441,6 +441,68 @@ func (q *Queries) ListConfirmedPipelineRuns(ctx context.Context, arg ListConfirm
 	return items, nil
 }
 
+const listPendingAdmissions = `-- name: ListPendingAdmissions :many
+SELECT admitted.tenant_id, admitted.execution_id, admitted.operation_id,
+    admitted.actor, admitted.intent_canonical, admitted.intent_hash,
+    admitted.snapshot_canonical, admitted.spec_hash, admitted.accepted_at
+FROM modeldev_executions AS admitted
+JOIN modeldev_execution_identities AS identity
+  ON identity.tenant_id = admitted.tenant_id
+ AND identity.execution_id = admitted.execution_id
+ AND identity.operation_id = admitted.operation_id
+ AND identity.spec_hash = admitted.spec_hash
+WHERE admitted.tenant_id = $1::uuid
+  AND identity.close_generation = 0
+  AND (convert_from(admitted.snapshot_canonical, 'UTF8')::jsonb -> 'environment') = $2::jsonb
+  AND (convert_from(admitted.snapshot_canonical, 'UTF8')::jsonb ->> 'deadline_at')::timestamptz > clock_timestamp()
+  AND NOT EXISTS (
+      SELECT 1 FROM modeldev_pipeline_dispatches AS dispatch
+      WHERE dispatch.tenant_id = admitted.tenant_id
+        AND dispatch.execution_id = admitted.execution_id
+  )
+ORDER BY admitted.accepted_at, admitted.execution_id
+LIMIT $3::integer
+`
+
+type ListPendingAdmissionsParams struct {
+	TenantID    pgtype.UUID
+	Environment []byte
+	BatchSize   int32
+}
+
+// A trusted worker selects one explicit tenant/environment owner binding.
+// This read grants no sending permission; Reserve repeats all creation checks
+// under the shared identity lock before its sole permit can reach KFP.
+func (q *Queries) ListPendingAdmissions(ctx context.Context, arg ListPendingAdmissionsParams) ([]ModeldevExecution, error) {
+	rows, err := q.db.Query(ctx, listPendingAdmissions, arg.TenantID, arg.Environment, arg.BatchSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ModeldevExecution
+	for rows.Next() {
+		var i ModeldevExecution
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.ExecutionID,
+			&i.OperationID,
+			&i.Actor,
+			&i.IntentCanonical,
+			&i.IntentHash,
+			&i.SnapshotCanonical,
+			&i.SpecHash,
+			&i.AcceptedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockExecutionIdentity = `-- name: LockExecutionIdentity :one
 SELECT tenant_id, execution_id, operation_id, spec_hash, owner_revision,
     close_generation = 0 AS creation_open

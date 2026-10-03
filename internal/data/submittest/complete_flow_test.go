@@ -76,7 +76,9 @@ func TestMainFlowCompleteActualMLPToVerifiedPublicationAndClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	worker, err := biz.NewDispatchWorker(dispatch, submitter, biz.PipelineDispatchBinding{TenantID: f.request.Admission.TenantID, Environment: f.request.Admission.Snapshot.Environment, Owner: f.request.Owner}, 10, time.Second)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if count, err := worker.DispatchOnce(ctx); err != nil || count != 1 {
 		t.Fatal(err)
 	}
@@ -105,12 +107,20 @@ func TestMainFlowCompleteActualMLPToVerifiedPublicationAndClosed(t *testing.T) {
 	candidatePath := filepath.Join(f.root, f.workspace.ReportsSubpath, "publication-candidate.json")
 	invoke := func(step, candidate string) {
 		tokenFile := filepath.Join(t.TempDir(), "projected-token")
-		if err := os.WriteFile(tokenFile, []byte("synthetic-bound-"+step), 0600); err != nil { t.Fatal(err) }
+		if err := os.WriteFile(tokenFile, []byte("synthetic-bound-"+step), 0600); err != nil {
+			t.Fatal(err)
+		}
 		mount := f.root
-		if step == "close" { mount = "" }
-		runner, err := component.New(component.Config{TenantID: f.request.Admission.TenantID, Context: f.stepContext(step), TokenFile: tokenFile, WorkspaceDirectory: mount, PVCName: f.workspace.PVCName, InventoryFile: inventoryPath, CandidateFile: candidate, TaskID: step+"-task", PollInterval: time.Second}, client, kube, store)
-		if err != nil { t.Fatal(err) }
-		if err := runner.Run(ctx, step); err != nil { t.Fatalf("component %s failed: %v", step, err) }
+		if step == "close" {
+			mount = ""
+		}
+		runner, err := component.New(component.Config{TenantID: f.request.Admission.TenantID, Context: f.stepContext(step), TokenFile: tokenFile, WorkspaceDirectory: mount, PVCName: f.workspace.PVCName, InventoryFile: inventoryPath, CandidateFile: candidate, TaskID: step + "-task", PollInterval: time.Second}, client, kube, store)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := runner.Run(ctx, step); err != nil {
+			t.Fatalf("component %s failed: %v", step, err)
+		}
 	}
 	call := func(step string) context.Context {
 		return metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", "Bearer synthetic-bound-"+step, "x-ani-tenant-id", f.request.Admission.TenantID))
@@ -140,7 +150,9 @@ func TestMainFlowCompleteActualMLPToVerifiedPublicationAndClosed(t *testing.T) {
 	}
 	invoke("prepare", candidatePath)
 	preparedFacts, err := facts.GetRuntime(ctx, original.TenantID, original.ExecutionID)
-	if err != nil || preparedFacts.Workspace == nil { t.Fatalf("prepare component did not persist workspace: %v", err) }
+	if err != nil || preparedFacts.Workspace == nil {
+		t.Fatalf("prepare component did not persist workspace: %v", err)
+	}
 	prepared := *preparedFacts.Workspace
 	prepareReport := &modeldevv1.ReportStepResultRequest{Context: f.stepContext("prepare"), ReportId: "11111111-1111-4111-8111-111111111111", Result: &modeldevv1.ReportStepResultRequest_Prepared{Prepared: &modeldevv1.PreparedInputCandidate{Input: configuration.Snapshot.Input, Workspace: f.workspaceProto(), PreparedManifest: &trainingv1.ManifestRef{RelativePath: "prepared-manifest.json", SizeBytes: prepared.PreparedManifestBytes, Sha256: prepared.PreparedManifestSHA256}}}}
 	if _, err := client.ReportStepResult(call("prepare"), prepareReport); err != nil {
@@ -186,11 +198,15 @@ func TestMainFlowCompleteActualMLPToVerifiedPublicationAndClosed(t *testing.T) {
 	invoke("collect", candidatePath)
 	var output biz.CollectedOutput
 	inventoryBytes, err := os.ReadFile(inventoryPath)
-	if err != nil || json.Unmarshal(inventoryBytes, &output) != nil { t.Fatal("collect component did not produce its inventory") }
+	if err != nil || json.Unmarshal(inventoryBytes, &output) != nil {
+		t.Fatal("collect component did not produce its inventory")
+	}
 	invoke("publish", candidatePath)
 	var publication biz.RuntimePublication
 	candidateBytes, err := os.ReadFile(candidatePath)
-	if err != nil || json.Unmarshal(candidateBytes, &publication) != nil { t.Fatal("publish component did not produce its candidate") }
+	if err != nil || json.Unmarshal(candidateBytes, &publication) != nil {
+		t.Fatal("publish component did not produce its candidate")
+	}
 	publishReport := &modeldevv1.ReportStepResultRequest{Context: f.stepContext("close"), ReportId: "22222222-2222-4222-8222-222222222222", Result: &modeldevv1.ReportStepResultRequest_Publication{Publication: publicationProto(publication)}}
 	if _, err := client.ReportStepResult(call("close"), publishReport); err == nil {
 		t.Fatal("running uploader incorrectly granted PUBLISHED")
@@ -210,7 +226,9 @@ func TestMainFlowCompleteActualMLPToVerifiedPublicationAndClosed(t *testing.T) {
 		f.finishStep(step)
 	}
 	closeCandidate := filepath.Join(t.TempDir(), "publication-candidate.json")
-	if err := os.WriteFile(closeCandidate, candidateBytes, 0600); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(closeCandidate, candidateBytes, 0600); err != nil {
+		t.Fatal(err)
+	}
 	invoke("close", closeCandidate)
 	closed, err := client.RequestExecutionClose(call("close"), &modeldevv1.RequestExecutionCloseRequest{Context: f.stepContext("close"), Reason: modeldevv1.CloseReason_CLOSE_REASON_NATURAL_TERMINAL})
 	if err != nil || closed.GetCloseState() != modeldevv1.CloseState_CLOSE_STATE_CLOSED {
@@ -230,7 +248,9 @@ func TestMainFlowCompleteActualMLPToVerifiedPublicationAndClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := restartedSubmitter.Submit(ctx, f.request); err != nil { t.Fatal(err) }
+	if _, err := restartedSubmitter.Submit(ctx, f.request); err != nil {
+		t.Fatal(err)
+	}
 	f.mu.Lock()
 	creates, runCreates := f.creates, f.runCreates
 	f.mu.Unlock()
@@ -271,8 +291,12 @@ func TestMainFlowCompleteActualMLPToVerifiedPublicationAndClosed(t *testing.T) {
 		}
 		for _, file := range stored.Publication.Files {
 			contents, err := os.ReadFile(filepath.Join(independent, file.File.RelativePath))
-			if err != nil { t.Fatal(err) }
-			if err := os.WriteFile(filepath.Join(evidence, file.File.RelativePath), contents, 0600); err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(evidence, file.File.RelativePath), contents, 0600); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 }

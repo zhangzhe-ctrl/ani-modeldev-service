@@ -23,14 +23,24 @@ import (
 
 func buildRuntimeApp(config *conf.Bootstrap, logger *slog.Logger) (*application, error) {
 	clients, err := loadRuntimeClients(config.Runtime)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	pool, err := openCommandPool(config.Command)
-	if err != nil { clients.close(); return nil, err }
+	if err != nil {
+		clients.close()
+		return nil, err
+	}
 	ready := server.NewReadiness()
 	observability, err := server.NewObservability(Name, Version, ready)
-	if err != nil { pool.Close(); clients.close(); return nil, err }
+	if err != nil {
+		pool.Close()
+		clients.close()
+		return nil, err
+	}
 	failed := func(message string) (*application, error) {
-		pool.Close(); clients.close()
+		pool.Close()
+		clients.close()
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		_ = observability.Shutdown(ctx)
@@ -38,23 +48,37 @@ func buildRuntimeApp(config *conf.Bootstrap, logger *slog.Logger) (*application,
 	}
 	middlewares := observability.ServerMiddleware(logger)
 	command, err := buildCommandServerWithPool(config.Server.Grpc, config.Command, pool, middlewares...)
-	if err != nil { return failed("managed command listener configuration invalid") }
+	if err != nil {
+		return failed("managed command listener configuration invalid")
+	}
 	admissions, dispatch, facts := execution.New(pool), submission.New(pool), lifecycle.New(pool)
 	identity, err := stepidentity.New(clients.kube, config.Runtime.TokenAudience)
-	if err != nil { return failed("managed workload verifier configuration invalid") }
+	if err != nil {
+		return failed("managed workload verifier configuration invalid")
+	}
 	steps, err := biz.NewManagedSteps(dispatch, admissions, identity, clients.runs)
-	if err != nil { return failed("managed step configuration invalid") }
+	if err != nil {
+		return failed("managed step configuration invalid")
+	}
 	proof := runtimeproof.New(clients.kube, clients.runs, objectstore.NewVerifier(clients.store, config.Runtime.ObjectStorage.ConnectionId, config.Runtime.ObjectStorage.MaxObjectBytes), dispatch)
 	runtime, err := biz.NewManagedRuntime(steps, facts, trainer.New(clients.kube), proof, proof)
-	if err != nil { return failed("managed runtime configuration invalid") }
+	if err != nil {
+		return failed("managed runtime configuration invalid")
+	}
 	step, err := server.NewManagedStepServer(config.Runtime.Step, clients.certificate, service.NewRuntimeStep(steps, runtime), middlewares...)
-	if err != nil { return failed("managed step listener configuration invalid") }
+	if err != nil {
+		return failed("managed step listener configuration invalid")
+	}
 	submitter, err := biz.NewPipelineSubmitter(dispatch, clients.runs, min(config.Runtime.ApiTimeout.AsDuration(), 10*time.Second))
-	if err != nil { return failed("managed submitter configuration invalid") }
+	if err != nil {
+		return failed("managed submitter configuration invalid")
+	}
 	dispatcher, err := biz.NewDispatchWorker(dispatch, submitter, clients.binding, int(config.Runtime.DispatchBatchSize), config.Runtime.DispatchInterval.AsDuration())
-	if err != nil { return failed("managed dispatch configuration invalid") }
+	if err != nil {
+		return failed("managed dispatch configuration invalid")
+	}
 	workerContext, cancelWorker := context.WithCancel(context.Background())
-	worker := &runtimeWorker{dispatcher:dispatcher, ctx:workerContext, cancel:cancelWorker, done:make(chan struct{}), ready:ready}
+	worker := &runtimeWorker{dispatcher: dispatcher, ctx: workerContext, cancel: cancelWorker, done: make(chan struct{}), ready: ready}
 	admin := server.NewAdminServer(config.Server.Admin, ready, observability.Gatherer(), middlewares...)
 	release := sync.OnceValue(func() error {
 		worker.unavailable()
@@ -63,8 +87,11 @@ func buildRuntimeApp(config *conf.Bootstrap, logger *slog.Logger) (*application,
 		// listeners allocated by Endpoint if a later listener failed to bind.
 		ctx, cancel := context.WithTimeout(context.Background(), config.Server.ShutdownTimeout.AsDuration())
 		defer cancel()
-		_ = step.Stop(ctx); _ = command.Stop(ctx); _ = admin.Stop(ctx)
-		pool.Close(); clients.close()
+		_ = step.Stop(ctx)
+		_ = command.Stop(ctx)
+		_ = admin.Stop(ctx)
+		pool.Close()
+		clients.close()
 		return observability.Shutdown(ctx)
 	})
 	app := kratos.New(
@@ -75,19 +102,19 @@ func buildRuntimeApp(config *conf.Bootstrap, logger *slog.Logger) (*application,
 		kratos.AfterStop(func(context.Context) error { return release() }),
 		kratos.StopTimeout(config.Server.ShutdownTimeout.AsDuration()),
 	)
-	return &application{App:app, release:release}, nil
+	return &application{App: app, release: release}, nil
 }
 
 // This lifecycle adapter only delivers pending admissions to the existing
 // submitter. KFP remains responsible for advancing every normal pipeline step.
 type runtimeWorker struct {
 	dispatcher *biz.DispatchWorker
-	ctx context.Context
-	cancel context.CancelFunc
-	done chan struct{}
-	ready *server.Readiness
-	mu sync.Mutex
-	stopped bool
+	ctx        context.Context
+	cancel     context.CancelFunc
+	done       chan struct{}
+	ready      *server.Readiness
+	mu         sync.Mutex
+	stopped    bool
 }
 
 func (worker *runtimeWorker) Start(ctx context.Context) error {
@@ -96,25 +123,36 @@ func (worker *runtimeWorker) Start(ctx context.Context) error {
 	defer close(worker.done)
 	err := worker.dispatcher.Run(worker.ctx)
 	worker.unavailable()
-	if err != nil { return errors.New("managed dispatch worker failed") }
+	if err != nil {
+		return errors.New("managed dispatch worker failed")
+	}
 	return nil
 }
 
 func (worker *runtimeWorker) Stop(ctx context.Context) error {
 	worker.unavailable()
 	worker.cancel()
-	select { case <-worker.done: return nil; case <-ctx.Done(): return ctx.Err() }
+	select {
+	case <-worker.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (worker *runtimeWorker) available() {
-	worker.mu.Lock(); defer worker.mu.Unlock()
+	worker.mu.Lock()
+	defer worker.mu.Unlock()
 	// This means the configured entry points can serve requests, not that a
 	// training run or target-environment business acceptance has succeeded.
-	if !worker.stopped { worker.ready.Set(true) }
+	if !worker.stopped {
+		worker.ready.Set(true)
+	}
 }
 
 func (worker *runtimeWorker) unavailable() {
-	worker.mu.Lock(); defer worker.mu.Unlock()
+	worker.mu.Lock()
+	defer worker.mu.Unlock()
 	worker.stopped = true
 	worker.ready.Set(false)
 }
