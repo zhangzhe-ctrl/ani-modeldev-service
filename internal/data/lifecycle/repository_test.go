@@ -140,6 +140,30 @@ func TestRuntimeCloseBeforeTrainingRejectsCreationPermit(t *testing.T) {
 	}
 }
 
+func TestRuntimeFailedCloseAcceptsObservedSkippedStepsAcrossReconnect(t *testing.T) {
+	open, _, authority, _ := runtimeFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	repository := lifecycle.New(open())
+	closing, replayed, err := repository.RequestRuntimeClose(ctx, authority, "STEP_FAILED")
+	if err != nil || replayed || closing.CloseGeneration == 0 || closing.ClosedAt != nil {
+		t.Fatalf("failed prepare must first commit the close fence: %v", err)
+	}
+	exit := int32(42)
+	evidence := biz.ManagedCloseEvidence{RunID: authority.RunID, WorkflowUID: authority.WorkflowUID, ObservedAt: time.Now().UTC(),
+		Resources: []biz.RuntimeResource{{APIVersion: "v1", Kind: "Pod", Namespace: authority.NamespaceName, Name: "managed-prepare", UID: "prepare-failed-pod-uid", OwnerUID: authority.WorkflowUID, APIObjectPresent: true, Terminal: true, ExitCode: &exit}},
+		SkippedTasks: []biz.ManagedSkippedTask{{TaskName: "train-wait", TaskID: "skipped-train-wait"}, {TaskName: "collect", TaskID: "skipped-collect"}, {TaskName: "publish", TaskID: "skipped-publish"}},
+	}
+	closed, err := repository.ConfirmRuntimeClosed(ctx, authority, closing.CloseGeneration, biz.TrainingRuntimeObservation{}, evidence)
+	if err != nil || closed.ClosedAt == nil {
+		t.Fatalf("FAILED_CLOSE_SKIPPED: stopped prepare plus three explicitly skipped steps must close: %v", err)
+	}
+	visible, err := lifecycle.New(open()).GetRuntime(ctx, authority.TenantID, authority.ExecutionID)
+	if err != nil || visible.ClosedAt == nil || visible.CloseReason != "STEP_FAILED" || visible.CloseEvidence == nil || len(visible.CloseEvidence.SkippedTasks) != 3 || len(visible.CloseEvidence.Resources) != 1 || visible.CloseEvidence.Resources[0].ExitCode == nil || *visible.CloseEvidence.Resources[0].ExitCode != 42 || visible.Publication != nil || visible.Training != nil {
+		t.Fatalf("reconnect must preserve the failed writer and skipped task evidence without inventing training or publication: %+v; %v", visible, err)
+	}
+}
+
 func publicationFixture(t *testing.T, admission biz.Admission, authority biz.RunAuthorityCandidate) biz.RuntimePublication {
 	t.Helper()
 	now := time.Now().UTC().Truncate(time.Microsecond)

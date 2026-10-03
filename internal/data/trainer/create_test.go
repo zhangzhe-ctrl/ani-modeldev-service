@@ -178,6 +178,54 @@ func TestTrainingFailureAndSuspendDoNotMistakeControllerAckForWriterAbsence(t *t
 	}
 }
 
+func TestTrainingObservationPreservesConfirmedPodExitAfterGarbageCollection(t *testing.T) {
+	f := newTrainingFixture(t)
+	a := f.adapter(t)
+	handle, err := a.CreateTraining(context.Background(), f.plan)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	f.setTerminal(t, 0)
+	confirmed, err := a.ObserveTraining(context.Background(), f.plan, handle, nil)
+	if err != nil || !confirmed.WritersAbsent || confirmed.Outcome != "SUCCEEDED" {
+		t.Fatalf("precondition: current controller and actual Pod exit must be proven: %+v / %v", confirmed, err)
+	}
+	f.mu.Lock()
+	f.pod = nil
+	f.mu.Unlock()
+	t.Run("confirmed exit survives API garbage collection", func(t *testing.T) {
+		observation, err := a.ObserveTraining(context.Background(), f.plan, handle, confirmed.Resources)
+		if err != nil || !observation.WritersAbsent || observation.Outcome != "SUCCEEDED" {
+			t.Fatalf("GC must retain the observed exact-UID exit while current controllers remain terminal: %+v / %v", observation, err)
+		}
+		for _, fact := range observation.Resources {
+			if fact.UID != childPodUID {
+				continue
+			}
+			if fact.APIObjectPresent || !fact.Terminal || fact.ExitCode == nil || *fact.ExitCode != 0 || fact.OwnerUID != childJobUID {
+				t.Fatalf("GC erased the durable exit or invented API presence: %+v", fact)
+			}
+			return
+		}
+		t.Fatal("GC dropped the known Pod identity")
+	})
+	t.Run("missing Pod without prior exit remains unproven", func(t *testing.T) {
+		history := append(append([]biz.RuntimeResource{}, confirmed.Resources...), biz.RuntimeResource{
+			APIVersion: "v1", Kind: "Pod", Namespace: "cpu-execution", Name: "prior-training-pod",
+			UID: "11111111-1111-4111-8111-111111111111", OwnerUID: "22222222-2222-4222-8222-222222222222",
+		})
+		observation, err := a.ObserveTraining(context.Background(), f.plan, handle, history)
+		if err != nil || observation.WritersAbsent {
+			t.Fatalf("404 without a prior terminal exit cannot prove writers absent: %+v / %v", observation, err)
+		}
+		for _, fact := range observation.Resources {
+			if fact.Name == "prior-training-pod" && (fact.APIObjectPresent || fact.Terminal || fact.ExitCode != nil) {
+				t.Fatalf("missing unproven Pod acquired a terminal fact: %+v", fact)
+			}
+		}
+	})
+}
+
 const (
 	trainingNamespaceUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 	trainingUID          = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
@@ -311,7 +359,11 @@ func (f *trainingFixture) adapter(t *testing.T) *trainer.Adapter {
 		case path == "/apis/batch/v1/namespaces/cpu-execution/jobs":
 			response = map[string]any{"apiVersion": "batch/v1", "kind": "JobList", "metadata": map[string]any{}, "items": []any{f.job}}
 		case path == "/api/v1/namespaces/cpu-execution/pods":
-			response = map[string]any{"apiVersion": "v1", "kind": "PodList", "metadata": map[string]any{}, "items": []any{f.pod}}
+			items := []any{}
+			if f.pod != nil {
+				items = append(items, f.pod)
+			}
+			response = map[string]any{"apiVersion": "v1", "kind": "PodList", "metadata": map[string]any{}, "items": items}
 		case path == "/apis/batch/v1/namespaces/cpu-execution/jobs/"+f.plan.Name+"-trainer-0":
 			response = f.job
 		case path == "/api/v1/namespaces/cpu-execution/pods/training-pod":

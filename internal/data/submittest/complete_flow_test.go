@@ -50,6 +50,14 @@ import (
 // ModelDev code, RPC authorization, PostgreSQL transactions, transfers and MLP
 // calculations run for real. This is a reproducible module flow, not L1-L4.
 func TestMainFlowCompleteActualMLPToVerifiedPublicationAndClosed(t *testing.T) {
+	runCompleteMainFlow(t, false)
+}
+
+func TestMainFlowCompleteRejectedInputClosesWithoutTrainingOrPublication(t *testing.T) {
+	runCompleteMainFlow(t, true)
+}
+
+func runCompleteMainFlow(t *testing.T, rejectedInput bool) {
 	f := newCompleteFixture(t)
 	open := postgres.Prepare(t)
 	pool := open()
@@ -105,7 +113,7 @@ func TestMainFlowCompleteActualMLPToVerifiedPublicationAndClosed(t *testing.T) {
 	client, stop := startMainFlowStepHandler(t, service.NewRuntimeStep(steps, managed))
 	inventoryPath := filepath.Join(f.root, f.workspace.ReportsSubpath, "collected-output.json")
 	candidatePath := filepath.Join(f.root, f.workspace.ReportsSubpath, "publication-candidate.json")
-	invoke := func(step, candidate string) {
+	tryInvoke := func(step, candidate string) error {
 		tokenFile := filepath.Join(t.TempDir(), "projected-token")
 		if err := os.WriteFile(tokenFile, []byte("synthetic-bound-"+step), 0600); err != nil {
 			t.Fatal(err)
@@ -116,11 +124,12 @@ func TestMainFlowCompleteActualMLPToVerifiedPublicationAndClosed(t *testing.T) {
 		}
 		runner, err := component.New(component.Config{TenantID: f.request.Admission.TenantID, Context: f.stepContext(step), TokenFile: tokenFile, WorkspaceDirectory: mount, PVCName: f.workspace.PVCName, InventoryFile: inventoryPath, CandidateFile: candidate, TaskID: step + "-task", PollInterval: time.Second}, client, kube, store)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
-		if err := runner.Run(ctx, step); err != nil {
-			t.Fatalf("component %s failed: %v", step, err)
-		}
+		return runner.Run(ctx, step)
+	}
+	invoke := func(step, candidate string) {
+		if err := tryInvoke(step, candidate); err != nil { t.Fatalf("component %s failed: %v", step, err) }
 	}
 	call := func(step string) context.Context {
 		return metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", "Bearer synthetic-bound-"+step, "x-ani-tenant-id", f.request.Admission.TenantID))
@@ -147,6 +156,26 @@ func TestMainFlowCompleteActualMLPToVerifiedPublicationAndClosed(t *testing.T) {
 	original, err := admissions.Get(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if rejectedInput {
+		// Only the external object's bytes are corrupted. Real preparation must
+		// reject them; KFP then skips its downstream tasks without creating Pods.
+		f.mu.Lock()
+		f.blobs["/"+original.Snapshot.Input.Object.Bucket+"/"+original.Snapshot.Input.Object.Key] = []byte("corrupt-fixed-version")
+		f.mu.Unlock()
+		if err := tryInvoke("prepare", candidatePath); err == nil { t.Fatal("corrupt input reached successful prepare") }
+		f.mu.Lock()
+		f.objects["/api/v1/namespaces/"+f.workspace.NamespaceName+"/pods/main-prepare"]["status"] = map[string]any{"phase":"Failed", "containerStatuses":[]any{map[string]any{"name":"main", "restartCount":0, "state":map[string]any{"terminated":map[string]any{"exitCode":1, "finishedAt":time.Now().UTC().Format(time.RFC3339)}}}}}
+		f.skipped = map[string]bool{"train-wait":true,"collect":true,"publish":true}
+		for step := range f.skipped { delete(f.objects,"/api/v1/namespaces/"+f.workspace.NamespaceName+"/pods/main-"+step) }
+		f.mu.Unlock()
+		if err := tryInvoke("close", filepath.Join(t.TempDir(),"no-publication-candidate.json")); err == nil { t.Fatal("failed pipeline was reported as successful") }
+		failed, err := facts.GetRuntime(ctx, original.TenantID, original.ExecutionID)
+		if err != nil || failed.ClosedAt == nil || failed.CloseReason != "STEP_FAILED" || failed.Training != nil || failed.Publication != nil { t.Fatalf("FAILED_MAIN_FLOW_NOT_IMPLEMENTED: rejected input did not durably close without compute/publication: %+v %v", failed, err) }
+		f.mu.Lock(); creates := f.creates; f.mu.Unlock()
+		if creates != 0 { t.Fatal("rejected input created training") }
+		t.Log("MAIN_FLOW_FAILURE: actual bad CSV rejected; no training or publication; skipped tasks proven; STEP_FAILED CLOSED persisted")
+		return
 	}
 	invoke("prepare", candidatePath)
 	preparedFacts, err := facts.GetRuntime(ctx, original.TenantID, original.ExecutionID)

@@ -130,7 +130,12 @@ type PublicationVerifier interface {
 type ManagedCloseEvidence struct {
 	RunID, WorkflowUID string
 	Resources          []RuntimeResource
+	SkippedTasks       []ManagedSkippedTask
 	ObservedAt         time.Time
+}
+
+type ManagedSkippedTask struct {
+	TaskName, TaskID string
 }
 
 func FreezeTrainingPlan(execution Execution, workspace WorkspaceBinding) (TrainingPlan, error) {
