@@ -127,12 +127,28 @@ The image must provide `/opt/venv/bin/python` with CPU PyTorch. No image is pull
 
 The focused owner-stop case uses the same Fedora database/image settings. It
 waits for an actual slow-stop optimizer step, commits USER_STOP through mTLS,
-rebuilds the owner and its database connection, and checks automatic closure
-without creating another Run or TrainJob:
+kills its task-owned owner process after it reads the durable fence, starts a
+new owner process, and checks automatic closure without creating another Run
+or TrainJob:
 
 ```sh
 go test -tags cpu_mainflow -count=1 -v -run '^TestMainFlowOwnerStop' ./internal/data/submittest
 ```
+
+The related recovery cases check the original deadline before and after
+dispatch, stop delivered before admission, lost Run/TrainJob create responses,
+and retained ambiguity after discovering multiple Runs. They use real
+persistence and original resource identities; unresolved creation remains
+fenced for review. Run only the cases relevant to the change:
+
+```sh
+go test -tags cpu_mainflow -count=1 -v -run '^(TestMainFlowDeadline.*|TestMainFlowStopBefore.*|TestMainFlowLateRun.*|TestMainFlowLateTraining.*)$' ./internal/data/submittest
+```
+
+The complete successful flow also reads the actual training stdout through the
+authenticated query service. Log reads resolve the recorded training Pod and
+check its UID before and after reading, with limits of 1000 lines, 64 KiB and
+five seconds. The execution-list case verifies tenant filtering before paging.
 
 The output directory retains the independently downloaded checkpoint, model
 configuration, metrics, summary, canonical manifest and inference result.
