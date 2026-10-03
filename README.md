@@ -35,6 +35,16 @@ Python 3. To use an already prepared task-owned test database, provide protected
 references and run `make verify` directly. Missing database conditions fail the
 persistence tests; they are never silently skipped. These are module checks.
 
+`make verify` also runs the explicit `revisionupgrade` lane. It builds a private
+old-writer test binary from retained commit
+`a827457f999646394518c640d7c21915e1321496`, seeds an isolated pre-0012 schema through
+the real old repositories, and verifies the migration with the current writers.
+Keep full Git history available, as CI does; missing historical source, build,
+binary or database conditions fail this lane rather than skip it. The script
+records the source and binary SHA256 and removes only its temporary export.
+No developer scratch files or prebuilt binary are required. Plain `go test ./...`
+excludes this tagged lane and does not establish upgrade verification.
+
 After the initial source commit, run `make supply-chain-tools` and `make audit`;
 review and commit `docs/scaffold/bom.cdx.json`. CI deliberately fails when that
 runtime SBOM is missing or stale and reruns the vulnerability, secret,
