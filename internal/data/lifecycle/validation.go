@@ -197,7 +197,14 @@ func samePublication(left, right biz.RuntimePublication) bool {
 // Writer absence includes completed managed data-plane steps as well as
 // training. The current close Pod is a control observer, not an uploader.
 func validCloseEvidence(authority biz.RunAuthorityCandidate, reason string, evidence biz.ManagedCloseEvidence) bool {
-	if evidence.RunID != authority.RunID || evidence.WorkflowUID != authority.WorkflowUID || evidence.ObservedAt.IsZero() || len(evidence.Resources)+len(evidence.SkippedTasks) < 4 || (reason == "NATURAL_TERMINAL" && len(evidence.SkippedTasks) != 0) {
+	if evidence.RunID != authority.RunID || evidence.WorkflowUID != authority.WorkflowUID || evidence.ObservedAt.IsZero() || (reason == "NATURAL_TERMINAL" && len(evidence.SkippedTasks) != 0) {
+		return false
+	}
+	if owner := evidence.OwnerTermination; owner != nil {
+		if (owner.RunState != "SUCCEEDED" && owner.RunState != "FAILED" && owner.RunState != "CANCELED") || (owner.WorkflowPhase != "Succeeded" && owner.WorkflowPhase != "Failed" && owner.WorkflowPhase != "Error") || owner.RunFinishedAt.IsZero() || owner.WorkflowFinishedAt.IsZero() || owner.RunFinishedAt.After(evidence.ObservedAt) || owner.WorkflowFinishedAt.After(evidence.ObservedAt) || !validOpaqueID(owner.WorkflowResourceVersion) {
+			return false
+		}
+	} else if len(evidence.Resources)+len(evidence.SkippedTasks) < 4 {
 		return false
 	}
 	skippedNames, skippedIDs := make(map[string]bool), make(map[string]bool)

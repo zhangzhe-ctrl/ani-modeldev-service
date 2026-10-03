@@ -170,6 +170,10 @@ func terminatedPod(pod *unstructured.Unstructured) (bool, bool, time.Time, *int3
 	if phase != "Succeeded" && phase != "Failed" {
 		return false, false, time.Time{}, nil
 	}
+	containers, found, err := unstructured.NestedSlice(pod.Object, "spec", "containers")
+	if err != nil || !found || len(containers) == 0 {
+		return false, false, time.Time{}, nil
+	}
 	allZero := true
 	var completed time.Time
 	var mainCode *int32
@@ -224,7 +228,7 @@ func terminatedPod(pod *unstructured.Unstructured) (bool, bool, time.Time, *int3
 			}
 		}
 	}
-	return mainCode != nil, allZero, completed, mainCode
+	return true, allZero, completed, mainCode
 }
 
 func podFact(pod *unstructured.Unstructured, workflowUID string, exit int32) biz.RuntimeResource {

@@ -161,8 +161,12 @@ func TestMainFlowOwnerStopRecoversIntentAndTerminatesActualTraining(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := closer.Reconcile(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID); err != nil {
-		t.Fatalf("OWNER_CLOSE_NOT_IMPLEMENTED: restarted owner did not complete committed USER_STOP: %v", err)
+	worker, err := biz.NewCloseWorker(lifecycle.New(pool), closer, biz.PipelineDispatchBinding{TenantID: f.request.Admission.TenantID, Environment: f.request.Admission.Snapshot.Environment, Owner: f.request.Owner}, 10, 100*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, err := worker.ReconcileOnce(ctx); err != nil || result.Examined != 1 || result.Closed != 1 || result.Unresolved != 0 {
+		t.Fatalf("OWNER_CLOSE_NOT_IMPLEMENTED: restarted owner did not discover and close committed USER_STOP: %+v %v", result, err)
 	}
 	closed, err := lifecycle.New(pool).GetRuntime(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
 	if err != nil || closed.ClosedAt == nil || closed.CloseGeneration != intent.Generation || closed.CloseReason != "USER_STOP" || closed.Observation == nil || !closed.Observation.WritersAbsent || closed.CloseEvidence == nil || closed.Publication != nil {

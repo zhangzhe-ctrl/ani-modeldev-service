@@ -78,8 +78,16 @@ func buildRuntimeApp(config *conf.Bootstrap, logger *slog.Logger) (*application,
 	if err != nil {
 		return failed("managed dispatch configuration invalid")
 	}
+	closer, err := biz.NewExecutionCloser(runtime, clients.runs, proof)
+	if err != nil {
+		return failed("managed execution close configuration invalid")
+	}
+	closeWorker, err := biz.NewCloseWorker(facts, closer, clients.binding, int(config.Runtime.DispatchBatchSize), config.Runtime.DispatchInterval.AsDuration())
+	if err != nil {
+		return failed("managed close worker configuration invalid")
+	}
 	workerContext, cancelWorker := context.WithCancel(context.Background())
-	worker := &runtimeWorker{dispatcher: dispatcher, ctx: workerContext, cancel: cancelWorker, done: make(chan struct{}), ready: ready}
+	worker := &runtimeWorker{dispatcher: dispatcher, closer: closeWorker, ctx: workerContext, cancel: cancelWorker, done: make(chan struct{}), ready: ready}
 	admin := server.NewAdminServer(config.Server.Admin, ready, observability.Gatherer(), middlewares...)
 	release := sync.OnceValue(func() error {
 		worker.unavailable()
@@ -106,10 +114,11 @@ func buildRuntimeApp(config *conf.Bootstrap, logger *slog.Logger) (*application,
 	return &application{App: app, release: release}, nil
 }
 
-// This lifecycle adapter only delivers pending admissions to the existing
-// submitter. KFP remains responsible for advancing every normal pipeline step.
+// This lifecycle adapter delivers admissions and resumes durable closing.
+// KFP remains responsible for advancing every normal pipeline step.
 type runtimeWorker struct {
 	dispatcher *biz.DispatchWorker
+	closer     *biz.CloseWorker
 	ctx        context.Context
 	cancel     context.CancelFunc
 	done       chan struct{}
@@ -122,10 +131,22 @@ func (worker *runtimeWorker) Start(ctx context.Context) error {
 	stopPropagation := context.AfterFunc(ctx, worker.cancel)
 	defer stopPropagation()
 	defer close(worker.done)
-	err := worker.dispatcher.Run(worker.ctx)
+	loops := []func(context.Context) error{worker.dispatcher.Run}
+	if worker.closer != nil {
+		loops = append(loops, worker.closer.Run)
+	}
+	results := make(chan error, len(loops))
+	for _, loop := range loops {
+		go func(run func(context.Context) error) { results <- run(worker.ctx) }(loop)
+	}
+	var err error
+	for range loops {
+		err = errors.Join(err, <-results)
+		worker.cancel()
+	}
 	worker.unavailable()
 	if err != nil {
-		return errors.New("managed dispatch worker failed")
+		return errors.New("managed execution worker failed")
 	}
 	return nil
 }
