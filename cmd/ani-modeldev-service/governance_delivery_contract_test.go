@@ -126,7 +126,7 @@ func TestGovernanceDeliveryContractProvider(t *testing.T) {
 		t.Fatal("GOVERNANCE_DELIVERY_PREFLIGHT: atomic handshake publication failed")
 	}
 	t.Log("GOVERNANCE_DELIVERY_PREFLIGHT PASS: real buildApp/mTLS and independent PostgreSQL control Accept; target absent; private handshake published")
-	waitGovernanceContractStop(t, directory)
+	waitGovernanceDeliveryContractStop(t, directory, fixture, target)
 	_ = connection.Close()
 	stop()
 	finalContext, finalCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -198,6 +198,71 @@ type governanceDeliveryHandshake struct {
 	Frozen  governanceDeliveryFrozen   `json:"frozen"`
 	Target  governanceDeliveryIdentity `json:"target"`
 	Control governanceDeliveryIdentity `json:"control"`
+}
+
+// The recovery consumer may ask for one independent PG observation before
+// restarting its worker. This private test barrier never sends a command.
+func waitGovernanceDeliveryContractStop(t *testing.T, directory string, fixture configuredAdmissionFixture, target cpup01.AdmissionEnvelope) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	observed := false
+	for {
+		select {
+		case <-ctx.Done():
+			t.Fatal("GOVERNANCE_CONTRACT_CLEANUP: consumer did not stop provider within five minutes")
+		case <-ticker.C:
+		}
+		stop, err := os.Lstat(filepath.Join(directory, "stop"))
+		if !os.IsNotExist(err) {
+			if err != nil || !stop.Mode().IsRegular() || stop.Size() != 0 || stop.Mode().Perm() != 0600 {
+				t.Fatal("GOVERNANCE_CONTRACT_CLEANUP: invalid private stop signal")
+			}
+			return
+		}
+		if observed {
+			continue
+		}
+		request, err := os.Lstat(filepath.Join(directory, "observe-target"))
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil || !request.Mode().IsRegular() || request.Size() != 0 || request.Mode().Perm() != 0600 {
+			t.Fatal("GOVERNANCE_DELIVERY_RECOVERY_OBSERVATION: invalid private request")
+		}
+		readContext, readCancel := context.WithTimeout(ctx, 5*time.Second)
+		pool := fixture.openPool()
+		present := governanceDeliveryOriginalPresent(t, readContext, pool, target)
+		pool.Close()
+		readCancel()
+		if !present {
+			t.Fatal("GOVERNANCE_DELIVERY_RECOVERY_OBSERVATION: target absent before consumer restart")
+		}
+		// The read above checked the complete original and owner revision 1;
+		// no command response supplies the contents of this observation.
+		report := struct {
+			Schema string `json:"schema"`
+			OperationID string `json:"operation_id"`
+			ExecutionID string `json:"execution_id"`
+			ExecutionSpecHash string `json:"execution_spec_hash"`
+			Revision uint64 `json:"revision"`
+		}{"ani.cpu-p01.delivery-observation.v1", target.OperationID, target.ExecutionID, target.SpecHash, 1}
+		raw, err := json.Marshal(report)
+		if err != nil || len(raw) > 1024 {
+			t.Fatal("GOVERNANCE_DELIVERY_RECOVERY_OBSERVATION: bounded observation encoding failed")
+		}
+		staging := filepath.Join(directory, "target-observed.pending")
+		if err := os.WriteFile(staging, raw, 0600); err != nil {
+			t.Fatal("GOVERNANCE_DELIVERY_RECOVERY_OBSERVATION: private observation write failed")
+		}
+		if err := os.Rename(staging, filepath.Join(directory, "target-observed.json")); err != nil {
+			t.Fatal("GOVERNANCE_DELIVERY_RECOVERY_OBSERVATION: atomic observation publication failed")
+		}
+		observed = true
+		t.Log("GOVERNANCE_DELIVERY_RECOVERY_OBSERVATION PASS: independent PostgreSQL target original and owner_revision=1 before retry")
+	}
 }
 
 // Read bytes and scalar fields directly through an independently opened PG
