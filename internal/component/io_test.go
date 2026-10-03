@@ -34,7 +34,7 @@ func TestComponentCloseMissingCandidatePreservesFailureAfterCloseAttempt(t *test
 		t.Fatal(err)
 	}
 	err = runner.Run(context.Background(), "close")
-	if !errors.Is(err, os.ErrNotExist) {
+	if !errors.Is(err, component.ErrConfiguration) {
 		t.Fatalf("missing publication candidate must remain the original failure, not cleanup success or error: %v", err)
 	}
 	if client.closeCalls != 1 {

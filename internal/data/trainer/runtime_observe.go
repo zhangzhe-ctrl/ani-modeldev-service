@@ -45,7 +45,10 @@ func (a *Adapter) ObserveTraining(ctx context.Context, plan biz.TrainingPlan, ha
 			}
 			actual, getErr := a.client.Resource(resource).Namespace(namespace).Get(ctx, prior.Name, metav1.GetOptions{})
 			if apierrors.IsNotFound(getErr) {
-				prior.APIObjectPresent, prior.Terminal, prior.CreationDisabled, prior.ExitCode = false, false, false, nil
+				prior.APIObjectPresent, prior.CreationDisabled = false, false
+				if prior.Kind != "Pod" || !prior.Terminal || prior.ExitCode == nil {
+					prior.Terminal, prior.ExitCode = false, nil
+				}
 				resources[prior.UID] = prior
 				continue
 			}
@@ -140,9 +143,18 @@ func (a *Adapter) ObserveTraining(ctx context.Context, plan biz.TrainingPlan, ha
 		}
 		actual, getErr := a.client.Resource(resource).Namespace(namespace).Get(ctx, prior.Name, metav1.GetOptions{})
 		if apierrors.IsNotFound(getErr) {
-			prior.APIObjectPresent, prior.Terminal, prior.CreationDisabled, prior.ExitCode = false, false, false, nil
+			prior.APIObjectPresent, prior.CreationDisabled = false, false
+			if prior.Kind == "Pod" && prior.Terminal && prior.ExitCode != nil {
+				// A persisted exit belongs to this exact Pod UID. Garbage
+				// collection changes API presence, not that completed process.
+				podCount++
+				allZero = allZero && *prior.ExitCode == 0
+				anyNonzero = anyNonzero || *prior.ExitCode != 0
+			} else {
+				prior.Terminal, prior.ExitCode = false, nil
+				allPodsTerminal, jobsStopped = false, false
+			}
 			resources[prior.UID] = prior
-			allPodsTerminal, jobsStopped = false, false
 			continue
 		}
 		if getErr != nil {

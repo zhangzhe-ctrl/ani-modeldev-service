@@ -49,11 +49,11 @@ func oneTask(tasks []kfp.ManagedTask, name string) (kfp.ManagedTask, error) {
 			result = task
 		}
 	}
-	if count != 1 || result.ID == "" || result.PodName == "" || result.State == "" {
+	if count != 1 || result.ID == "" || (result.PodName == "" && result.State != "SKIPPED") || result.State == "" {
 		return kfp.ManagedTask{}, biz.ErrRuntimeNotReady
 	}
 	for _, task := range tasks {
-		if task.Name != name && (task.ID == result.ID || task.PodName == result.PodName) {
+		if task.Name != name && (task.ID == result.ID || (result.PodName != "" && task.PodName == result.PodName)) {
 			return kfp.ManagedTask{}, biz.ErrRuntimeConflict
 		}
 	}

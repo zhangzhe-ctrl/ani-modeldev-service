@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	modeldevv1 "github.com/zhangzhe-ctrl/ani-modeldev-service/api/ani/modeldev/v1"
 	trainingv1 "github.com/zhangzhe-ctrl/ani-modeldev-service/api/ani/training/v1"
@@ -151,7 +152,21 @@ func (runner *Runner) publish(ctx context.Context) error {
 	return writeJSON(runner.config.CandidateFile, candidate)
 }
 
-func (runner *Runner) close(ctx context.Context) error {
+func (runner *Runner) close(ctx context.Context) (firstError error) {
+	defer func() {
+		if firstError == nil {
+			return
+		}
+		// A failed publication must still fence creation. Preserve the original
+		// failure even if this bounded cleanup request also fails.
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		call, err := runner.callContext(cleanup)
+		if err != nil {
+			return
+		}
+		_, _ = runner.client.RequestExecutionClose(call, &modeldevv1.RequestExecutionCloseRequest{Context: runner.config.Context, Reason: modeldevv1.CloseReason_CLOSE_REASON_STEP_FAILED})
+	}()
 	if !absoluteClean(runner.config.CandidateFile) {
 		return ErrConfiguration
 	}

@@ -195,8 +195,20 @@ func samePublication(left, right biz.RuntimePublication) bool {
 // Writer absence includes completed managed data-plane steps as well as
 // training. The current close Pod is a control observer, not an uploader.
 func validCloseEvidence(authority biz.RunAuthorityCandidate, reason string, evidence biz.ManagedCloseEvidence) bool {
-	if evidence.RunID != authority.RunID || evidence.WorkflowUID != authority.WorkflowUID || evidence.ObservedAt.IsZero() || len(evidence.Resources) < 4 {
+	if evidence.RunID != authority.RunID || evidence.WorkflowUID != authority.WorkflowUID || evidence.ObservedAt.IsZero() || len(evidence.Resources)+len(evidence.SkippedTasks) < 4 || (reason == "NATURAL_TERMINAL" && len(evidence.SkippedTasks) != 0) {
 		return false
+	}
+	skippedNames, skippedIDs := make(map[string]bool), make(map[string]bool)
+	for _, task := range evidence.SkippedTasks {
+		switch task.TaskName {
+		case "prepare", "train-wait", "collect", "publish":
+		default:
+			return false
+		}
+		if skippedNames[task.TaskName] || !validOpaqueID(task.TaskID) || skippedIDs[task.TaskID] {
+			return false
+		}
+		skippedNames[task.TaskName], skippedIDs[task.TaskID] = true, true
 	}
 	seen := make(map[string]bool, len(evidence.Resources))
 	for _, resource := range evidence.Resources {

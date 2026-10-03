@@ -172,7 +172,17 @@ func (verifier *Verifier) VerifyWritersAbsent(ctx context.Context, execution biz
 	seen := make(map[string]bool)
 	for _, name := range []string{"prepare", "train-wait", "collect", "publish"} {
 		task, err := oneTask(tasks, name)
-		if err != nil || !terminalTask(task.State) {
+		if err != nil {
+			return biz.ManagedCloseEvidence{}, err
+		}
+		if task.State == "SKIPPED" {
+			if task.RunID != association.RunID || task.PodName != "" {
+				return biz.ManagedCloseEvidence{}, biz.ErrRuntimeConflict
+			}
+			evidence.SkippedTasks = append(evidence.SkippedTasks, biz.ManagedSkippedTask{TaskName: name, TaskID: task.ID})
+			continue
+		}
+		if !terminalTask(task.State) {
 			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
 		}
 		pod, err := verifier.currentTaskPod(ctx, execution, association, task, "")

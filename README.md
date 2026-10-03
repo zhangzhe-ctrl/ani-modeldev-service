@@ -90,6 +90,9 @@ PostgreSQL transactions, component code and CPU PyTorch training. Only external
 KFP, Kubernetes and S3 HTTP APIs are test substitutes. It checks one Run and
 TrainJob creation, 48 optimizer steps, actual uploaded bytes, publication after
 uploader exit, writer closure, durable CLOSED and independent checkpoint reload.
+It also corrupts the fixed-version input at the S3 boundary and checks that the
+real verifier rejects it, no TrainJob or publication is created, and the failed
+execution is durably closed with explicitly skipped downstream tasks.
 It is separate from default unit tests and does not establish BFF/LIVE acceptance.
 
 On the authorized Fedora host, supply the existing protected

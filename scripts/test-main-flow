@@ -11,5 +11,5 @@ set -euo pipefail
 [[ "$CPU_P01_MAINFLOW_OUTPUT" == /* && ! -e "$CPU_P01_MAINFLOW_OUTPUT" ]] || { echo 'Output directory must be absolute and not already exist' >&2; exit 2; }
 
 exec go test -tags cpu_mainflow -count=1 -v \
-    -run '^TestMainFlowCompleteActualMLPToVerifiedPublicationAndClosed$' \
+    -run '^TestMainFlowComplete(ActualMLPToVerifiedPublicationAndClosed|RejectedInputClosesWithoutTrainingOrPublication)$' \
     ./internal/data/submittest
