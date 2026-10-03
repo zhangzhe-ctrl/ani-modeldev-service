@@ -136,11 +136,11 @@ type PipelineDispatch struct {
 	// OwnerRevision covers the execution aggregate, including observations
 	// which retain the same submission state. It is never a sending permit.
 	OwnerRevision uint64
-	AttemptID  string
-	Plan       PipelineDispatchPlan
-	PlanHash   string
-	State      PipelineDispatchState
-	ReservedAt time.Time
+	AttemptID     string
+	Plan          PipelineDispatchPlan
+	PlanHash      string
+	State         PipelineDispatchState
+	ReservedAt    time.Time
 	// UncertainAt is the first durably accepted uncertainty observation. It is
 	// nil while SUBMITTING; replay cannot refresh it or grant another send.
 	UncertainAt *time.Time

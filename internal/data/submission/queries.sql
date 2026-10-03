@@ -1,10 +1,27 @@
 -- name: LockExecutionIdentity :one
-SELECT tenant_id, execution_id, operation_id, spec_hash,
+SELECT tenant_id, execution_id, operation_id, spec_hash, owner_revision,
     close_generation = 0 AS creation_open
 FROM modeldev_execution_identities
 WHERE tenant_id = sqlc.arg(tenant_id)::uuid
   AND execution_id = sqlc.arg(execution_id)::uuid
 FOR UPDATE;
+
+-- Read under the shared identity lock or in the existing repeatable-read Get.
+-- name: GetOwnerRevision :one
+SELECT owner_revision
+FROM modeldev_execution_identities
+WHERE tenant_id = sqlc.arg(tenant_id)::uuid
+  AND execution_id = sqlc.arg(execution_id)::uuid;
+
+-- Advance once for new facts, even when their summary state does not change.
+-- Replays never use this query and remain readable when the version is Max.
+-- name: AdvanceOwnerRevision :one
+UPDATE modeldev_execution_identities
+SET owner_revision = owner_revision + 1
+WHERE tenant_id = sqlc.arg(tenant_id)::uuid
+  AND execution_id = sqlc.arg(execution_id)::uuid
+  AND owner_revision < 18446744073709551615
+RETURNING owner_revision;
 
 -- name: GetAdmission :one
 SELECT tenant_id, execution_id, operation_id, actor,

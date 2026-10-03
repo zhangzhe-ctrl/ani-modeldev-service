@@ -123,7 +123,7 @@ type CloseRecord struct {
 type CloseReceipt struct {
 	CloseRecord
 	OwnerRevision uint64
-	Replayed bool
+	Replayed      bool
 }
 
 // ExecutionRepository exposes only the persistence behaviors needed by the

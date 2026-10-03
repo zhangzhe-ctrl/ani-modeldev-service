@@ -28,11 +28,28 @@ VALUES (
 ON CONFLICT DO NOTHING;
 
 -- name: LockExecutionIdentity :one
-SELECT tenant_id, execution_id, operation_id, spec_hash, close_generation
+SELECT tenant_id, execution_id, operation_id, spec_hash, close_generation, owner_revision
 FROM modeldev_execution_identities
 WHERE tenant_id = sqlc.arg(tenant_id)::uuid
   AND execution_id = sqlc.arg(execution_id)::uuid
 FOR UPDATE;
+
+-- Read in the identity-locked writer or the aggregate's read-only snapshot.
+-- name: GetOwnerRevision :one
+SELECT owner_revision
+FROM modeldev_execution_identities
+WHERE tenant_id = sqlc.arg(tenant_id)::uuid
+  AND execution_id = sqlc.arg(execution_id)::uuid;
+
+-- Only a new fact advances the version. Saturation rejects the entire writer
+-- transaction; a replay uses GetOwnerRevision and remains readable at Max.
+-- name: AdvanceOwnerRevision :one
+UPDATE modeldev_execution_identities
+SET owner_revision = owner_revision + 1
+WHERE tenant_id = sqlc.arg(tenant_id)::uuid
+  AND execution_id = sqlc.arg(execution_id)::uuid
+  AND owner_revision < 18446744073709551615
+RETURNING owner_revision;
 
 -- name: AdvanceCloseGeneration :one
 UPDATE modeldev_execution_identities
