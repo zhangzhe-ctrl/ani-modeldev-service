@@ -6,7 +6,7 @@ FOR UPDATE;
 
 -- Called after the shared lock for writers, or in a repeatable-read snapshot.
 -- name: GetRuntimeIdentity :one
-SELECT close_generation::text AS close_generation, owner_revision::text AS owner_revision,
+SELECT close_generation, owner_revision,
     clock_timestamp()::timestamptz AS database_now
 FROM modeldev_execution_identities
 WHERE tenant_id = sqlc.arg(tenant_id)::uuid AND execution_id = sqlc.arg(execution_id)::uuid;
@@ -47,13 +47,13 @@ ON CONFLICT (tenant_id, execution_id) DO UPDATE SET
 UPDATE modeldev_execution_identities SET owner_revision = owner_revision + 1
 WHERE tenant_id = sqlc.arg(tenant_id)::uuid AND execution_id = sqlc.arg(execution_id)::uuid
     AND owner_revision < 18446744073709551615
-RETURNING owner_revision::text;
+RETURNING owner_revision;
 
 -- name: AdvanceRuntimeClose :one
 UPDATE modeldev_execution_identities SET close_generation = close_generation + 1
 WHERE tenant_id = sqlc.arg(tenant_id)::uuid AND execution_id = sqlc.arg(execution_id)::uuid
     AND close_generation < 18446744073709551615
-RETURNING close_generation::text;
+RETURNING close_generation;
 
 -- The fixed 0012 migration reader predates the runtime schema. Check before
 -- querying it; an undefined-table error would abort the aggregate transaction.

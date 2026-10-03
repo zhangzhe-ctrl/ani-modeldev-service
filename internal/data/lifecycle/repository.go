@@ -9,7 +9,6 @@ import (
 	"errors"
 	"math/big"
 	"reflect"
-	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -19,6 +18,7 @@ import (
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 	executionsql "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/execution/sqlc"
 	lifecyclesql "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/lifecycle/sqlc"
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/pgvalue"
 	submissionsql "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/submission/sqlc"
 )
 
@@ -141,10 +141,11 @@ func (repository *Repository) mutate(ctx context.Context, authority biz.RunAutho
 		if err != nil {
 			return biz.ExecutionRuntime{}, false, biz.ErrPersistence
 		}
-		current.state.OwnerRevision, err = strconv.ParseUint(revision, 10, 64)
-		if err != nil {
+		value, valid := pgvalue.Uint64(revision)
+		if !valid || value == 0 {
 			return biz.ExecutionRuntime{}, false, biz.ErrPersistence
 		}
+		current.state.OwnerRevision = value
 		if err = saveRuntime(ctx, current); err != nil {
 			return biz.ExecutionRuntime{}, false, err
 		}
@@ -174,12 +175,12 @@ func readRuntime(ctx context.Context, tx pgx.Tx, tenantID, executionID pgtype.UU
 	if err != nil {
 		return nil, storageError(err)
 	}
-	revision, err := strconv.ParseUint(identity.OwnerRevision, 10, 64)
-	if err != nil || revision == 0 {
+	revision, valid := pgvalue.Uint64(identity.OwnerRevision)
+	if !valid || revision == 0 {
 		return nil, biz.ErrPersistence
 	}
-	generation, err := strconv.ParseUint(identity.CloseGeneration, 10, 64)
-	if err != nil {
+	generation, valid := pgvalue.Uint64(identity.CloseGeneration)
+	if !valid {
 		return nil, biz.ErrPersistence
 	}
 	state := biz.ExecutionRuntime{}
@@ -213,7 +214,8 @@ func readRuntime(ctx context.Context, tx pgx.Tx, tenantID, executionID pgtype.UU
 	}
 	if generation > state.CloseGeneration {
 		close, err := executions.GetCloseIntent(ctx, executionsql.GetCloseIntentParams{TenantID: tenantID, ExecutionID: executionID})
-		if err != nil || close.OwnerGeneration.Int == nil || close.OwnerGeneration.Int.BitLen() > 64 || close.OwnerGeneration.Int.Uint64() != generation {
+		closeGeneration, valid := pgvalue.Uint64(close.OwnerGeneration)
+		if err != nil || !valid || closeGeneration != generation {
 			return nil, biz.ErrPersistence
 		}
 		state.CloseGeneration = generation
@@ -389,8 +391,8 @@ func (repository *Repository) RequestRuntimeClose(ctx context.Context, authority
 		if err != nil {
 			return false, biz.ErrPersistence
 		}
-		value, err := strconv.ParseUint(generation, 10, 64)
-		if err != nil || value == 0 {
+		value, valid := pgvalue.Uint64(generation)
+		if !valid || value == 0 {
 			return false, biz.ErrPersistence
 		}
 		current.state.CloseGeneration = value
