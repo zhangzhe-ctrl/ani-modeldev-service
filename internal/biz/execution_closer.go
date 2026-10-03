@@ -116,28 +116,26 @@ func (closer *ExecutionCloser) Reconcile(ctx context.Context, tenant, execution 
 		}
 	}
 	result.Runtime = state
+	var recoveryErr error
 	if dispatch.State != PipelineDispatchConfirmed || len(dispatch.ConfirmedRuns) == 0 {
-		authority, err = closer.recoverRun(ctx, admitted, dispatch, owner.RunID)
-		if err != nil {
-			return ManagedRuntimeResult{}, err
-		}
-		if authority.RunAuthorityCandidate != owner {
+		recovered, findErr := closer.recoverRun(ctx, admitted, dispatch, owner.RunID)
+		recoveryErr = findErr
+		if findErr == nil && recovered.RunAuthorityCandidate != owner {
 			return ManagedRuntimeResult{}, ErrRunAuthorityConflict
 		}
-		state, err = runtime.repository.GetRuntime(ctx, tenant, execution)
-		if err != nil {
-			return ManagedRuntimeResult{}, err
+		if findErr == nil {
+			authority = recovered
+			state, err = runtime.repository.GetRuntime(ctx, tenant, execution)
+			if err != nil { return ManagedRuntimeResult{}, err }
+			dispatch, err = runtime.steps.repository.Get(ctx, tenant, execution)
+			if err != nil { return ManagedRuntimeResult{}, err }
+			result.Authority, result.Runtime = authority, state
 		}
-		dispatch, err = runtime.steps.repository.Get(ctx, tenant, execution)
-		if err != nil {
-			return ManagedRuntimeResult{}, err
-		}
-		result.Authority, result.Runtime = authority, state
 	}
 	// A stopped KFP waiter cannot stop external training by itself. Even when
 	// KFP is temporarily unavailable, make the independent training stop attempt
 	// after the committed fence; neither failure may imply CLOSED.
-	runErr := closer.runs.StopManagedRun(ctx, plan, owner)
+	runErr := errors.Join(recoveryErr, closer.runs.StopManagedRun(ctx, plan, owner))
 	if state.Training != nil {
 		if state.TrainingHandle == nil {
 			handle, findErr := runtime.trainer.FindTraining(ctx, *state.Training)
@@ -183,6 +181,7 @@ func (closer *ExecutionCloser) Reconcile(ctx context.Context, tenant, execution 
 	}
 	state, err = runtime.repository.ConfirmRuntimeClosed(ctx, owner, state.CloseGeneration, observation, evidence)
 	if err != nil {
+		if errors.Is(err, ErrRunAuthorityConflict) { return ManagedRuntimeResult{}, closer.review(ctx, tenant, execution, "MULTIPLE_RUNS", err) }
 		return ManagedRuntimeResult{}, err
 	}
 	return runtimeResult(result, state, false)
