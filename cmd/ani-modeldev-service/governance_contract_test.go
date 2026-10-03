@@ -17,63 +17,16 @@ import (
 	contractpb "github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01/protobuf"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/input"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/testsupport/commandtls"
+	"google.golang.org/grpc"
 )
 
 // TestGovernanceContractProvider is selected explicitly by the cross-repository
 // runner. The normal verification build excludes this fixture entirely.
 func TestGovernanceContractProvider(t *testing.T) {
-	parent := os.Getenv("CPU_P01_GOVERNANCE_CONTRACT_DIR")
-	if !filepath.IsAbs(parent) {
-		t.Fatal("GOVERNANCE_CONTRACT_PREFLIGHT: explicit private runner directory required")
-	}
-	info, err := os.Lstat(parent)
-	if err != nil || !info.IsDir() || info.Mode().Perm() != 0700 {
-		t.Fatal("GOVERNANCE_CONTRACT_PREFLIGHT: runner directory must be private and regular")
-	}
-	// The runner owns parent; this process creates and cleans only its fresh
-	// child. A stale child fails rather than taking over old test materials.
-	directory := filepath.Join(parent, "provider")
-	if err := os.Mkdir(directory, 0700); err != nil {
-		t.Fatal("GOVERNANCE_CONTRACT_PREFLIGHT: fresh provider directory unavailable")
-	}
-	t.Cleanup(func() {
-		if err := os.RemoveAll(directory); err != nil {
-			t.Error("GOVERNANCE_CONTRACT_CLEANUP: exact private fixture cleanup failed")
-		}
-	})
-	fixture := prepareConfiguredAdmission(t)
-	// Preserve the existing helper's test SAN and add the fixed production
-	// service identity tested by Governance. Only this synthetic CA signs it.
-	fixture.certificates.Server = fixture.certificates.ClientCertificate(t, func(certificate *x509.Certificate) {
-		certificate.DNSNames = []string{commandtls.ServerDNSName, "ani-modeldev-service"}
-		certificate.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
-	})
-	serverFiles := fixture.certificates.WriteServerFiles(t)
-	fixture.config.Command.ClientCaFile = serverFiles.CAFile
-	fixture.config.Command.CertificateFile = serverFiles.CertificateFile
-	fixture.config.Command.PrivateKeyFile = serverFiles.PrivateKeyFile
-	connection, stop := startConfiguredAdmissionApp(t, fixture)
-	assertProductionNotReadyWithoutBusinessAdapters(t, fixture.config.Server.Admin.Addr)
+	directory, fixture, connection, stop := startGovernanceContractProvider(t)
 	intent, err := contractpb.DecodeIntent(fixture.request.Intent)
 	if err != nil {
 		t.Fatal("GOVERNANCE_CONTRACT_PREFLIGHT: fixed fixture intent invalid")
-	}
-	ca, err := os.ReadFile(serverFiles.CAFile)
-	if err != nil {
-		t.Fatal("GOVERNANCE_CONTRACT_PREFLIGHT: synthetic CA unavailable")
-	}
-	key, err := x509.MarshalPKCS8PrivateKey(fixture.certificates.Governance.PrivateKey)
-	if err != nil {
-		t.Fatal("GOVERNANCE_CONTRACT_PREFLIGHT: synthetic client key unavailable")
-	}
-	for name, raw := range map[string][]byte{
-		"ca.pem":         ca,
-		"governance.pem": pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: fixture.certificates.Governance.Certificate[0]}),
-		"governance.key": pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: key}),
-	} {
-		if err := os.WriteFile(filepath.Join(directory, name), raw, 0600); err != nil {
-			t.Fatal("GOVERNANCE_CONTRACT_PREFLIGHT: private TLS fixture write failed")
-		}
 	}
 	handshake := governanceContractHandshake{Schema: "ani.cpu-p01.governance-resolve-fixture.v1", Address: fixture.config.Server.Grpc.Addr, Intent: intent, AcceptedAt: fixture.request.AcceptedAt.AsTime()}
 	handshake.TLS.CAFile = filepath.Join(directory, "ca.pem")
@@ -116,6 +69,63 @@ func TestGovernanceContractProvider(t *testing.T) {
 	}
 	requireAdmissionMaterialPoolReleased(t, observer, fixture.applicationName)
 	t.Log("GOVERNANCE_CONTRACT_BEHAVIOR PASS: READY unchanged, no execution-side facts, configured app stopped")
+}
+
+// Both explicitly selected contract providers use the same real app and
+// private transport materials. Each invocation still owns a fresh PG schema,
+// directory and stop signal; neither test relaxes the other's fact assertions.
+func startGovernanceContractProvider(t *testing.T) (string, configuredAdmissionFixture, *grpc.ClientConn, func()) {
+	t.Helper()
+	parent := os.Getenv("CPU_P01_GOVERNANCE_CONTRACT_DIR")
+	if !filepath.IsAbs(parent) {
+		t.Fatal("GOVERNANCE_CONTRACT_PREFLIGHT: explicit private runner directory required")
+	}
+	info, err := os.Lstat(parent)
+	if err != nil || !info.IsDir() || info.Mode().Perm() != 0700 {
+		t.Fatal("GOVERNANCE_CONTRACT_PREFLIGHT: runner directory must be private and regular")
+	}
+	// The runner owns parent; this process creates and cleans only its fresh
+	// child. A stale child fails rather than taking over old test materials.
+	directory := filepath.Join(parent, "provider")
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal("GOVERNANCE_CONTRACT_PREFLIGHT: fresh provider directory unavailable")
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(directory); err != nil {
+			t.Error("GOVERNANCE_CONTRACT_CLEANUP: exact private fixture cleanup failed")
+		}
+	})
+	fixture := prepareConfiguredAdmission(t)
+	// Preserve the existing helper's test SAN and add the fixed production
+	// service identity tested by Governance. Only this synthetic CA signs it.
+	fixture.certificates.Server = fixture.certificates.ClientCertificate(t, func(certificate *x509.Certificate) {
+		certificate.DNSNames = []string{commandtls.ServerDNSName, "ani-modeldev-service"}
+		certificate.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+	})
+	serverFiles := fixture.certificates.WriteServerFiles(t)
+	fixture.config.Command.ClientCaFile = serverFiles.CAFile
+	fixture.config.Command.CertificateFile = serverFiles.CertificateFile
+	fixture.config.Command.PrivateKeyFile = serverFiles.PrivateKeyFile
+	connection, stop := startConfiguredAdmissionApp(t, fixture)
+	assertProductionNotReadyWithoutBusinessAdapters(t, fixture.config.Server.Admin.Addr)
+	ca, err := os.ReadFile(serverFiles.CAFile)
+	if err != nil {
+		t.Fatal("GOVERNANCE_CONTRACT_PREFLIGHT: synthetic CA unavailable")
+	}
+	key, err := x509.MarshalPKCS8PrivateKey(fixture.certificates.Governance.PrivateKey)
+	if err != nil {
+		t.Fatal("GOVERNANCE_CONTRACT_PREFLIGHT: synthetic client key unavailable")
+	}
+	for name, raw := range map[string][]byte{
+		"ca.pem":         ca,
+		"governance.pem": pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: fixture.certificates.Governance.Certificate[0]}),
+		"governance.key": pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: key}),
+	} {
+		if err := os.WriteFile(filepath.Join(directory, name), raw, 0600); err != nil {
+			t.Fatal("GOVERNANCE_CONTRACT_PREFLIGHT: private TLS fixture write failed")
+		}
+	}
+	return directory, fixture, connection, stop
 }
 
 type governanceContractHandshake struct {
