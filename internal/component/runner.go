@@ -52,7 +52,11 @@ func New(config Config, client modeldevv1.ModelDevStepServiceClient, kube dynami
 	if client == nil || config.Context == nil || config.Context.Identity == nil || config.Context.Association == nil || config.TenantID == "" || config.TokenFile == "" {
 		return nil, ErrConfiguration
 	}
-	for _, value := range []string{config.TenantID, config.Context.Identity.OperationId, config.Context.Identity.ExecutionId, config.Context.Association.KfpRunId, config.Context.Association.NamespaceUid, config.Context.Association.PodUid} {
+	identifiers := []string{config.TenantID, config.Context.Identity.ExecutionId, config.Context.Association.KfpRunId, config.Context.Association.NamespaceUid, config.Context.Association.PodUid}
+	if config.Context.Identity.OperationId != "" {
+		identifiers = append(identifiers, config.Context.Identity.OperationId)
+	}
+	for _, value := range identifiers {
 		id, err := uuid.Parse(value)
 		if err != nil || id == uuid.Nil || id.String() != value {
 			return nil, ErrConfiguration
@@ -116,6 +120,11 @@ func (runner *Runner) callContext(ctx context.Context) (context.Context, error) 
 }
 
 func (runner *Runner) trainWait(ctx context.Context) error {
+	if runner.config.Context.Identity.OperationId == "" {
+		if _, _, err := runner.configuration(ctx); err != nil {
+			return err
+		}
+	}
 	call, err := runner.callContext(ctx)
 	if err != nil {
 		return err

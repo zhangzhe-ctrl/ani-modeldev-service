@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run from a clean fixed checkout on Fedora; CONTAINERS_STORAGE_CONF may select
+# the existing task-private Podman storage. This command never pushes an image.
+output=${1:?new absolute artifact directory required}
+[[ "$output" == /* && ! -e "$output" ]]
+git diff --quiet
+git diff --cached --quiet
+source_sha=$(git rev-parse HEAD)
+tag="localhost/ani-modeldev-step:$source_sha"
+if podman image exists "$tag"; then
+    echo 'Fixed source image already exists; use its retained build evidence.' >&2
+    exit 2
+fi
+mkdir -p "$output/context"
+git rev-parse HEAD > "$output/source.sha"
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o "$output/context/ani-modeldev-step" ./cmd/ani-modeldev-step
+cp pipelines/step.Dockerfile "$output/context/Dockerfile"
+podman build --network=none --pull=never --format=oci \
+    --label "org.opencontainers.image.revision=$source_sha" \
+    --tag "$tag" "$output/context" > "$output/build.txt" 2>&1
+digest=$(podman image inspect --format '{{.Digest}}' "$tag")
+[[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+printf 'localhost/ani-modeldev-step@%s\n' "$digest" > "$output/image.ref"
+podman image inspect "$tag" > "$output/image.inspect.json"
+set +e
+podman run --rm --network=none --read-only --cap-drop=ALL \
+    --security-opt=no-new-privileges --cpus=1 --memory=512m --pids-limit=64 \
+    --tmpfs /tmp:rw,nosuid,nodev,size=16m "$tag" > "$output/startup.txt" 2>&1
+startup=$?
+set -e
+[[ "$startup" == 1 ]]
+rg -q '^managed component failed$' "$output/startup.txt"
+sha256sum "$output/context/ani-modeldev-step" > "$output/binary.sha256"
+printf 'static-build=0\nimage-build=0\nmissing-config-rejected=0\n' > "$output/result.txt"
+cat "$output/image.ref" "$output/result.txt"

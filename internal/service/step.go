@@ -50,7 +50,7 @@ func (step *Step) BeginExecution(ctx context.Context, request *modeldevv1.BeginE
 		return invalid()
 	}
 	identity, association := request.Context.Identity, request.Context.Association
-	for _, value := range []string{identity.OperationId, identity.ExecutionId, identity.ExecutionSpecHash,
+	for _, value := range []string{identity.ExecutionId, identity.ExecutionSpecHash,
 		association.KfpRunId, association.NamespaceName, association.NamespaceUid,
 		association.WorkflowName, association.WorkflowUid, association.PodName, association.PodUid} {
 		if value == "" {
@@ -93,7 +93,7 @@ func (step *Step) BeginExecution(ctx context.Context, request *modeldevv1.BeginE
 	states, valid := acceptExecutionStates(result.States)
 	boundAt := timestamppb.New(authority.BoundAt)
 	if !valid || authority.OwnerRevision == 0 || authority.BoundAt.IsZero() || boundAt.CheckValid() != nil ||
-		authority.TenantID != tenant || authority.OperationID != identity.OperationId || authority.ExecutionID != identity.ExecutionId || authority.SpecHash != identity.ExecutionSpecHash ||
+		authority.TenantID != tenant || !runtimeUUID(authority.OperationID) || (identity.OperationId != "" && authority.OperationID != identity.OperationId) || authority.ExecutionID != identity.ExecutionId || authority.SpecHash != identity.ExecutionSpecHash ||
 		authority.RunID != association.KfpRunId || authority.NamespaceName != association.NamespaceName || authority.NamespaceUID != association.NamespaceUid ||
 		authority.WorkflowName != association.WorkflowName || authority.WorkflowUID != association.WorkflowUid {
 		return unavailable()

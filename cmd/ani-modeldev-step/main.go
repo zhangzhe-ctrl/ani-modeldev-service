@@ -6,10 +6,8 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -25,9 +23,6 @@ import (
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/component"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/protobuf/encoding/protojson"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/rest"
 )
 
 type ownerConfig struct {
@@ -67,41 +62,19 @@ func main() {
 }
 
 func execute(ctx context.Context, args []string) error {
-	if len(args) == 0 {
-		return component.ErrConfiguration
-	}
-	step := args[0]
-	switch step {
-	case "prepare", "train-wait", "collect", "publish", "close":
-	default:
-		return component.ErrConfiguration
-	}
-	flags := flag.NewFlagSet("ani-modeldev-step", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	configFile := flags.String("config", "", "owner component configuration file")
-	if flags.Parse(args[1:]) != nil || flags.NArg() != 0 || *configFile == "" {
-		return component.ErrConfiguration
-	}
-	var config ownerConfig
-	if err := readConfig(*configFile, &config); err != nil {
-		return err
-	}
-	if config.TenantID == "" || config.ServerName == "" || strings.Contains(config.Target, "://") {
-		return component.ErrConfiguration
-	}
-	if host, port, err := net.SplitHostPort(config.Target); err != nil || host == "" || port == "" {
-		return component.ErrConfiguration
-	}
-	if config.TimeoutSeconds <= 0 || config.TimeoutSeconds > 1800 || config.PollIntervalSeconds < 1 || config.PollIntervalSeconds > 30 {
-		return component.ErrConfiguration
-	}
-	contextBytes, err := readOwnerFile(config.ContextFile, 64<<10)
+	invocation,err := bootstrapInvocation(ctx,args,nil)
 	if err != nil {
 		return err
 	}
-	claim := &modeldevv1.StepContext{}
-	if err := protojson.Unmarshal(contextBytes, claim); err != nil {
-		return component.ErrConfiguration
+	step,config,claim := invocation.step,invocation.config,invocation.claim
+	if invocation.candidateJSON != nil {
+		// This input lives only in the control Pod's private temporary directory.
+		// It does not require the execution PVC or share a path with publishers.
+		directory,err := os.MkdirTemp("","ani-modeldev-close-")
+		if err != nil { return component.ErrConfiguration }
+		defer os.RemoveAll(directory)
+		config.CandidateFile = filepath.Join(directory,"publication.json")
+		if err := os.WriteFile(config.CandidateFile,[]byte(*invocation.candidateJSON),0600); err != nil { return component.ErrConfiguration }
 	}
 	roots, err := trustedRoots(config.CAFile)
 	if err != nil {
@@ -112,14 +85,9 @@ func execute(ctx context.Context, args []string) error {
 		return component.ErrConfiguration
 	}
 	defer connection.Close()
-	var kube dynamic.Interface
-	if step == "prepare" {
-		inCluster, err := rest.InClusterConfig()
-		if err != nil {
-			return component.ErrConfiguration
-		}
-		inCluster.Timeout = 15 * time.Second
-		kube, err = dynamic.NewForConfig(inCluster)
+	kube := invocation.kube
+	if step == "prepare" && kube == nil {
+		kube, err = inClusterKubernetes()
 		if err != nil {
 			return component.ErrConfiguration
 		}

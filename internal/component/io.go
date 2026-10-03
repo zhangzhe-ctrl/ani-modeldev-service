@@ -31,7 +31,14 @@ func (runner *Runner) configuration(ctx context.Context) (biz.Execution, *traini
 		return biz.Execution{}, nil, err
 	}
 	admission := response.GetAdmission()
-	if admission == nil || admission.AcceptedAt == nil || admission.AcceptedAt.CheckValid() != nil || admission.ResourceTenantId != runner.config.TenantID || !proto.Equal(admission.Identity, runner.config.Context.Identity) || !proto.Equal(response.Identity, admission.Identity) || !proto.Equal(response.Snapshot, admission.Snapshot) {
+	if admission == nil || admission.Identity == nil || admission.AcceptedAt == nil || admission.AcceptedAt.CheckValid() != nil || admission.ResourceTenantId != runner.config.TenantID || !proto.Equal(response.Identity, admission.Identity) || !proto.Equal(response.Snapshot, admission.Snapshot) {
+		return biz.Execution{}, nil, ErrConfiguration
+	}
+	expected := proto.Clone(runner.config.Context.Identity).(*trainingv1.ExecutionIdentity)
+	if expected.OperationId == "" {
+		expected.OperationId = admission.Identity.OperationId
+	}
+	if !proto.Equal(admission.Identity, expected) {
 		return biz.Execution{}, nil, ErrConfiguration
 	}
 	authority, association := response.GetAuthority(), runner.config.Context.Association
@@ -53,6 +60,9 @@ func (runner *Runner) configuration(ctx context.Context) (biz.Execution, *traini
 	if snapshot.Environment.NamespaceName != association.NamespaceName || snapshot.Environment.NamespaceUID != association.NamespaceUid {
 		return biz.Execution{}, nil, ErrConfiguration
 	}
+	// Only the authenticated, canonically checked committed admission can fill
+	// the operation omitted by KFP's execution_id/spec_hash parameters.
+	runner.config.Context.Identity = proto.Clone(admission.Identity).(*trainingv1.ExecutionIdentity)
 	return execution, response.Workspace, nil
 }
 
@@ -167,6 +177,11 @@ func (runner *Runner) close(ctx context.Context) (firstError error) {
 		}
 		_, _ = runner.client.RequestExecutionClose(call, &modeldevv1.RequestExecutionCloseRequest{Context: runner.config.Context, Reason: modeldevv1.CloseReason_CLOSE_REASON_STEP_FAILED})
 	}()
+	if runner.config.Context.Identity.OperationId == "" {
+		if _, _, err := runner.configuration(ctx); err != nil {
+			return err
+		}
+	}
 	if !absoluteClean(runner.config.CandidateFile) {
 		return ErrConfiguration
 	}

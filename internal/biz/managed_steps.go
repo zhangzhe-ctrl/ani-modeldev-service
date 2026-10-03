@@ -69,7 +69,11 @@ func (steps *ManagedSteps) Begin(ctx context.Context, token string, request Begi
 	if steps == nil || steps.repository == nil || steps.executions == nil || steps.workloads == nil || steps.runs == nil {
 		return BeginManagedExecutionResult{}, ErrManagedStepUnavailable
 	}
-	for _, id := range []string{request.TenantID, request.OperationID, request.ExecutionID, request.Association.RunID, request.Association.NamespaceUID, request.Association.PodUID} {
+	identifiers := []string{request.TenantID, request.ExecutionID, request.Association.RunID, request.Association.NamespaceUID, request.Association.PodUID}
+	if request.OperationID != "" {
+		identifiers = append(identifiers, request.OperationID)
+	}
+	for _, id := range identifiers {
 		if !validAdmissionID(id) || strings.ToLower(id) != id {
 			return BeginManagedExecutionResult{}, ErrInvalidAdmission
 		}
@@ -87,7 +91,7 @@ func (steps *ManagedSteps) Begin(ctx context.Context, token string, request Begi
 		return BeginManagedExecutionResult{}, ErrManagedStepUnavailable
 	}
 	plan, association := dispatch.Plan, request.Association
-	if plan.TenantID != request.TenantID || plan.OperationID != request.OperationID || plan.ExecutionID != request.ExecutionID || plan.SpecHash != request.SpecHash ||
+	if plan.TenantID != request.TenantID || (request.OperationID != "" && plan.OperationID != request.OperationID) || plan.ExecutionID != request.ExecutionID || plan.SpecHash != request.SpecHash ||
 		plan.Environment.NamespaceName != association.NamespaceName || plan.Environment.NamespaceUID != association.NamespaceUID {
 		return BeginManagedExecutionResult{}, ErrManagedStepUnauthorized
 	}

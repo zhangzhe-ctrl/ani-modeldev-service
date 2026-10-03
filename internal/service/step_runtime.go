@@ -199,12 +199,12 @@ func (step *Step) runtimeRequest(ctx context.Context, message proto.Message, wir
 		return "", biz.BeginManagedExecutionRequest{}, runtimeError(biz.ErrInvalidAdmission)
 	}
 	identity, association := wire.Identity, wire.Association
-	for _, value := range []string{identity.OperationId, identity.ExecutionId, association.KfpRunId, association.NamespaceUid, association.PodUid} {
+	for _, value := range []string{identity.ExecutionId, association.KfpRunId, association.NamespaceUid, association.PodUid} {
 		if !runtimeUUID(value) {
 			return "", biz.BeginManagedExecutionRequest{}, runtimeError(biz.ErrInvalidAdmission)
 		}
 	}
-	if !runtimeSHA256(identity.ExecutionSpecHash) || association.NamespaceName == "" || association.WorkflowName == "" || association.WorkflowUid == "" || association.PodName == "" {
+	if (identity.OperationId != "" && !runtimeUUID(identity.OperationId)) || !runtimeSHA256(identity.ExecutionSpecHash) || association.NamespaceName == "" || association.WorkflowName == "" || association.WorkflowUid == "" || association.PodName == "" {
 		return "", biz.BeginManagedExecutionRequest{}, runtimeError(biz.ErrInvalidAdmission)
 	}
 	if step == nil || step.runtime == nil {
@@ -259,8 +259,8 @@ func validRuntimeMessage(message protoreflect.Message, depth int) bool {
 
 func runtimeReply(result biz.ManagedRuntimeResult, claim biz.BeginManagedExecutionRequest) (*modeldevv1.ExecutionStates, *modeldevv1.AuthorityBinding, error) {
 	authority, execution := result.Authority, result.Execution
-	if execution.TenantID != claim.TenantID || execution.OperationID != claim.OperationID || execution.ExecutionID != claim.ExecutionID || execution.SpecHash != claim.SpecHash ||
-		authority.TenantID != claim.TenantID || authority.OperationID != claim.OperationID || authority.ExecutionID != claim.ExecutionID || authority.SpecHash != claim.SpecHash ||
+	if execution.TenantID != claim.TenantID || !runtimeUUID(execution.OperationID) || (claim.OperationID != "" && execution.OperationID != claim.OperationID) || execution.ExecutionID != claim.ExecutionID || execution.SpecHash != claim.SpecHash ||
+		authority.TenantID != claim.TenantID || authority.OperationID != execution.OperationID || authority.ExecutionID != claim.ExecutionID || authority.SpecHash != claim.SpecHash ||
 		authority.RunID != claim.Association.RunID || authority.NamespaceName != claim.Association.NamespaceName || authority.NamespaceUID != claim.Association.NamespaceUID ||
 		authority.WorkflowName != claim.Association.WorkflowName || authority.WorkflowUID != claim.Association.WorkflowUID || authority.OwnerRevision == 0 || result.Runtime.OwnerRevision == 0 {
 		return nil, nil, runtimeError(biz.ErrManagedStepUnavailable)

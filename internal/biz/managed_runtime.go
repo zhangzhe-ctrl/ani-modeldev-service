@@ -44,7 +44,11 @@ func (runtime *ManagedRuntime) authenticate(ctx context.Context, token string, r
 	if runtime == nil || runtime.steps == nil {
 		return ManagedRuntimeResult{}, ErrManagedStepUnavailable
 	}
-	for _, id := range []string{request.TenantID, request.OperationID, request.ExecutionID, request.Association.RunID, request.Association.NamespaceUID, request.Association.PodUID} {
+	identifiers := []string{request.TenantID, request.ExecutionID, request.Association.RunID, request.Association.NamespaceUID, request.Association.PodUID}
+	if request.OperationID != "" {
+		identifiers = append(identifiers, request.OperationID)
+	}
+	for _, id := range identifiers {
 		if !validAdmissionID(id) || strings.ToLower(id) != id {
 			return ManagedRuntimeResult{}, ErrInvalidAdmission
 		}
@@ -60,7 +64,7 @@ func (runtime *ManagedRuntime) authenticate(ctx context.Context, token string, r
 		return ManagedRuntimeResult{}, ErrManagedStepUnavailable
 	}
 	plan, a := dispatch.Plan, request.Association
-	if plan.TenantID != request.TenantID || plan.OperationID != request.OperationID || plan.ExecutionID != request.ExecutionID || plan.SpecHash != request.SpecHash || plan.Environment.NamespaceName != a.NamespaceName || plan.Environment.NamespaceUID != a.NamespaceUID {
+	if plan.TenantID != request.TenantID || (request.OperationID != "" && plan.OperationID != request.OperationID) || plan.ExecutionID != request.ExecutionID || plan.SpecHash != request.SpecHash || plan.Environment.NamespaceName != a.NamespaceName || plan.Environment.NamespaceUID != a.NamespaceUID {
 		return ManagedRuntimeResult{}, ErrManagedStepUnauthorized
 	}
 	if err = runtime.steps.workloads.Verify(ctx, token, plan, a); err != nil {

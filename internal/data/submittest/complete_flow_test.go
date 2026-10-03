@@ -122,7 +122,9 @@ func runCompleteMainFlow(t *testing.T, rejectedInput bool) {
 		if step == "close" {
 			mount = ""
 		}
-		runner, err := component.New(component.Config{TenantID: f.request.Admission.TenantID, Context: f.stepContext(step), TokenFile: tokenFile, WorkspaceDirectory: mount, PVCName: f.workspace.PVCName, InventoryFile: inventoryPath, CandidateFile: candidate, TaskID: step + "-task", PollInterval: time.Second}, client, kube, store)
+		claim := f.stepContext(step)
+		claim.Identity.OperationId = "" // KFP carries only execution_id/spec_hash.
+		runner, err := component.New(component.Config{TenantID: f.request.Admission.TenantID, Context: claim, TokenFile: tokenFile, WorkspaceDirectory: mount, PVCName: f.workspace.PVCName, InventoryFile: inventoryPath, CandidateFile: candidate, TaskID: step + "-task", PollInterval: time.Second}, client, kube, store)
 		if err != nil {
 			return err
 		}
