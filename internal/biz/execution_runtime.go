@@ -99,9 +99,9 @@ type ExecutionRuntime struct {
 	CloseEvidence    *ManagedCloseEvidence
 	// CloseAuthority is an owner-only recovery association. It cannot authorize
 	// managed steps or recreate a consumed submission permit.
-	CloseAuthority   *RunAuthorityCandidate
+	CloseAuthority    *RunAuthorityCandidate
 	CloseReviewReason string
-	OwnerRevision    uint64
+	OwnerRevision     uint64
 }
 
 type ExecutionRuntimeRepository interface {

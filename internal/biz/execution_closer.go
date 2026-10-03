@@ -74,12 +74,20 @@ func (closer *ExecutionCloser) Reconcile(ctx context.Context, tenant, execution 
 			return ManagedRuntimeResult{}, err
 		}
 		recovery, ok := runtime.repository.(OwnerCloseRecovery)
-		if !ok { return ManagedRuntimeResult{}, ErrRuntimeNotReady }
-		if _, err := recovery.FenceOwnerClose(ctx, tenant, execution); err != nil { return ManagedRuntimeResult{}, err }
+		if !ok {
+			return ManagedRuntimeResult{}, ErrRuntimeNotReady
+		}
+		if _, err := recovery.FenceOwnerClose(ctx, tenant, execution); err != nil {
+			return ManagedRuntimeResult{}, err
+		}
 		dispatch, err := runtime.steps.repository.Get(ctx, tenant, execution)
-		if err != nil { return ManagedRuntimeResult{}, err }
+		if err != nil {
+			return ManagedRuntimeResult{}, err
+		}
 		authority, err = closer.recoverRun(ctx, admitted, dispatch, "")
-		if err != nil { return ManagedRuntimeResult{}, err }
+		if err != nil {
+			return ManagedRuntimeResult{}, err
+		}
 	} else if err != nil {
 		return ManagedRuntimeResult{}, err
 	}
@@ -110,12 +118,20 @@ func (closer *ExecutionCloser) Reconcile(ctx context.Context, tenant, execution 
 	result.Runtime = state
 	if dispatch.State != PipelineDispatchConfirmed || len(dispatch.ConfirmedRuns) == 0 {
 		authority, err = closer.recoverRun(ctx, admitted, dispatch, owner.RunID)
-		if err != nil { return ManagedRuntimeResult{}, err }
-		if authority.RunAuthorityCandidate != owner { return ManagedRuntimeResult{}, ErrRunAuthorityConflict }
+		if err != nil {
+			return ManagedRuntimeResult{}, err
+		}
+		if authority.RunAuthorityCandidate != owner {
+			return ManagedRuntimeResult{}, ErrRunAuthorityConflict
+		}
 		state, err = runtime.repository.GetRuntime(ctx, tenant, execution)
-		if err != nil { return ManagedRuntimeResult{}, err }
+		if err != nil {
+			return ManagedRuntimeResult{}, err
+		}
 		dispatch, err = runtime.steps.repository.Get(ctx, tenant, execution)
-		if err != nil { return ManagedRuntimeResult{}, err }
+		if err != nil {
+			return ManagedRuntimeResult{}, err
+		}
 		result.Authority, result.Runtime = authority, state
 	}
 	// A stopped KFP waiter cannot stop external training by itself. Even when
@@ -175,19 +191,31 @@ func (closer *ExecutionCloser) Reconcile(ctx context.Context, tenant, execution 
 func (closer *ExecutionCloser) recoverRun(ctx context.Context, admitted Execution, dispatch PipelineDispatch, runID string) (RunAuthority, error) {
 	recovery, ok := closer.runtime.repository.(OwnerCloseRecovery)
 	verifier, verifies := closer.writers.(ClosingRunVerifier)
-	if !ok || !verifies { return RunAuthority{}, ErrRuntimeNotReady }
-	if len(dispatch.ConfirmedRuns) > 1 { return RunAuthority{}, closer.review(ctx, admitted.TenantID, admitted.ExecutionID, "MULTIPLE_RUNS", ErrRunAuthorityConflict) }
-	if runID == "" && len(dispatch.ConfirmedRuns) == 1 { runID = dispatch.ConfirmedRuns[0].RunID }
+	if !ok || !verifies {
+		return RunAuthority{}, ErrRuntimeNotReady
+	}
+	if len(dispatch.ConfirmedRuns) > 1 {
+		return RunAuthority{}, closer.review(ctx, admitted.TenantID, admitted.ExecutionID, "MULTIPLE_RUNS", ErrRunAuthorityConflict)
+	}
+	if runID == "" && len(dispatch.ConfirmedRuns) == 1 {
+		runID = dispatch.ConfirmedRuns[0].RunID
+	}
 	owner, err := verifier.VerifyClosingRun(ctx, admitted, dispatch, runID)
-	if err != nil { return RunAuthority{}, closer.review(ctx, admitted.TenantID, admitted.ExecutionID, "KFP_CREATE_UNRESOLVED", err) }
+	if err != nil {
+		return RunAuthority{}, closer.review(ctx, admitted.TenantID, admitted.ExecutionID, "KFP_CREATE_UNRESOLVED", err)
+	}
 	state, err := recovery.RecordClosingRun(ctx, owner)
-	if err != nil { return RunAuthority{}, err }
+	if err != nil {
+		return RunAuthority{}, err
+	}
 	return RunAuthority{RunAuthorityCandidate: owner, OwnerRevision: state.OwnerRevision}, nil
 }
 
 func (closer *ExecutionCloser) review(ctx context.Context, tenant, execution, reason string, cause error) error {
 	recovery, ok := closer.runtime.repository.(OwnerCloseRecovery)
-	if !ok { return cause }
+	if !ok {
+		return cause
+	}
 	_, err := recovery.MarkOwnerCloseReview(ctx, tenant, execution, reason)
 	return errors.Join(cause, err)
 }

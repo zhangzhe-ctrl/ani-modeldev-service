@@ -244,7 +244,9 @@ func readRuntime(ctx context.Context, tx pgx.Tx, tenantID, executionID pgtype.UU
 	}
 	state.OwnerRevision = revision
 	if recovered := state.CloseAuthority; recovered != nil {
-		if state.CloseGeneration == 0 || !validEarlyCloseCandidate(*recovered) || recovered.TenantID != admitted.TenantID || recovered.ExecutionID != admitted.ExecutionID || recovered.OperationID != admitted.OperationID || recovered.SpecHash != admitted.SpecHash || recovered.NamespaceName != admitted.Snapshot.Environment.NamespaceName || recovered.NamespaceUID != admitted.Snapshot.Environment.NamespaceUID { return nil, biz.ErrPersistence }
+		if state.CloseGeneration == 0 || !validEarlyCloseCandidate(*recovered) || recovered.TenantID != admitted.TenantID || recovered.ExecutionID != admitted.ExecutionID || recovered.OperationID != admitted.OperationID || recovered.SpecHash != admitted.SpecHash || recovered.NamespaceName != admitted.Snapshot.Environment.NamespaceName || recovered.NamespaceUID != admitted.Snapshot.Environment.NamespaceUID {
+			return nil, biz.ErrPersistence
+		}
 	}
 	admitted.OwnerRevision = revision
 	if !identity.DatabaseNow.Valid || identity.DatabaseNow.InfinityModifier != pgtype.Finite {
@@ -436,8 +438,12 @@ func (repository *Repository) ConfirmRuntimeClosed(ctx context.Context, authorit
 		// Recheck retained Run identities under the same lock as observations.
 		// A second late observation cannot race the earlier external proof.
 		dispatch, err := submission.ReadInTransaction(ctx, current.transaction, authority.TenantID, authority.ExecutionID)
-		if err != nil { return false, err }
-		if len(dispatch.ConfirmedRuns) > 1 || (len(dispatch.ConfirmedRuns) == 1 && dispatch.ConfirmedRuns[0].RunID != authority.RunID) || (current.state.CloseAuthority != nil && len(dispatch.ConfirmedRuns) != 1) { return false, biz.ErrRunAuthorityConflict }
+		if err != nil {
+			return false, err
+		}
+		if len(dispatch.ConfirmedRuns) > 1 || (len(dispatch.ConfirmedRuns) == 1 && dispatch.ConfirmedRuns[0].RunID != authority.RunID) || (current.state.CloseAuthority != nil && len(dispatch.ConfirmedRuns) != 1) {
+			return false, biz.ErrRunAuthorityConflict
+		}
 		if current.state.ClosedAt != nil {
 			return false, nil
 		}
