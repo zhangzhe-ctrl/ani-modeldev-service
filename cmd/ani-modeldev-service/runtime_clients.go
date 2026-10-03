@@ -23,7 +23,9 @@ import (
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 	conf "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/conf/v1"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/kfp"
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/traininglogs"
 	"k8s.io/client-go/dynamic"
+	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 )
 
@@ -33,6 +35,7 @@ type runtimeClients struct {
 	kube        dynamic.Interface
 	runs        *kfp.Client
 	store       *s3.Client
+	logs        biz.TrainingLogReader
 	close       func()
 }
 
@@ -105,6 +108,11 @@ func loadRuntimeClients(config *conf.ManagedRuntime) (runtimeClients, error) {
 		kubeHTTP.CloseIdleConnections()
 		return failure()
 	}
+	core, err := coreclient.NewForConfigAndClient(kubeConfig, kubeHTTP)
+	if err != nil {
+		kubeHTTP.CloseIdleConnections()
+		return failure()
+	}
 	runs, err := kfp.New(kfp.Config{ConnectionRef: binding.Environment.KFPConnectionRef, Endpoint: config.Pipeline.Endpoint, RootCAs: pipelineCA, Timeout: timeout}, provider)
 	if err != nil {
 		kubeHTTP.CloseIdleConnections()
@@ -121,7 +129,7 @@ func loadRuntimeClients(config *conf.ManagedRuntime) (runtimeClients, error) {
 		HTTPClient: storageHTTP, Credentials: credentials, RetryMaxAttempts: 1,
 		RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired, ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired,
 	})
-	return runtimeClients{certificate: certificate, binding: binding, kube: kube, runs: runs, store: store, close: func() { kubeHTTP.CloseIdleConnections(); storageHTTP.CloseIdleConnections() }}, nil
+	return runtimeClients{certificate: certificate, binding: binding, kube: kube, runs: runs, store: store, logs: traininglogs.New(core), close: func() { kubeHTTP.CloseIdleConnections(); storageHTTP.CloseIdleConnections() }}, nil
 }
 
 type mountedPipelineToken struct {
