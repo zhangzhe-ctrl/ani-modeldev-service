@@ -132,6 +132,9 @@ type PublicationVerifier interface {
 
 type ManagedCloseEvidence struct {
 	RunID, WorkflowUID string
+	// NoDispatch is proved under the durable creation fence and identity lock.
+	// It is never inferred from an external NotFound response.
+	NoDispatch         bool
 	Resources          []RuntimeResource
 	SkippedTasks       []ManagedSkippedTask
 	ObservedAt         time.Time

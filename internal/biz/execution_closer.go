@@ -16,6 +16,10 @@ type OwnerWriterVerifier interface {
 	VerifyOwnerWritersAbsent(context.Context, Execution, RunAuthorityCandidate, *WorkspaceBinding) (ManagedCloseEvidence, error)
 }
 
+type UndispatchedCloser interface {
+	CloseUndispatched(context.Context, string, string) (ExecutionRuntime, error)
+}
+
 type ExecutionCloser struct {
 	runtime *ManagedRuntime
 	runs    ManagedRunCloser
@@ -47,6 +51,17 @@ func (closer *ExecutionCloser) Reconcile(ctx context.Context, tenant, execution 
 		return ManagedRuntimeResult{}, err
 	}
 	authority, err := runtime.steps.repository.GetRunAuthority(ctx, tenant, execution)
+	if errors.Is(err, ErrExecutionNotFound) {
+		unbound, ok := runtime.repository.(UndispatchedCloser)
+		if !ok {
+			return ManagedRuntimeResult{}, ErrRuntimeNotReady
+		}
+		state, err := unbound.CloseUndispatched(ctx, tenant, execution)
+		if err != nil {
+			return ManagedRuntimeResult{}, err
+		}
+		return runtimeResult(ManagedRuntimeResult{Execution: admitted}, state, false)
+	}
 	if err != nil {
 		return ManagedRuntimeResult{}, err
 	}
