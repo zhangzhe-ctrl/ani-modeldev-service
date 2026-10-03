@@ -166,7 +166,7 @@ func prepareConfiguredAdmission(t *testing.T) configuredAdmissionFixture {
 	imported := biz.InputImport{
 		TenantID: "11111111-2222-4333-8444-555555555555", RequestID: uuid.NewString(), InputVersionID: seed.Input.InputVersionID,
 		Actor: "governance:user:42", RequestedAt: time.Date(2026, 9, 30, 12, 0, 0, 123000, time.UTC),
-		Scope: cpup01.StorageScope{StorageConnectionID: seed.Input.Object.StorageConnectionID, Bucket: seed.Input.Object.Bucket, ApprovedPrefix: "fixed/input"},
+		Scope:  cpup01.StorageScope{StorageConnectionID: seed.Input.Object.StorageConnectionID, Bucket: seed.Input.Object.Bucket, ApprovedPrefix: "fixed/input"},
 		Object: seed.Input.Object,
 	}
 	writer := openPool()
@@ -178,7 +178,7 @@ func prepareConfiguredAdmission(t *testing.T) configuredAdmissionFixture {
 	// assertion that a deployed ENV or remote S3 object has been verified.
 	ready, err := repository.RecordVerifiedCSV(ctx, imported, biz.VerifiedCSV{
 		VerifiedObject: biz.VerifiedObject{Object: imported.Object, VerifiedAt: imported.RequestedAt.Add(time.Minute)},
-		SchemaVersion: "ani.cpu.csv.v1", RowCount: 1024, FeatureCount: 16,
+		SchemaVersion:  "ani.cpu.csv.v1", RowCount: 1024, FeatureCount: 16,
 	})
 	if err != nil || ready.State != biz.InputStateReady {
 		t.Fatalf("ADMISSION_STARTUP_PREFLIGHT: actual READY persistence failed; behavior NOT_RUN: %v", err)
@@ -224,7 +224,7 @@ func prepareConfiguredAdmission(t *testing.T) configuredAdmissionFixture {
 		Input: seed.Input,
 		Program: cpup01.ProgramRef{
 			ImageVersionID: release.Program.ImageVersionID, ImageDigest: release.Program.ImageDigest, Command: release.Program.Command,
-			ResolvedArgs: []string{"--data", "/startup-input/data.csv", "--output", "/startup-output", "--expected-input-sha256", "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "--expected-input-bytes", "192456", "--learning-rate", "0.02"},
+			ResolvedArgs:       []string{"--data", "/startup-input/data.csv", "--output", "/startup-output", "--expected-input-sha256", "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "--expected-input-bytes", "192456", "--learning-rate", "0.02"},
 			ResolvedParameters: []cpup01.Parameter{{Name: "batch_size", Type: "INTEGER", Value: "64"}, {Name: "epochs", Type: "INTEGER", Value: "3"}, {Name: "learning_rate", Type: "DECIMAL", Value: "0.02"}},
 		},
 		Resources: release.Resources, Environment: seed.Environment, Workspace: release.Workspace,
@@ -250,24 +250,24 @@ func writeConfiguredAdmissionFacts(t *testing.T, release cpup01.ReleaseDocument,
 	t.Helper()
 	type evidence struct {
 		Reference string `json:"reference"`
-		SHA256 string `json:"sha256"`
+		SHA256    string `json:"sha256"`
 	}
 	// The private file fixture is explicitly synthetic and authored without
 	// depending on the production reader's unexported decoder structure.
 	document := struct {
-		SchemaVersion string `json:"schema_version"`
-		ResourceTenantID string `json:"resource_tenant_id"`
-		ReleaseID string `json:"release_id"`
-		ReleaseDigest string `json:"release_digest"`
-		Environment cpup01.EnvironmentBindingSnapshot `json:"environment"`
-		InputScope cpup01.StorageScope `json:"input_scope"`
-		PublicationScope cpup01.StorageScope `json:"publication_scope"`
-		Runtime cpup01.RuntimeRef `json:"runtime"`
-		Workspace cpup01.WorkspaceContract `json:"workspace"`
-		InputFilePath string `json:"input_file_path"`
-		OutputDirectoryPath string `json:"output_directory_path"`
-		EnvironmentEvidence evidence `json:"environment_evidence"`
-		ApplicationEvidence evidence `json:"application_evidence"`
+		SchemaVersion       string                            `json:"schema_version"`
+		ResourceTenantID    string                            `json:"resource_tenant_id"`
+		ReleaseID           string                            `json:"release_id"`
+		ReleaseDigest       string                            `json:"release_digest"`
+		Environment         cpup01.EnvironmentBindingSnapshot `json:"environment"`
+		InputScope          cpup01.StorageScope               `json:"input_scope"`
+		PublicationScope    cpup01.StorageScope               `json:"publication_scope"`
+		Runtime             cpup01.RuntimeRef                 `json:"runtime"`
+		Workspace           cpup01.WorkspaceContract          `json:"workspace"`
+		InputFilePath       string                            `json:"input_file_path"`
+		OutputDirectoryPath string                            `json:"output_directory_path"`
+		EnvironmentEvidence evidence                          `json:"environment_evidence"`
+		ApplicationEvidence evidence                          `json:"application_evidence"`
 	}{
 		SchemaVersion: "ani.modeldev.managed-admission-facts.v1", ResourceTenantID: facts.TenantID,
 		ReleaseID: release.ReleaseID, ReleaseDigest: conformance.ReleaseSHA256V1,

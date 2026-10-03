@@ -26,7 +26,7 @@ func TestOptionalAdmissionResolutionValidatesShapeWithoutReadingMaterials(t *tes
 
 func TestConfiguredAdmissionResolutionRejectsIncompleteMaterialShape(t *testing.T) {
 	tests := []struct {
-		name string
+		name   string
 		change func(*AdmissionResolution)
 	}{
 		{"explicit empty block", func(a *AdmissionResolution) { *a = AdmissionResolution{} }},
@@ -86,7 +86,7 @@ func TestConfiguredAdmissionResolutionRejectsIncompleteMaterialShape(t *testing.
 
 func TestValidAdmissionResolutionDoesNotSkipRemainingServerValidation(t *testing.T) {
 	tests := []struct {
-		name string
+		name   string
 		change func(*Bootstrap)
 	}{
 		{"grpc listener", func(c *Bootstrap) { c.Server.Grpc.Network = "udp" }},
