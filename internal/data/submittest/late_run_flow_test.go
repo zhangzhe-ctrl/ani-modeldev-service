@@ -139,6 +139,7 @@ func TestMainFlowLateRunRecoveryFindsOriginalAndClosesWithoutRecreating(t *testi
 			if facts["CloseReviewReason"] != "KFP_CREATE_UNRESOLVED" {
 				t.Fatalf("LATE_RUN_CLOSE_NOT_IMPLEMENTED: unknown create lacks durable NEEDS_REVIEW reason: %s", raw)
 			}
+			assertQueryCloseState(t, ctx, pool, f.request.Admission, modeldevv1.CloseState_CLOSE_STATE_NEEDS_REVIEW)
 			visible.Store(true)
 			duplicate.Store(multiple)
 			pool.Close()
@@ -150,6 +151,7 @@ func TestMainFlowLateRunRecoveryFindsOriginalAndClosesWithoutRecreating(t *testi
 				if err != nil || readErr != nil || batch.Unresolved != 1 || closed.ClosedAt != nil || closed.CloseReviewReason != "MULTIPLE_RUNS" {
 					t.Fatalf("ambiguous external Runs were not fenced: %+v %+v %v %v", batch, closed, err, readErr)
 				}
+				assertQueryCloseState(t, ctx, pool, f.request.Admission, modeldevv1.CloseState_CLOSE_STATE_NEEDS_REVIEW)
 				duplicate.Store(false)
 				pool.Close()
 				pool = open()
@@ -160,12 +162,14 @@ func TestMainFlowLateRunRecoveryFindsOriginalAndClosesWithoutRecreating(t *testi
 				if err != nil || readErr != nil || recordErr != nil || batch.Unresolved != 1 || closed.ClosedAt != nil || closed.CloseReviewReason != "MULTIPLE_RUNS" || recovered.AttemptID != original.AttemptID || len(recovered.ConfirmedRuns) != 2 || recovered.ConfirmedRuns[0].RunID != completeRunID || recovered.ConfirmedRuns[1].RunID != secondRunID {
 					t.Fatalf("shorter list erased original ambiguity/Run identities: %+v %+v %v %v %v", batch, recovered, err, readErr, recordErr)
 				}
+				assertQueryCloseState(t, ctx, pool, f.request.Admission, modeldevv1.CloseState_CLOSE_STATE_NEEDS_REVIEW)
 				t.Log("LATE_RUN_CLOSE: both independently observed Run IDs retained; restart and a shorter later list cannot select one or report CLOSED")
 				return
 			}
 			if err != nil || readErr != nil || batch.Closed != 1 || closed.ClosedAt == nil || closed.CloseGeneration != generation || closed.CloseEvidence == nil || closed.CloseEvidence.RunID != completeRunID {
 				t.Fatalf("LATE_RUN_CLOSE_NOT_IMPLEMENTED: original late run not found/stopped/closed: %+v %+v %v %v", batch, closed, err, readErr)
 			}
+			assertQueryCloseState(t, ctx, pool, f.request.Admission, modeldevv1.CloseState_CLOSE_STATE_CLOSED)
 			gotAuthority, authorityErr := submission.New(pool).GetRunAuthority(ctx, f.request.Admission.TenantID, f.request.Admission.ExecutionID)
 			if (!bound && !errors.Is(authorityErr, biz.ErrExecutionNotFound)) || (bound && (authorityErr != nil || gotAuthority.RunID != completeRunID || gotAuthority.AttemptID != original.AttemptID)) {
 				t.Fatalf("owner close recovery changed managed-step authority: %+v %v", gotAuthority, authorityErr)

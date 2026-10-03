@@ -111,6 +111,7 @@ func TestMainFlowLateTrainingResponseRecoversOriginalWriterAndCloses(t *testing.
 	if fields["CloseReviewReason"] != "TRAINJOB_CREATE_UNRESOLVED" {
 		t.Fatalf("LATE_TRAIN_CLOSE_NOT_IMPLEMENTED: missing durable review reason: %s", raw)
 	}
+	assertQueryCloseState(t, ctx, pool, f.request.Admission, modeldevv1.CloseState_CLOSE_STATE_NEEDS_REVIEW)
 	visible.Store(true)
 	pool.Close()
 	pool = open()
@@ -120,6 +121,7 @@ func TestMainFlowLateTrainingResponseRecoversOriginalWriterAndCloses(t *testing.
 	if err != nil || readErr != nil || batch.Closed != 1 || closed.ClosedAt == nil || closed.CloseGeneration != generation || closed.Training == nil || closed.Training.RequestSHA256 != original.Training.RequestSHA256 || closed.TrainingHandle == nil || closed.TrainingHandle.TrainJobUID != completeTrainUID || closed.Observation == nil || !closed.Observation.WritersAbsent {
 		t.Fatalf("LATE_TRAIN_CLOSE_NOT_IMPLEMENTED: original writer did not close after recovery: %+v %+v %v %v", batch, closed, err, readErr)
 	}
+	assertQueryCloseState(t, ctx, pool, f.request.Admission, modeldevv1.CloseState_CLOSE_STATE_CLOSED)
 	select {
 	case <-f.trainingDone:
 	default:

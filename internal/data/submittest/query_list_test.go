@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	modeldevv1 "github.com/zhangzhe-ctrl/ani-modeldev-service/api/ani/modeldev/v1"
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/execution"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/testsupport/postgres"
 	"google.golang.org/grpc/codes"
@@ -60,5 +62,18 @@ func TestMainFlowQueryListFiltersCurrentTenantBeforePagination(t *testing.T) {
 	page, err = client.ListExecutions(queryCall(ctx, foreign, method), &modeldevv1.ListExecutionsRequest{})
 	if err != nil || len(page.GetExecutions()) != 1 || page.Executions[0].Identity.ExecutionId != foreign.ExecutionID {
 		t.Fatalf("list disclosed another tenant: %v %v", page, err)
+	}
+}
+
+func assertQueryCloseState(t *testing.T, ctx context.Context, pool *pgxpool.Pool, admission biz.Admission, want modeldevv1.CloseState) {
+	t.Helper()
+	client := startMainFlowQuery(t, pool, nil, admission)
+	detail, err := client.GetExecution(queryCall(ctx, admission, modeldevv1.ModelDevQueryService_GetExecution_FullMethodName), &modeldevv1.GetExecutionRequest{ExecutionId: admission.ExecutionID})
+	if err != nil || detail.GetExecution().GetStates().GetCloseState() != want {
+		t.Errorf("QUERY_CLOSE_REVIEW_NOT_IMPLEMENTED: detail close=%v want=%v err=%v", detail.GetExecution().GetStates().GetCloseState(), want, err)
+	}
+	page, err := client.ListExecutions(queryCall(ctx, admission, modeldevv1.ModelDevQueryService_ListExecutions_FullMethodName), &modeldevv1.ListExecutionsRequest{CloseState: &want})
+	if err != nil || len(page.GetExecutions()) != 1 || page.Executions[0].GetIdentity().GetExecutionId() != admission.ExecutionID || page.Executions[0].GetStates().GetCloseState() != want {
+		t.Errorf("QUERY_CLOSE_REVIEW_NOT_IMPLEMENTED: current tenant list lost close-state projection/filter: want=%v count=%d err=%v", want, len(page.GetExecutions()), err)
 	}
 }
