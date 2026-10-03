@@ -36,7 +36,8 @@ connection/bucket/prefix 下；前缀按完整路径分段判断。两个容器�
 这些检查只验证给定事实的关联与形状。`TenantAdmissionFacts` 没有 VERIFIED 布尔值，
 也不会因为 UUID、digest 或引用字符串合法就证明资源存在、身份有权、挂载可用或
 环境已验收。真实来源 owner 必须证明上述 tenant 关联、配置版本、内容摘要、权限和
-挂载关系；本片没有提供该生产 owner。测试中的合成事实不允许成为生产默认配置。
+挂载关系；文件 reader 与启动装配不能代替该 owner 的证据。测试中的合成事实不允许
+成为生产默认配置。
 
 ## 规范化与固定选择
 
@@ -69,7 +70,41 @@ repository 直接实现输入读取；catalogue.Reader 只持有受信目录，�
 `ENVIRONMENT_NOT_READY`。最终快照缺失或非法字段仍按共享形状校验返回
 `INVALID_ARGUMENT`。依赖不可用返回有限 `PERSISTENCE_UNAVAILABLE`，不回显目录路径、
 连接或原始系统错误。取消/超时保留 context 原因，所有失败均返回零值候选。
-外部 RPC 状态映射不在此内部模块冻结。
+对外 `ModelDevAdmissionService.ResolveAdmission` 复用共享 Intent codec 和该解析核，
+请求只含 Intent、显式 Release 选择及固定 AcceptedAt。tenant/actor 来自已有 Governance
+mTLS 与经过校验的 metadata。无效请求、不可用 Release、未 READY 输入和依赖失败映射为
+有限 gRPC 状态及 `ErrorDetail`，不透传文件或数据库错误；取消/超时保留对应状态。
+
+## 启动配置
+
+已有 `command` 下的可选 `admission_resolution` 是唯一启动入口，复用同一 Governance
+mTLS listener、数据库连接池及应用退出清理。没有新增普通用户入口或独立 TLS/数据库配置。
+
+| 配置字段 | 约束 |
+| --- | --- |
+| `catalogue_directory` | 干净的绝对目录路径，无 NUL；启动按既有不跟随末级符号链接策略打开目录 |
+| `facts_files` | 明确列出 1–64 份文件，不扫描目录或读取“当前”配置 |
+| 每项 `path` | 干净的绝对文件路径，无 NUL；实际文件安全约束由 facts reader 负责 |
+| 每项 `sha256` | 64 位小写十六进制，固定对应文件的实际字节 |
+
+省略 `command` 保持原运行壳；有 command 而省略 `admission_resolution` 时，原关闭命令
+仍可用，Admission 不注册。显式给出空块或不完整引用会拒绝启动。文件缺失、摘要错误、
+重复 tenant/Release key 或目录不可打开同样拒绝启动，并释放已经建立的数据库连接，
+不会退回省略块的行为。错误使用有限文字，不回显配置内容或底层错误。
+
+启动一次性加载固定 facts 文件，不热更新。文件必须以直接只读普通文件或适当 subPath
+挂载交付；末级为符号链接的投影路径不受支持。详细文件边界及各类摘要含义见
+[受管解析事实](cpu-p01-managed-admission-facts.md)。部署更新需核对各实例材料一致性，
+不能把不同配置版本同时当作同一受理组合。
+
+`catalogue.Reader.Check` 只证明目录在启动时可打开；空目录允许启动，不扫描或选择
+Release。每次请求仍按 Governance 给定的 ID/digest 读取并核验该 Release。目录或文件
+随后失效时请求拒绝，启动检查不授予永久有效性。
+
+配置引用、文件 SHA 和字段形状不证明 ENV、权限、Runtime 或存储实际可用。真实启用仍需
+ENV/CPU02 的交接、对应身份/挂载/存储范围证据和 CPU07/08 的业务 PipelineVersion。
+仓库默认配置省略新块，不提供可冒充生产材料的 fixture。即使候选解析可用，完整业务
+链尚未装配，`/readyz` 仍返回 503。
 
 ## 真实验证范围与未接项
 
@@ -90,9 +125,13 @@ resolution/catalogue/input 模块全部 GREEN / exit 0（1.320s / 0.187s / 4.035
 证据为本轮 `resolution-final-green-479f706/`。这是模块级真实 file/PG 验证；最终
 full verify、audit 与独立两轴审查单独记录，当前不以此模块 PASS 代替。
 
-当前没有生产 managed facts 来源，没有 Resolve RPC，也没有 Governance/BFF 调用
-装配。实际接通还需：每次当前授权 → FindAccepted 查原键 → 原键未命中才读当前启用
-绑定 → 受管 facts 来源与最窄 Gov-only 解析 RPC → Governance 在持久受理事务复核
+上述为内部解析模块的历史证据。后续真实文件/PG/mTLS RPC 与启动装配的固定 SHA、
+RED/GREEN、完整门禁和未测范围分别记在本轮执行卡及 `admission-startup-checkpoint.md`，
+不能用旧模块通过替代新组合验证。
+
+当前已有 facts 文件 reader、受信 Resolve RPC 及可选启动装配；真实环境材料和
+Governance/BFF 调用仍未接通。实际业务顺序仍需：每次当前授权 → FindAccepted 查原键
+→ 原键未命中才读当前启用绑定 → 调用候选解析 → Governance 在持久受理事务复核
 generation/Release，并固定真实 command IDs。原键重放也必须先完成本次当前授权；
-旧 actor 仅是审计事实。这个调用顺序尚未由本片实现，候选解析 PASS 不等于 CPU05
-业务受理通过，更不等于 LIVE 或 AC02–AC04 已验收。
+旧 actor 仅是审计事实。候选解析不等于 CPU05 业务受理通过，也不等于 LIVE 或
+AC02–AC04 已验收。

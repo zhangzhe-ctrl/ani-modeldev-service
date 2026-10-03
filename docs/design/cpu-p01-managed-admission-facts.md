@@ -13,7 +13,8 @@ facts reader 读取可信 tenant 和明确 Release ID/digest 对应的事实，�
 实际文件 owner 属于 `internal/data/admissionfacts`；`FileSource{Path, SHA256}` 是
 有限的受信配置输入。它加载固定字节，按 tenant＋Release ID/digest 查找，返回独立值。
 这个 key 不含 Governance binding generation，不选择最新、当前或默认 Release。
-此片不改 Proto、server、cmd、conf 或 Governance，不注册 RPC，不装配生产启动配置。
+reader 本身不拥有 Proto、server、cmd、conf 或 Governance。后续受信 RPC 与可选启动
+装配见[候选解析启动配置](cpu-p01-admission-resolution.md#启动配置)，沿用此唯一文件 reader。
 
 ## 私有文件与摘要
 
@@ -92,4 +93,5 @@ FIFO 等失败有测试侧时间上限，所有拒绝必须返回 nil reader 和
 组合源码 `9c02b724ef427349b7f7d74f314de8c0e5391922` 在 Fedora 的六项边界测试全部
 PASS（0.552s）；完整 resolution/catalogue/input 回归分别 2.056s/0.207s/4.343s，
 均 exit0、无 SKIP，格式无差异。原 19 个 RED 修复与其余回归结果分别保留。
-生产配置与 RPC/Governance 消费仍 NOT_RUN；这些文件测试不证明真实 ENV 可用。
+这是该文件模块的历史验证；后续 RPC/启动装配证据由执行卡分别记录。实际环境材料与
+Governance 业务消费仍未接通，这些文件测试不证明真实 ENV 可用。

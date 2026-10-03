@@ -59,5 +59,9 @@ CPU-P01 domain, persistence and adapter slices are present. An explicit typed
 and real PostgreSQL repository using mounted connection/certificate references.
 Missing materials fail startup; omitting the block keeps the unready shell.
 See [command delivery](docs/design/cpu-p01-command-delivery.md) for the trust,
-receipt and configuration boundaries. AcceptExecution, Query, Step and the full
+receipt and configuration boundaries. An optional `command.admission_resolution`
+block adds read-only snapshot resolution on that same mTLS listener using pinned
+mounted facts, the immutable Release catalogue and the existing runtime pool.
+See [admission configuration](docs/design/cpu-p01-admission-resolution.md#启动配置)
+for material and readiness boundaries. AcceptExecution, Query, Step and the full
 training/publication chain are not assembled; unavailable RPCs fail explicitly.
