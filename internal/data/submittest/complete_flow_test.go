@@ -102,6 +102,10 @@ func runCompleteMainFlow(t *testing.T, rejectedInput bool) {
 		return aws.Credentials{AccessKeyID: "synthetic-key", SecretAccessKey: "synthetic-secret"}, nil
 	}), BaseEndpoint: aws.String(f.storage.URL), UsePathStyle: true, HTTPClient: f.storage.Client(), RetryMaxAttempts: 1, RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired, ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired})
 	proof := runtimeproof.New(kube, runs, objectstore.NewVerifier(store, f.request.Admission.Snapshot.PublicationScope.StorageConnectionID, 64<<20), dispatch)
+	if !rejectedInput {
+		query := startMainFlowQuery(t, pool, store, f.request.Admission)
+		assertQueryAccess(t, ctx, query, f.request.Admission)
+	}
 	steps, err := biz.NewManagedSteps(dispatch, admissions, identity, runs)
 	if err != nil {
 		t.Fatal(err)
