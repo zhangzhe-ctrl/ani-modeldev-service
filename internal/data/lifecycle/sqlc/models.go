@@ -57,6 +57,7 @@ type ModeldevExecutionRuntime struct {
 	CloseReason           pgtype.Text
 	CloseRequestedAt      pgtype.Timestamptz
 	ClosedAt              pgtype.Timestamptz
+	AuthorityExecutionID  pgtype.UUID
 }
 
 type ModeldevPipelineConfirmedRun struct {
