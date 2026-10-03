@@ -37,12 +37,14 @@ type mainFlowQuery struct {
 	certificates commandtls.Certificates
 }
 
-func startMainFlowQuery(t *testing.T, pool *pgxpool.Pool, store *s3.Client, admission biz.Admission) *mainFlowQuery {
+func startMainFlowQuery(t *testing.T, pool *pgxpool.Pool, store *s3.Client, admission biz.Admission, resolvers ...modeldevv1.ModelDevAdmissionServiceServer) *mainFlowQuery {
 	t.Helper()
 	certs := commandtls.NewForServer(t, "ani-modeldev-service")
 	repository := execution.New(pool)
 	handler := service.NewQuery(repository, objectstore.NewDownloadSigner(store, admission.Snapshot.PublicationScope.StorageConnectionID))
-	listener, err := server.NewGovernanceQueryServer(&conf.Server_GRPC{Network: "tcp", Addr: "127.0.0.1:0", Timeout: durationpb.New(5 * time.Second)}, server.CommandTLS{Certificate: certs.Server, ClientCAs: certs.Roots, GovernanceDNSName: commandtls.GovernanceDNSName}, service.NewCommand(repository), nil, handler)
+	var resolver modeldevv1.ModelDevAdmissionServiceServer
+	if len(resolvers)>0 { resolver=resolvers[0] }
+	listener, err := server.NewGovernanceQueryServer(&conf.Server_GRPC{Network: "tcp", Addr: "127.0.0.1:0", Timeout: durationpb.New(5 * time.Second)}, server.CommandTLS{Certificate: certs.Server, ClientCAs: certs.Roots, GovernanceDNSName: commandtls.GovernanceDNSName}, service.NewCommand(repository), resolver, handler)
 	if err != nil {
 		t.Fatal(err)
 	}
