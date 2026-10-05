@@ -57,16 +57,23 @@ def main():
         "--http-proxy=false", "--cpus", "2", "--memory", "2g", "--memory-swap", "2g",
         "--pids-limit", "256", "--cap-drop", "all", "--security-opt", "no-new-privileges",
         "--read-only", "--tmpfs", "/tmp:rw,size=128m", "--userns", "keep-id:uid=10001,gid=10001",
+        "--passwd=false", "--env", "USER=", "--env", "LOGNAME=", "--env", "LNAME=", "--env", "USERNAME=",
     ]
     command(common + ["--rm", "--entrypoint", "/opt/venv/bin/python", image_id, "-I", "-c",
-        "import json,os,platform,sys,sysconfig,torch; "
+        "import getpass,grp,json,os,platform,pwd,sys,sysconfig,torch; "
         "assert os.getuid()==10001 and os.getgid()==10001 and os.getpid()==1; "
+        "assert not any(os.environ.get(name) for name in ('USER','LOGNAME','LNAME','USERNAME')); "
+        "user=pwd.getpwuid(10001); group=grp.getgrgid(10001); "
+        "assert user.pw_name=='modeldev' and user.pw_uid==10001 and user.pw_gid==10001; "
+        "assert group.gr_name=='modeldev' and group.gr_gid==10001; "
+        "assert getpass.getuser()=='modeldev'; "
         "assert platform.python_version()=='3.14.7'; "
         "assert sys.prefix=='/opt/venv' and sys.base_prefix=='/usr'; "
         "assert sysconfig.get_config_var('SOABI')=='cpython-314-x86_64-linux-gnu'; "
         "assert not sysconfig.get_config_var('Py_GIL_DISABLED'); "
         "assert torch.__version__=='2.10.0+cpu'; assert torch.version.cuda is None; "
-        "print(json.dumps({'uid':os.getuid(),'python':platform.python_version(),'torch':torch.__version__,'cuda':torch.version.cuda}))"
+        "print(json.dumps({'uid':os.getuid(),'gid':os.getgid(),'user':user.pw_name,'group':group.gr_name,"
+        "'python':platform.python_version(),'torch':torch.__version__,'cuda':torch.version.cuda}))"
     ], "runtime")
     package_probe = r"""import json
 from pathlib import Path
