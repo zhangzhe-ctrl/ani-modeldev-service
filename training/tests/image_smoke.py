@@ -67,7 +67,7 @@ def main():
         "assert user.pw_name=='modeldev' and user.pw_uid==10001 and user.pw_gid==10001; "
         "assert group.gr_name=='modeldev' and group.gr_gid==10001; "
         "assert getpass.getuser()=='modeldev'; "
-        "assert platform.python_version()=='3.14.7'; "
+        "assert platform.python_version()=='3.14.8'; "
         "assert sys.prefix=='/opt/venv' and sys.base_prefix=='/usr'; "
         "assert sysconfig.get_config_var('SOABI')=='cpython-314-x86_64-linux-gnu'; "
         "assert not sysconfig.get_config_var('Py_GIL_DISABLED'); "

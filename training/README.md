@@ -35,15 +35,17 @@ access without mounting the original training PVC.
 
 ## Locked image materials
 
-`runtime-lock.json` pins the linux/amd64 Chainguard Python manifest
-`sha256:125969103add9ace8bdbad31acbb07d2e5740e065312688534f0c666a181b987`
-in both Dockerfile stages. Builds never resolve a discovery tag. The base contains
-Python 3.14.7 with the ordinary cp314 ABI; PyTorch remains 2.10.0+cpu. Of the ten
+`runtime-lock.json` pins the Chainguard Python image index
+`sha256:1961420e5f93bd056d4b0b40eca12cdf01b3ed09177aa4d6ec71fab38cbf158f`
+in both Dockerfile stages and records the selected linux/amd64 manifest
+`sha256:654e728e98400ab15c6a6b6a06a0392d5871e801697629202309acaba57bb87e`.
+Builds never resolve a discovery tag. The base contains
+Python 3.14.8 for linux/amd64 with the ordinary cp314 ABI; PyTorch remains 2.10.0+cpu. Of the ten
 locked wheels, only Torch and MarkupSafe changed from cp313 to cp314; dependency
 versions remained unchanged by that ABI migration.
 
 `requirements.lock` pins versions and SHA256, `wheelhouse.sha256` fixes filenames,
-and `runtime-packages.lock.json` records all 31 APK package names and versions,
+and `runtime-packages.lock.json` records all 29 APK package names and versions,
 including the legacy OpenSSL provider. The package database is retained. Torch
 uses its wheel's bundled libgomp and the image's libstdc++; no host library is
 copied. Optional NumPy integration emits a warning because this workload uses
