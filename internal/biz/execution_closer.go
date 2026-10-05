@@ -115,9 +115,9 @@ func (closer *ExecutionCloser) Reconcile(ctx context.Context, tenant, execution 
 	if state.ClosedAt != nil {
 		return runtimeResult(result, state, true)
 	}
-	if state.CloseGeneration == 0 {
+	if state.CloseGeneration == 0 || state.CloseReason == "NATURAL_TERMINAL" {
 		// The database clock checks the original frozen deadline while holding
-		// the same identity lock as creation. Calling reconcile is not a stop.
+		// the creation lock. An existing natural fence escalates only at expiry.
 		state, _, err = runtime.repository.RequestRuntimeClose(ctx, owner, "DEADLINE")
 		if err != nil {
 			return ManagedRuntimeResult{}, err
@@ -147,8 +147,15 @@ func (closer *ExecutionCloser) Reconcile(ctx context.Context, tenant, execution 
 	// A stopped KFP waiter cannot stop external training by itself. Even when
 	// KFP is temporarily unavailable, make the independent training stop attempt
 	// after the committed fence; neither failure may imply CLOSED.
-	runErr := errors.Join(recoveryErr, closer.runs.StopManagedRun(ctx, plan, owner))
-	if state.Training != nil {
+	runErr := recoveryErr
+	if state.CloseReason != "NATURAL_TERMINAL" {
+		runErr = errors.Join(runErr, closer.runs.StopManagedRun(ctx, plan, owner))
+	}
+	if state.TrainingRejection != nil {
+		if err := runtime.verifyRejectedTrainingAbsent(ctx, state); err != nil {
+			return ManagedRuntimeResult{}, closer.review(ctx, tenant, execution, "TRAINJOB_CREATE_UNRESOLVED", errors.Join(runErr, err))
+		}
+	} else if state.Training != nil {
 		if state.TrainingHandle == nil {
 			handle, findErr := runtime.trainer.FindTraining(ctx, *state.Training)
 			if findErr != nil {

@@ -239,6 +239,14 @@ func (runner *Runner) requestClose(ctx context.Context, reason modeldevv1.CloseR
 			case modeldevv1.CloseState_CLOSE_STATE_NEEDS_REVIEW:
 				return ErrNeedsReview
 			case modeldevv1.CloseState_CLOSE_STATE_CLOSING:
+				if reason == modeldevv1.CloseReason_CLOSE_REASON_NATURAL_TERMINAL || runner.config.CloseOnly {
+					if result.GetCloseGeneration() == 0 || result.GetAcceptedAt() == nil || result.GetAcceptedAt().CheckValid() != nil || result.GetAcceptedAt().AsTime().IsZero() {
+						return ErrConfiguration
+					}
+					// Completing this control task lets KFP/Argo finish naturally;
+					// CLOSING remains pending until the owner's full writer proof.
+					return nil
+				}
 			default:
 				return ErrConfiguration
 			}

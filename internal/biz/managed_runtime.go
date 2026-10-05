@@ -5,6 +5,7 @@ import (
 	"errors"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01"
 )
@@ -187,6 +188,9 @@ func (runtime *ManagedRuntime) Ensure(ctx context.Context, token string, request
 		return ManagedRuntimeResult{}, err
 	}
 	state := reservation.State
+	if state.TrainingRejection != nil {
+		return result, ErrTrainingRejected
+	}
 	if state.TrainingHandle != nil {
 		return runtimeResult(result, state, true)
 	}
@@ -202,6 +206,22 @@ func (runtime *ManagedRuntime) Ensure(ctx context.Context, token string, request
 		handle, err = runtime.trainer.FindTraining(ctx, *state.Training)
 	}
 	if err != nil {
+		var rejected *TrainingCreationRejection
+		if reservation.SendPermit && errors.As(err, &rejected) {
+			// A canceled step cannot erase a complete refusal from its original
+			// one-shot request. One finite budget records it, without another POST.
+			write, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			state, recordErr := runtime.repository.RecordTrainingRejection(write, result.Authority.RunAuthorityCandidate, *rejected)
+			if recordErr != nil {
+				return ManagedRuntimeResult{}, recordErr
+			}
+			result, resultErr := runtimeResult(result, state, false)
+			if resultErr != nil {
+				return ManagedRuntimeResult{}, resultErr
+			}
+			return result, ErrTrainingRejected
+		}
 		return ManagedRuntimeResult{}, err
 	}
 	state, err = runtime.repository.RecordTrainingHandle(ctx, result.Authority.RunAuthorityCandidate, handle)
@@ -220,6 +240,9 @@ func (runtime *ManagedRuntime) Ensure(ctx context.Context, token string, request
 // does not reissue creation and retains all previously observed writer UIDs.
 func (runtime *ManagedRuntime) observe(ctx context.Context, result ManagedRuntimeResult) (ExecutionRuntime, error) {
 	state := result.Runtime
+	if state.TrainingRejection != nil {
+		return state, ErrTrainingRejected
+	}
 	if state.Training == nil {
 		return state, ErrRuntimeNotReady
 	}
@@ -285,10 +308,25 @@ func (runtime *ManagedRuntime) Close(ctx context.Context, token string, request 
 	// The shared fence commits before any remote stop or observation. A failure
 	// below leaves durable CLOSING and cannot authorize another creation.
 	result.Runtime = state
+	if reason == "NATURAL_TERMINAL" && state.CloseReason != "NATURAL_TERMINAL" {
+		return ManagedRuntimeResult{}, ErrRuntimeConflict
+	}
+	if state.CloseReason == "NATURAL_TERMINAL" {
+		if state.Publication == nil || state.Observation == nil || state.Observation.Outcome != "SUCCEEDED" || !state.Observation.WritersAbsent {
+			return ManagedRuntimeResult{}, ErrRuntimeNotReady
+		}
+		// The close component must exit before its Workflow can be terminal.
+		// Deliver only the durable fence; the owner supplies full terminal proof.
+		return runtimeResult(result, state, replayed || state.ClosedAt != nil)
+	}
 	if state.ClosedAt != nil {
 		return runtimeResult(result, state, true)
 	}
-	if state.Training != nil {
+	if state.TrainingRejection != nil {
+		if err := runtime.verifyRejectedTrainingAbsent(ctx, state); err != nil {
+			return runtimeResult(result, state, replayed)
+		}
+	} else if state.Training != nil {
 		state, err = runtime.observe(ctx, result)
 		if err != nil {
 			return runtimeResult(result, state, replayed)
@@ -320,4 +358,20 @@ func (runtime *ManagedRuntime) Close(ctx context.Context, token string, request 
 		return ManagedRuntimeResult{}, err
 	}
 	return runtimeResult(result, state, replayed)
+}
+
+// Rejection proves that the original POST cannot produce a late writer. Still
+// reject a conflicting current object or unavailable lookup before closure.
+func (runtime *ManagedRuntime) verifyRejectedTrainingAbsent(ctx context.Context, state ExecutionRuntime) error {
+	if state.Training == nil || state.TrainingRejection == nil {
+		return ErrRuntimeNotReady
+	}
+	_, err := runtime.trainer.FindTraining(ctx, *state.Training)
+	if errors.Is(err, ErrTrainingNotFound) {
+		return nil
+	}
+	if err == nil {
+		return ErrRuntimeConflict
+	}
+	return err
 }

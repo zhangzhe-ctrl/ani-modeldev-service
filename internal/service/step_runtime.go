@@ -491,6 +491,8 @@ func runtimeError(err error) error {
 		return commandError(codes.FailedPrecondition, modeldevv1.ErrorReason_ERROR_REASON_EXECUTION_CLOSING, "execution does not permit new runtime work", "")
 	case errors.Is(err, biz.ErrTrainingUncertain):
 		return commandError(codes.Unavailable, modeldevv1.ErrorReason_ERROR_REASON_UPSTREAM_RESULT_UNCERTAIN, "training creation requires reconciliation", "")
+	case errors.Is(err, biz.ErrTrainingRejected):
+		return commandError(codes.Aborted, modeldevv1.ErrorReason_ERROR_REASON_TRAINING_FAILED, "training creation was rejected", "")
 	case errors.Is(err, biz.ErrRuntimeNotReady), errors.Is(err, biz.ErrTrainingNotFound):
 		return commandError(codes.FailedPrecondition, modeldevv1.ErrorReason_ERROR_REASON_ENVIRONMENT_NOT_READY, "managed runtime prerequisites are not ready", "")
 	default:

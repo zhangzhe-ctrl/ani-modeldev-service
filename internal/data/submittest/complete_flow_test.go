@@ -299,8 +299,28 @@ func runCompleteMainFlow(t *testing.T, rejectedInput bool) {
 	}
 	invoke("close", closeCandidate)
 	closed, err := client.RequestExecutionClose(call("close"), &modeldevv1.RequestExecutionCloseRequest{Context: f.stepContext("close"), Reason: modeldevv1.CloseReason_CLOSE_REASON_NATURAL_TERMINAL})
-	if err != nil || closed.GetCloseState() != modeldevv1.CloseState_CLOSE_STATE_CLOSED {
-		t.Fatalf("actual writer proof did not close: %v", err)
+	if err != nil || closed.GetCloseState() != modeldevv1.CloseState_CLOSE_STATE_CLOSING || closed.GetCloseGeneration() == 0 || closed.GetAcceptedAt() == nil {
+		t.Fatalf("NATURAL_CLOSE_HANDOFF_NOT_IMPLEMENTED: normal close must deliver a durable fence and let its Workflow complete: %+v %v", closed, err)
+	}
+	closeWorker, _ := assembleRecoveryOwner(t, f, pool)
+	pending, err := closeWorker.ReconcileOnce(ctx)
+	f.mu.Lock()
+	runStops := f.runStops
+	f.mu.Unlock()
+	if err != nil || pending.Unresolved != 1 || pending.Closed != 0 || runStops != 0 {
+		t.Fatalf("NATURAL_CLOSE_TERMINATED_ITS_OWN_WORKFLOW: %+v stops=%d err=%v", pending, runStops, err)
+	}
+	f.finishStep("close")
+	f.finishWorkflowNaturally()
+	finished, err := closeWorker.ReconcileOnce(ctx)
+	if err != nil || finished.Closed != 1 {
+		t.Fatal("full naturally terminal writer proof did not close", finished, err)
+	}
+	f.mu.Lock()
+	runStops = f.runStops
+	f.mu.Unlock()
+	if runStops != 0 {
+		t.Fatal("natural success issued a KFP terminate request")
 	}
 	stop()
 	pool.Close()
@@ -309,7 +329,7 @@ func runCompleteMainFlow(t *testing.T, rejectedInput bool) {
 	dispatch = submission.New(pool)
 	facts = lifecycle.New(pool)
 	stored, err := facts.GetRuntime(ctx, original.TenantID, original.ExecutionID)
-	if err != nil || stored.ClosedAt == nil || stored.Publication == nil || stored.TrainingHandle == nil {
+	if err != nil || stored.ClosedAt == nil || stored.Publication == nil || stored.TrainingHandle == nil || stored.CloseReason != "NATURAL_TERMINAL" || stored.CloseEvidence == nil || stored.CloseEvidence.OwnerTermination == nil || stored.CloseEvidence.OwnerTermination.RunState != "SUCCEEDED" || stored.CloseEvidence.OwnerTermination.WorkflowPhase != "Succeeded" {
 		t.Fatalf("reconnected owner lost runtime: %v", err)
 	}
 	restartedSubmitter, err := biz.NewPipelineSubmitter(dispatch, runs, 3*time.Second)

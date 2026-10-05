@@ -166,8 +166,29 @@ func TestComponentCloseOnlyFencesFailureWithoutPublicationAndReplaysClosed(t *te
 			t.Fatalf("failure-only finalizer must fence without a candidate and accept CLOSED replay: %v", err)
 		}
 	}
-	if client.closeCalls != 3 {
-		t.Fatalf("close finalizer must await the owner close result: calls=%d", client.closeCalls)
+	if client.closeCalls != 2 {
+		t.Fatalf("close finalizer must deliver the durable fence without waiting on its own Workflow: calls=%d", client.closeCalls)
+	}
+}
+
+func TestComponentCloseOnlyExitsOnDurableClosingAndRejectsIncompleteReceipt(t *testing.T) {
+	for _, incomplete := range []bool{false, true} {
+		config := taskConfiguration(t, modeldevv1.PipelineStep_PIPELINE_STEP_CLOSE)
+		config.CloseOnly, config.PollInterval = true, time.Millisecond
+		if err := os.WriteFile(config.TokenFile, []byte("first-close-token"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		client := &closeOnlyRPC{t: t, tokenFile: config.TokenFile, alwaysClosing: true, incomplete: incomplete}
+		runner, err := component.New(config, client, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		err = runner.Run(ctx, "close")
+		cancel()
+		if (!incomplete && err != nil) || (incomplete && !errors.Is(err, component.ErrConfiguration)) || client.closeCalls != 1 {
+			t.Fatalf("DURABLE_CLOSE_HANDOFF_NOT_IMPLEMENTED: finalizer waited on Workflow or accepted missing fence: incomplete=%v calls=%d err=%v", incomplete, client.closeCalls, err)
+		}
 	}
 }
 
@@ -175,9 +196,10 @@ func TestComponentCloseOnlyFencesFailureWithoutPublicationAndReplaysClosed(t *te
 // success is fabricated; the test checks the finalizer's authenticated request.
 type closeOnlyRPC struct {
 	modeldevv1.ModelDevStepServiceClient
-	t          *testing.T
-	tokenFile  string
-	closeCalls int
+	t                         *testing.T
+	tokenFile                 string
+	closeCalls                int
+	alwaysClosing, incomplete bool
 }
 
 func (client *closeOnlyRPC) RequestExecutionClose(ctx context.Context, request *modeldevv1.RequestExecutionCloseRequest, _ ...grpc.CallOption) (*modeldevv1.RequestExecutionCloseResponse, error) {
@@ -194,9 +216,21 @@ func (client *closeOnlyRPC) RequestExecutionClose(ctx context.Context, request *
 		if err := os.WriteFile(client.tokenFile, []byte("rotated-close-token"), 0600); err != nil {
 			client.t.Fatal(err)
 		}
-		return &modeldevv1.RequestExecutionCloseResponse{CloseState: modeldevv1.CloseState_CLOSE_STATE_CLOSING}, nil
+		return client.receipt(modeldevv1.CloseState_CLOSE_STATE_CLOSING), nil
 	}
-	return &modeldevv1.RequestExecutionCloseResponse{CloseState: modeldevv1.CloseState_CLOSE_STATE_CLOSED, Replayed: true}, nil
+	if client.alwaysClosing {
+		return client.receipt(modeldevv1.CloseState_CLOSE_STATE_CLOSING), nil
+	}
+	return client.receipt(modeldevv1.CloseState_CLOSE_STATE_CLOSED), nil
+}
+
+func (client *closeOnlyRPC) receipt(state modeldevv1.CloseState) *modeldevv1.RequestExecutionCloseResponse {
+	receipt := &modeldevv1.RequestExecutionCloseResponse{CloseState: state, Replayed: client.closeCalls > 1}
+	if !client.incomplete {
+		receipt.CloseGeneration = 7
+		receipt.AcceptedAt = timestamppb.New(time.Date(2026, 9, 30, 9, 30, 0, 0, time.UTC))
+	}
+	return receipt
 }
 
 func (client *closeOnlyRPC) GetExecutionConfiguration(context.Context, *modeldevv1.GetExecutionConfigurationRequest, ...grpc.CallOption) (*modeldevv1.GetExecutionConfigurationResponse, error) {

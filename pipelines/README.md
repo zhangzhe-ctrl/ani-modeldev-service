@@ -93,6 +93,19 @@ publication fails. Server-side remote byte verification and uploader termination
 still precede PUBLISHED. All tasks disable cache and retries. The owner recovery
 path remains necessary if the workflow or close Pod itself cannot run.
 
+After verified publication, close persists a `NATURAL_TERMINAL` creation fence
+and finishes on its durable `CLOSING` receipt. The finalizer also finishes after
+delivering a valid fence. The owner waits for natural KFP completion and verifies
+the original Run, completed Workflow and all historical workspace writers before
+marking `CLOSED`. Stop, failure and deadline still terminate the original Run.
+A pending natural close reaching its frozen deadline escalates through the same
+database transaction without replacing its generation or first receipt time.
+
+A complete Kubernetes `400/BadRequest` or `403/Forbidden` training-create
+rejection is retained against the original request and namespace. Train-wait
+then fails without another POST. Partial responses, conflicts and unavailable
+lookups retain their uncertain outcome and cannot establish writer absence.
+
 The selected ServiceAccount comes from ModelDev's frozen CreateRun request.
 ENV must supply its minimal current-Pod read and workspace permissions, server
 connectivity and distinct training identity. Compilation, module tests and a

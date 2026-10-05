@@ -18,12 +18,15 @@ import (
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/testsupport/postgres"
 )
 
-func runtimeFixture(t *testing.T) (func() *pgxpool.Pool, biz.Admission, biz.RunAuthorityCandidate, biz.WorkspaceBinding) {
+func runtimeFixture(t *testing.T, lifetime ...time.Duration) (func() *pgxpool.Pool, biz.Admission, biz.RunAuthorityCandidate, biz.WorkspaceBinding) {
 	t.Helper()
 	open := postgres.Prepare(t)
 	snapshot := conformance.SnapshotV1()
 	accepted := time.Now().UTC().Truncate(time.Microsecond)
 	snapshot.DeadlineAt = accepted.Add(time.Hour)
+	if len(lifetime) != 0 {
+		snapshot.DeadlineAt = accepted.Add(lifetime[0])
+	}
 	intent := cpup01.Intent{Name: "main-runtime", Kind: "GENERAL_TRAINING", PresetID: snapshot.Release.PresetID, DatasetVersionID: snapshot.Input.InputVersionID}
 	_, intentHash, err := cpup01.CanonicalIntent(intent)
 	if err != nil {

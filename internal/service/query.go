@@ -150,6 +150,9 @@ func executionView(record biz.QueryRecord) (*modeldevv1.ExecutionView, error) {
 	if record.Runtime.Observation != nil {
 		view.ObservedAt = timestamppb.New(record.Runtime.Observation.ObservedAt)
 	}
+	if record.Runtime.TrainingRejection != nil {
+		view.ObservedAt = timestamppb.New(record.Runtime.TrainingRejection.ObservedAt)
+	}
 	if record.Runtime.Workspace != nil {
 		view.CurrentStep = modeldevv1.PipelineStep_PIPELINE_STEP_PREPARE
 	}

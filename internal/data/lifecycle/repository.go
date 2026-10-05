@@ -226,6 +226,13 @@ func readRuntime(ctx context.Context, tx pgx.Tx, tenantID, executionID pgtype.UU
 	if state.TrainingHandle != nil && (state.Training == nil || state.TrainingHandle.NamespaceUID != state.Workspace.NamespaceUID || state.TrainingHandle.PVCUID != state.Workspace.PVCUID || !validOpaqueID(state.TrainingHandle.TrainJobUID)) {
 		return nil, biz.ErrPersistence
 	}
+	if rejected := state.TrainingRejection; rejected != nil {
+		if state.Training == nil || state.TrainingHandle != nil || state.Observation != nil || state.Publication != nil ||
+			rejected.RequestSHA256 != state.Training.RequestSHA256 || rejected.NamespaceUID != state.Workspace.NamespaceUID ||
+			(rejected.StatusCode != 400 && rejected.StatusCode != 403) || rejected.ObservedAt.IsZero() || !identity.DatabaseNow.Valid || rejected.ObservedAt.After(identity.DatabaseNow.Time) {
+			return nil, biz.ErrPersistence
+		}
+	}
 	if state.OwnerRevision > revision || state.CloseGeneration > generation {
 		return nil, biz.ErrPersistence
 	}
@@ -339,6 +346,9 @@ func (repository *Repository) ReserveTraining(ctx context.Context, authority biz
 
 func (repository *Repository) RecordTrainingHandle(ctx context.Context, authority biz.RunAuthorityCandidate, handle biz.TrainingHandle) (biz.ExecutionRuntime, error) {
 	state, _, err := repository.mutate(ctx, authority, func(current *runtimeTransaction) (bool, error) {
+		if current.state.TrainingRejection != nil {
+			return false, biz.ErrRuntimeConflict
+		}
 		if current.state.Training == nil || current.state.Workspace == nil {
 			return false, biz.ErrRuntimeNotReady
 		}
@@ -353,6 +363,29 @@ func (repository *Repository) RecordTrainingHandle(ctx context.Context, authorit
 		}
 		// A late Create response must remain reconcilable after a close fence.
 		current.state.TrainingHandle = &handle
+		return true, nil
+	})
+	return state, err
+}
+
+func (repository *Repository) RecordTrainingRejection(ctx context.Context, authority biz.RunAuthorityCandidate, rejection biz.TrainingCreationRejection) (biz.ExecutionRuntime, error) {
+	state, _, err := repository.mutate(ctx, authority, func(current *runtimeTransaction) (bool, error) {
+		state := &current.state
+		if state.Training == nil || state.Workspace == nil || state.TrainingHandle != nil || state.Observation != nil || state.Publication != nil ||
+			rejection.RequestSHA256 != state.Training.RequestSHA256 || rejection.NamespaceUID != state.Workspace.NamespaceUID ||
+			(rejection.StatusCode != 400 && rejection.StatusCode != 403) {
+			return false, biz.ErrRuntimeConflict
+		}
+		if existing := state.TrainingRejection; existing != nil {
+			if existing.RequestSHA256 != rejection.RequestSHA256 || existing.NamespaceUID != rejection.NamespaceUID || existing.StatusCode != rejection.StatusCode {
+				return false, biz.ErrRuntimeConflict
+			}
+			return false, nil
+		}
+		// The response may arrive after a close fence; it does not grant new
+		// creation authority. Preserve the plan and the database observation time.
+		rejection.ObservedAt = current.now
+		state.TrainingRejection = &rejection
 		return true, nil
 	})
 	return state, err
@@ -404,6 +437,12 @@ func (repository *Repository) RequestRuntimeClose(ctx context.Context, authority
 			return false, biz.ErrInvalidAdmission
 		}
 		if current.state.CloseGeneration > 0 {
+			if reason == "DEADLINE" && current.state.CloseReason == "NATURAL_TERMINAL" && current.state.ClosedAt == nil && !current.now.Before(current.execution.Snapshot.DeadlineAt) {
+				// A natural handoff may outlive its frozen deadline. The database
+				// observes expiry without replacing the original fence or receipt.
+				current.state.CloseReason = "DEADLINE"
+				return true, nil
+			}
 			return false, nil
 		}
 		if reason == "NATURAL_TERMINAL" && (current.state.Publication == nil || current.state.Observation == nil || current.state.Observation.Outcome != "SUCCEEDED" || !current.state.Observation.WritersAbsent) {
@@ -449,10 +488,10 @@ func (repository *Repository) ConfirmRuntimeClosed(ctx context.Context, authorit
 		}
 		// A committed creation intent without a UID remains uncertain; absence
 		// cannot prove that an in-flight API request will not produce a writer.
-		if current.state.Training != nil && current.state.TrainingHandle == nil {
+		if current.state.Training != nil && current.state.TrainingHandle == nil && current.state.TrainingRejection == nil {
 			return false, biz.ErrTrainingUncertain
 		}
-		if current.state.Training != nil {
+		if current.state.Training != nil && current.state.TrainingRejection == nil {
 			merged, err := mergeObservation(current.state, observation)
 			if err != nil {
 				return false, err

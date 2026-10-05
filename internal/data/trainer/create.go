@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"path"
 	"reflect"
 	"strings"
@@ -38,6 +39,16 @@ func (a *Adapter) CreateTraining(ctx context.Context, plan biz.TrainingPlan) (bi
 	}
 	created, err := resource.Create(ctx, wanted, metav1.CreateOptions{})
 	if err != nil {
+		// A decoded Kubernetes Status is different from a proxy body, a partial
+		// response, conflict or transport failure. Those stay unresolved.
+		var response apierrors.APIStatus
+		if errors.As(err, &response) && !apierrors.IsUnexpectedServerError(err) {
+			status := response.Status()
+			if status.APIVersion == "v1" && status.Kind == "Status" && status.Status == metav1.StatusFailure &&
+				((status.Code == 400 && status.Reason == metav1.StatusReasonBadRequest) || (status.Code == 403 && status.Reason == metav1.StatusReasonForbidden)) {
+				return biz.TrainingHandle{}, &biz.TrainingCreationRejection{RequestSHA256: plan.RequestSHA256, NamespaceUID: plan.Workspace.NamespaceUID, StatusCode: status.Code}
+			}
+		}
 		return biz.TrainingHandle{}, biz.ErrTrainingUncertain
 	}
 	handle, err := verifyTrainingObject(plan, wanted, created)

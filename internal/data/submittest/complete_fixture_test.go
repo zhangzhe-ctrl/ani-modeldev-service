@@ -49,6 +49,7 @@ type completeFixture struct {
 	creates, runCreates  int
 	runStops, trainStops int
 	runStoppedAt         string
+	runSucceededAt       string
 	trainingContainer    string
 	trainingStarted      bool
 	trainingDone         chan struct{}
@@ -414,8 +415,30 @@ func (f *completeFixture) kfpRequest(w http.ResponseWriter, r *http.Request) {
 	run := map[string]any{"run_id": completeRunID, "experiment_id": s.Environment.ExperimentID, "display_name": "md-" + f.request.Admission.ExecutionID, "pipeline_version_reference": map[string]string{"pipeline_id": s.Release.PipelineID, "pipeline_version_id": s.Release.PipelineVersionID}, "runtime_config": map[string]any{"parameters": map[string]string{"execution_id": f.request.Admission.ExecutionID, "spec_hash": f.request.Admission.SpecHash}, "pipeline_root": f.request.Owner.PipelineRoot}, "service_account": s.Environment.Identities.KFPStepServiceAccount, "state": "RUNNING", "run_details": map[string]any{"task_details": tasks}}
 	if f.runStoppedAt != "" {
 		run["state"], run["finished_at"] = "CANCELED", f.runStoppedAt
+	} else if f.runSucceededAt != "" {
+		run["state"], run["finished_at"] = "SUCCEEDED", f.runSucceededAt
 	}
 	_ = json.NewEncoder(w).Encode(run)
+}
+
+// This is the explicit external KFP/Argo boundary. It acknowledges only Pods
+// whose real component work has already returned and been marked Succeeded.
+func (f *completeFixture) finishWorkflowNaturally() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	nodes := map[string]any{}
+	for _, step := range []string{"prepare", "train-wait", "collect", "publish", "close"} {
+		pod := f.objects["/api/v1/namespaces/"+f.workspace.NamespaceName+"/pods/main-"+step]
+		if pod["status"].(map[string]any)["phase"] != "Succeeded" {
+			f.t.Fatal("external Workflow completion preceded actual component exit", step)
+		}
+		nodes["main-"+step] = map[string]any{"id": "main-" + step, "name": "main-flow." + step, "type": "Pod", "phase": "Succeeded", "finishedAt": time.Now().UTC().Format(time.RFC3339Nano)}
+	}
+	f.runSucceededAt = time.Now().UTC().Format(time.RFC3339Nano)
+	workflow := f.objects["/apis/argoproj.io/v1alpha1/namespaces/"+f.workspace.NamespaceName+"/workflows/main-flow"]
+	workflow["metadata"].(map[string]any)["labels"] = map[string]any{"workflows.argoproj.io/completed": "true"}
+	workflow["metadata"].(map[string]any)["resourceVersion"] = "2"
+	workflow["status"] = map[string]any{"phase": "Succeeded", "finishedAt": f.runSucceededAt, "conditions": []any{map[string]any{"type": "Completed", "status": "True"}}, "nodes": nodes}
 }
 
 func (f *completeFixture) storageRequest(w http.ResponseWriter, r *http.Request) {

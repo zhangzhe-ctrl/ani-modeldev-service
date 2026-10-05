@@ -15,6 +15,7 @@ import (
 var (
 	ErrRuntimeConflict     = errors.New("EXECUTION_RUNTIME_CONFLICT")
 	ErrTrainingUncertain   = errors.New("TRAINING_CREATION_UNCERTAIN")
+	ErrTrainingRejected    = errors.New("TRAINING_CREATION_REJECTED")
 	ErrTrainingUnavailable = errors.New("TRAINING_UNAVAILABLE")
 	ErrTrainingNotFound    = errors.New("TRAINING_NOT_FOUND")
 	ErrRuntimeNotReady     = errors.New("EXECUTION_RUNTIME_NOT_READY")
@@ -40,6 +41,18 @@ type TrainingPlan struct {
 type TrainingHandle struct {
 	NamespaceUID, TrainJobUID, PVCUID string
 }
+
+// TrainingCreationRejection records a complete trusted API refusal of the
+// original request. It neither clears its consumed permit nor permits another
+// POST. ObservedAt is assigned by the repository's database clock.
+type TrainingCreationRejection struct {
+	RequestSHA256, NamespaceUID string
+	StatusCode                  int32
+	ObservedAt                  time.Time
+}
+
+func (*TrainingCreationRejection) Error() string { return ErrTrainingRejected.Error() }
+func (*TrainingCreationRejection) Unwrap() error { return ErrTrainingRejected }
 
 type RuntimeResource struct {
 	APIVersion, Kind, Namespace, Name, UID, OwnerUID string
@@ -87,16 +100,17 @@ type RuntimePublication struct {
 // ExecutionRuntime contains committed facts; no state value reconstructs an
 // outbound creation permit. Normal step advancement belongs to KFP.
 type ExecutionRuntime struct {
-	Workspace        *WorkspaceBinding
-	Training         *TrainingPlan
-	TrainingHandle   *TrainingHandle
-	Observation      *TrainingRuntimeObservation
-	Publication      *RuntimePublication
-	CloseGeneration  uint64
-	CloseReason      string
-	CloseRequestedAt time.Time
-	ClosedAt         *time.Time
-	CloseEvidence    *ManagedCloseEvidence
+	Workspace         *WorkspaceBinding
+	Training          *TrainingPlan
+	TrainingRejection *TrainingCreationRejection `json:",omitempty"`
+	TrainingHandle    *TrainingHandle
+	Observation       *TrainingRuntimeObservation
+	Publication       *RuntimePublication
+	CloseGeneration   uint64
+	CloseReason       string
+	CloseRequestedAt  time.Time
+	ClosedAt          *time.Time
+	CloseEvidence     *ManagedCloseEvidence
 	// CloseAuthority is an owner-only recovery association. It cannot authorize
 	// managed steps or recreate a consumed submission permit.
 	CloseAuthority    *RunAuthorityCandidate
@@ -108,6 +122,7 @@ type ExecutionRuntimeRepository interface {
 	GetRuntime(context.Context, string, string) (ExecutionRuntime, error)
 	RecordPrepared(context.Context, RunAuthorityCandidate, WorkspaceBinding) (ExecutionRuntime, bool, error)
 	ReserveTraining(context.Context, RunAuthorityCandidate) (TrainingReservation, error)
+	RecordTrainingRejection(context.Context, RunAuthorityCandidate, TrainingCreationRejection) (ExecutionRuntime, error)
 	RecordTrainingHandle(context.Context, RunAuthorityCandidate, TrainingHandle) (ExecutionRuntime, error)
 	RecordTrainingObservation(context.Context, RunAuthorityCandidate, TrainingRuntimeObservation) (ExecutionRuntime, error)
 	RecordPublication(context.Context, RunAuthorityCandidate, RuntimePublication) (ExecutionRuntime, bool, error)

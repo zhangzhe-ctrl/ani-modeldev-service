@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -20,6 +21,40 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 )
+
+func TestTrainingCompleteRejectionIsDistinctFromUnknownCreate(t *testing.T) {
+	for _, test := range []struct {
+		name                string
+		code                int
+		body                string
+		truncated, rejected bool
+	}{
+		{"complete forbidden", 403, `{"apiVersion":"v1","kind":"Status","status":"Failure","reason":"Forbidden","code":403}`, false, true},
+		{"complete bad request", 400, `{"apiVersion":"v1","kind":"Status","status":"Failure","reason":"BadRequest","code":400}`, false, true},
+		{"unrecognized forbidden body", 403, `proxy failed`, false, false},
+		{"truncated forbidden", 403, `{"apiVersion":"v1","kind":"Status","status":"Failure","reason":"Forbidden","code":403}`, true, false},
+		{"mismatched status reason", 400, `{"apiVersion":"v1","kind":"Status","status":"Failure","reason":"Forbidden","code":400}`, false, false},
+		{"conflict", 409, `{"apiVersion":"v1","kind":"Status","status":"Failure","reason":"AlreadyExists","code":409}`, false, false},
+		{"server unavailable", 503, `{"apiVersion":"v1","kind":"Status","status":"Failure","reason":"ServiceUnavailable","code":503}`, false, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newTrainingFixture(t)
+			f.createStatusCode, f.createStatusBody, f.createStatusTruncated = test.code, test.body, test.truncated
+			_, err := f.adapter(t).CreateTraining(context.Background(), f.plan)
+			if test.rejected {
+				var rejected *biz.TrainingCreationRejection
+				if !errors.As(err, &rejected) || !errors.Is(err, biz.ErrTrainingRejected) || rejected.RequestSHA256 != f.plan.RequestSHA256 || rejected.NamespaceUID != f.plan.Workspace.NamespaceUID || rejected.StatusCode != int32(test.code) || !rejected.ObservedAt.IsZero() {
+					t.Fatalf("complete trusted %d lost the original request-bound refusal: %v", test.code, err)
+				}
+			} else if !errors.Is(err, biz.ErrTrainingUncertain) {
+				t.Fatalf("untrusted or unknown create lost uncertainty: %v", err)
+			}
+			if f.posts != 1 || f.train != nil {
+				t.Fatal("boundary rejection recreated or fabricated a TrainJob")
+			}
+		})
+	}
+}
 
 func TestTrainingCreateFreezesCPUWorkspaceAndFindsUncertainResultWithoutRecreate(t *testing.T) {
 	f := newTrainingFixture(t)
@@ -351,6 +386,9 @@ type trainingFixture struct {
 	namespace, pvc, runtime, train, jobset, job, pod, oldPod map[string]any
 	posts, patches, deletes                                  int
 	loseCreateResponse                                       bool
+	createStatusCode                                         int
+	createStatusBody                                         string
+	createStatusTruncated                                    bool
 }
 
 func newTrainingFixture(t *testing.T) *trainingFixture {
@@ -417,6 +455,14 @@ func (f *trainingFixture) adapter(t *testing.T) *trainer.Adapter {
 			response = f.runtime
 		case path == "/apis/trainer.kubeflow.org/v1alpha1/namespaces/cpu-execution/trainjobs" && r.Method == http.MethodPost:
 			f.posts++
+			if f.createStatusCode != 0 {
+				if f.createStatusTruncated {
+					w.Header().Set("Content-Length", strconv.Itoa(len(f.createStatusBody)+1))
+				}
+				w.WriteHeader(f.createStatusCode)
+				_, _ = w.Write([]byte(f.createStatusBody))
+				return
+			}
 			if f.train != nil {
 				w.WriteHeader(http.StatusConflict)
 				return
