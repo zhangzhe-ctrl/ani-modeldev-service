@@ -1,0 +1,32 @@
+{
+  "schema_version": "ani.modeldev.pipeline-dispatch-plan.v1",
+  "tenant_id": "46936e6b-3a3b-4868-8d88-6833665abb70",
+  "execution_id": "db77d88f-5d04-4781-9a54-99c1e485c537",
+  "operation_id": "81c9670b-eba7-44c3-a86d-eb31e5b5f582",
+  "spec_hash": "ad53778e55040c52eb995dababdf7e5ba2f9dd18b821711625107d74753e93fd",
+  "owner": {
+    "reference": "cpu-p01-step-owner-20261005",
+    "revision_sha256": "bd5c5c9219c6be1e4dd281330f798975f4e544d2a8e6246895074d7bf834b52d",
+    "pipeline_root": "s3://ani-kfp-ani-cpu-p01-tenant-a/artifacts"
+  },
+  "environment": {
+    "binding_id": "149cdd26-da99-405b-b5ff-7b08dc70f7dc",
+    "binding_digest": "1c2d9670bfd19857bb21126ff3b1deca71f4c5ea53ec47e009a2a2d3d0895c02",
+    "cluster_id": "5277649d-e28d-4a0a-ae76-8354365c63bc",
+    "namespace_name": "ani-cpu-p01-tenant-a",
+    "namespace_uid": "426e06ec-335a-4ed6-afd3-1cab6852f819",
+    "kfp_connection_ref": "cpu-p01-kfp-20261005",
+    "experiment_id": "5c34aade-a7df-457b-9b52-2b962de6f64a",
+    "identities": {
+      "modeldev_control_identity_ref": "system:serviceaccount:ani-cpu-p01-system:modeldev-control",
+      "kfp_step_service_account": "modeldev-step",
+      "trainer_service_account": "trainer-workload",
+      "verifier_service_account": "verifier",
+      "tenant_proxy_identity": "system:serviceaccount:ani-cpu-p01-system:modeldev-control"
+    }
+  },
+  "pipeline_id": "cd6016f0-2411-4ee3-bbdb-f40b447f298b",
+  "pipeline_version_id": "f9ae226d-b265-49be-9455-e9b424b425fd",
+  "display_name": "md-db77d88f-5d04-4781-9a54-99c1e485c537",
+  "deadline_at": "2026-10-05T08:39:57.518774Z"
+}

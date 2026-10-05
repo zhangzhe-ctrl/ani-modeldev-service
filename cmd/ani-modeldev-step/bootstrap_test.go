@@ -55,6 +55,64 @@ func TestDynamicKFPBootstrapUsesCurrentPodMetadata(t *testing.T) {
 	}
 }
 
+func TestDynamicKFPBootstrapAcceptsCloseOnlyWithoutPublicationCandidate(t *testing.T) {
+	var calls atomic.Int32
+	client := bootstrapKubernetes(t, &calls, false)
+	args := append(bootstrapArgs(bootstrapConfigFile(t), "close"), "--close-only")
+	got, err := bootstrapInvocation(context.Background(), args, client)
+	if err != nil || !got.closeOnly || got.candidateJSON != nil || got.claim.GetStep() != modeldevv1.PipelineStep_PIPELINE_STEP_CLOSE || calls.Load() != 1 {
+		t.Fatalf("failure finalizer must use current Pod identity without a missing publication output: %v", err)
+	}
+}
+
+func TestDynamicKFPBootstrapLeavesTaskIdentityToVerifiedOwner(t *testing.T) {
+	var calls atomic.Int32
+	client := bootstrapKubernetes(t, &calls, false)
+	args := bootstrapArgs(bootstrapConfigFile(t), "publish")
+	args = args[:len(args)-2]
+	got, err := bootstrapInvocation(context.Background(), args, client)
+	if err != nil || got.config.TaskID != "" || calls.Load() != 1 {
+		t.Fatalf("a real KFP task ID must be resolved by the authenticated owner, not a raw launcher placeholder: %v", err)
+	}
+}
+
+func TestDynamicKFPBootstrapRejectsExplicitInvalidTaskIdentity(t *testing.T) {
+	for _, value := range []string{"", "contains space", strings.Repeat("a", 257), "任务"} {
+		t.Run(value, func(t *testing.T) {
+			var calls atomic.Int32
+			client := bootstrapKubernetes(t, &calls, false)
+			args := bootstrapArgs(bootstrapConfigFile(t), "publish")
+			args[len(args)-1] = value
+			if _, err := bootstrapInvocation(context.Background(), args, client); err == nil || calls.Load() != 0 {
+				t.Fatal("explicit task identity must remain strictly validated before current Pod lookup")
+			}
+		})
+	}
+}
+
+func TestDynamicKFPBootstrapRejectsCloseOnlyOutsideFinalizer(t *testing.T) {
+	for _, step := range []string{"prepare", "train-wait", "collect", "publish"} {
+		t.Run(step, func(t *testing.T) {
+			var calls atomic.Int32
+			client := bootstrapKubernetes(t, &calls, false)
+			args := append(bootstrapArgs(bootstrapConfigFile(t), step), "--close-only")
+			if _, err := bootstrapInvocation(context.Background(), args, client); err == nil || calls.Load() != 0 {
+				t.Fatal("close-only cannot change another step's role or reach Kubernetes")
+			}
+		})
+	}
+	for _, flag := range []string{"--candidate-json", "--candidate-file"} {
+		t.Run(flag, func(t *testing.T) {
+			var calls atomic.Int32
+			client := bootstrapKubernetes(t, &calls, false)
+			args := append(bootstrapArgs(bootstrapConfigFile(t), "close"), "--close-only", flag, "")
+			if _, err := bootstrapInvocation(context.Background(), args, client); err == nil || calls.Load() != 0 {
+				t.Fatal("close-only cannot ambiguously accept publication inputs")
+			}
+		})
+	}
+}
+
 func TestDynamicKFPBootstrapRejectsDifferentPodUIDAndAmbiguousInputs(t *testing.T) {
 	t.Run("wrong Pod UID", func(t *testing.T) {
 		var calls atomic.Int32

@@ -21,14 +21,13 @@ def compile_pipeline(configuration, output):
     if configuration["workspace_access_mode"] not in ("ReadWriteOnce", "ReadWriteMany"):
         raise ValueError("workspace must support sequential component and Trainer mounts")
 
-    def container(step, execution_id, spec_hash, extra=()):
+    def container(step, execution_id, spec_hash, run_id, extra=()):
         return dsl.ContainerSpec(
             image=configuration["component_image"],
             command=["/ani-modeldev-step", step],
             args=["--config", "/etc/modeldev-step/config.json",
                   "--execution-id", execution_id, "--spec-hash", spec_hash,
-                  "--run-id", dsl.PIPELINE_JOB_ID_PLACEHOLDER,
-                  "--task-id", dsl.PIPELINE_TASK_ID_PLACEHOLDER, *extra],
+                  "--run-id", run_id, *extra],
         )
 
     @dsl.container_component
@@ -38,24 +37,28 @@ def compile_pipeline(configuration, output):
                                  args=["--execution-id", execution_id, "--output", name])
 
     @dsl.container_component
-    def prepare(execution_id: str, spec_hash: str, pvc_name: str):
-        return container("prepare", execution_id, spec_hash, ["--pvc-name", pvc_name])
+    def prepare(execution_id: str, spec_hash: str, run_id: str, pvc_name: str):
+        return container("prepare", execution_id, spec_hash, run_id, ["--pvc-name", pvc_name])
 
     @dsl.container_component
-    def train_wait(execution_id: str, spec_hash: str):
-        return container("train-wait", execution_id, spec_hash)
+    def train_wait(execution_id: str, spec_hash: str, run_id: str):
+        return container("train-wait", execution_id, spec_hash, run_id)
 
     @dsl.container_component
-    def collect(execution_id: str, spec_hash: str):
-        return container("collect", execution_id, spec_hash)
+    def collect(execution_id: str, spec_hash: str, run_id: str):
+        return container("collect", execution_id, spec_hash, run_id)
 
     @dsl.container_component
-    def publish(execution_id: str, spec_hash: str, candidate: dsl.OutputPath(str)):
-        return container("publish", execution_id, spec_hash, ["--candidate-file", candidate])
+    def publish(execution_id: str, spec_hash: str, run_id: str, candidate: dsl.OutputPath(str)):
+        return container("publish", execution_id, spec_hash, run_id, ["--candidate-file", candidate])
 
     @dsl.container_component
-    def close(execution_id: str, spec_hash: str, candidate: str = ""):
-        return container("close", execution_id, spec_hash, ["--candidate-json", candidate])
+    def close(execution_id: str, spec_hash: str, run_id: str, candidate: str = ""):
+        return container("close", execution_id, spec_hash, run_id, ["--candidate-json", candidate])
+
+    @dsl.container_component
+    def finalize_close(execution_id: str, spec_hash: str, run_id: str):
+        return container("close", execution_id, spec_hash, run_id, ["--close-only"])
 
     def configure(task, *, timeout=600):
         task.set_caching_options(False).set_retry(0)
@@ -72,21 +75,24 @@ def compile_pipeline(configuration, output):
 
     @dsl.pipeline(name="general-cpu")
     def pipeline(execution_id: str, spec_hash: str):
-        # This official KFP resource primitive is interpreted by its backend;
-        # argostub/createpvc is not an image that this application runs.
-        named = configure(workspace_name(execution_id=execution_id))
-        workspace = kubernetes.CreatePVC(
-            pvc_name=named.output, access_modes=[configuration["workspace_access_mode"]],
-            size=configuration["workspace_size"], storage_class_name=configuration["storage_class"],
-        ).set_caching_options(False).set_retry(0)
-        prepared = configure(prepare(execution_id=execution_id, spec_hash=spec_hash, pvc_name=workspace.output))
-        trained = configure(train_wait(execution_id=execution_id, spec_hash=spec_hash).after(prepared), timeout=1800)
-        collected = configure(collect(execution_id=execution_id, spec_hash=spec_hash).after(trained))
-        published = configure(publish(execution_id=execution_id, spec_hash=spec_hash).after(collected))
-        for task in (prepared, collected, published):
-            kubernetes.mount_pvc(task, workspace.output, "/workspace")
-        configure(close(execution_id=execution_id, spec_hash=spec_hash, candidate=published.output)
-                  .after(named, workspace, prepared, trained, collected, published).ignore_upstream_failure())
+        # KFP records display_name as the managed role checked by ModelDev.
+        run_id = dsl.PIPELINE_JOB_ID_PLACEHOLDER
+        finalizer = configure(finalize_close(execution_id=execution_id, spec_hash=spec_hash, run_id=run_id)).set_display_name("close-finalizer")
+        with dsl.ExitHandler(exit_task=finalizer, name="managed-execution"):
+            # This official KFP resource primitive is interpreted by its backend;
+            # argostub/createpvc is not an image that this application runs.
+            named = configure(workspace_name(execution_id=execution_id))
+            workspace = kubernetes.CreatePVC(
+                pvc_name=named.output, access_modes=[configuration["workspace_access_mode"]],
+                size=configuration["workspace_size"], storage_class_name=configuration["storage_class"],
+            ).set_caching_options(False).set_retry(0)
+            prepared = configure(prepare(execution_id=execution_id, spec_hash=spec_hash, run_id=run_id, pvc_name=workspace.output))
+            trained = configure(train_wait(execution_id=execution_id, spec_hash=spec_hash, run_id=run_id).after(prepared), timeout=1800)
+            collected = configure(collect(execution_id=execution_id, spec_hash=spec_hash, run_id=run_id).after(trained))
+            published = configure(publish(execution_id=execution_id, spec_hash=spec_hash, run_id=run_id).after(collected))
+            for task in (prepared, collected, published):
+                kubernetes.mount_pvc(task, workspace.output, "/workspace")
+            configure(close(execution_id=execution_id, spec_hash=spec_hash, run_id=run_id, candidate=published.output).after(published))
         # No DeletePVC: publication failure must retain the unique outputs.
 
     compiler.Compiler().compile(pipeline_func=pipeline, package_path=output)

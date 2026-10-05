@@ -3866,7 +3866,10 @@ type GetExecutionConfigurationResponse struct {
 	States    *ExecutionStates `protobuf:"bytes,5,opt,name=states,proto3" json:"states,omitempty"`
 	// Immutable committed command envelope for authenticated managed component
 	// canonicalization. Returning it grants no command delivery authority.
-	Admission     *AcceptExecutionRequest `protobuf:"bytes,6,opt,name=admission,proto3" json:"admission,omitempty"`
+	Admission *AcceptExecutionRequest `protobuf:"bytes,6,opt,name=admission,proto3" json:"admission,omitempty"`
+	// Actual KFP logical task ID resolved from the authenticated current Pod,
+	// frozen Run and Workflow membership; never supplied by a callback claim.
+	KfpTaskId     string `protobuf:"bytes,7,opt,name=kfp_task_id,json=kfpTaskId,proto3" json:"kfp_task_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3941,6 +3944,13 @@ func (x *GetExecutionConfigurationResponse) GetAdmission() *AcceptExecutionReque
 		return x.Admission
 	}
 	return nil
+}
+
+func (x *GetExecutionConfigurationResponse) GetKfpTaskId() string {
+	if x != nil {
+		return x.KfpTaskId
+	}
+	return ""
 }
 
 type GetStorageCredentialsRequest struct {
@@ -5831,14 +5841,15 @@ const file_ani_modeldev_v1_modeldev_proto_rawDesc = "" +
 	"\x06states\x18\x02 \x01(\v2 .ani.modeldev.v1.ExecutionStatesR\x06states\x12\x1a\n" +
 	"\breplayed\x18\x03 \x01(\bR\breplayed\"Z\n" +
 	" GetExecutionConfigurationRequest\x126\n" +
-	"\acontext\x18\x01 \x01(\v2\x1c.ani.modeldev.v1.StepContextR\acontext\"\xa2\x03\n" +
+	"\acontext\x18\x01 \x01(\v2\x1c.ani.modeldev.v1.StepContextR\acontext\"\xc2\x03\n" +
 	"!GetExecutionConfigurationResponse\x12>\n" +
 	"\bidentity\x18\x01 \x01(\v2\".ani.training.v1.ExecutionIdentityR\bidentity\x12>\n" +
 	"\bsnapshot\x18\x02 \x01(\v2\".ani.modeldev.v1.ExecutionSnapshotR\bsnapshot\x12?\n" +
 	"\tauthority\x18\x03 \x01(\v2!.ani.modeldev.v1.AuthorityBindingR\tauthority\x12;\n" +
 	"\tworkspace\x18\x04 \x01(\v2\x1d.ani.training.v1.WorkspaceRefR\tworkspace\x128\n" +
 	"\x06states\x18\x05 \x01(\v2 .ani.modeldev.v1.ExecutionStatesR\x06states\x12E\n" +
-	"\tadmission\x18\x06 \x01(\v2'.ani.modeldev.v1.AcceptExecutionRequestR\tadmission\"V\n" +
+	"\tadmission\x18\x06 \x01(\v2'.ani.modeldev.v1.AcceptExecutionRequestR\tadmission\x12\x1e\n" +
+	"\vkfp_task_id\x18\a \x01(\tR\tkfpTaskId\"V\n" +
 	"\x1cGetStorageCredentialsRequest\x126\n" +
 	"\acontext\x18\x01 \x01(\v2\x1c.ani.modeldev.v1.StepContextR\acontext\"\xea\x02\n" +
 	"\x1bTemporaryStorageCredentials\x12\"\n" +

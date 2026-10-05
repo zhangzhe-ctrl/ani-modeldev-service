@@ -540,6 +540,9 @@ message GetExecutionConfigurationResponse {
   // Immutable committed command envelope for authenticated managed component
   // canonicalization. Returning it grants no command delivery authority.
   AcceptExecutionRequest admission = 6;
+  // Actual KFP logical task ID resolved from the authenticated current Pod,
+  // frozen Run and Workflow membership; never supplied by a callback claim.
+  string kfp_task_id = 7;
 }
 
 message GetStorageCredentialsRequest {

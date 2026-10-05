@@ -126,11 +126,29 @@ func (verifier *Verifier) VerifyOwnerWritersAbsent(ctx context.Context, executio
 	}
 	seenTasks := make(map[string]bool)
 	for _, task := range run.Tasks {
-		if task.RunID != authority.RunID || task.ID == "" || task.Name == "" || seenTasks[task.ID] || (!terminalTask(task.State) && task.State != "SKIPPED") {
+		if task.RunID != authority.RunID || task.ID == "" || task.Name == "" || seenTasks[task.ID] || (task.State != "" && !terminalTask(task.State) && task.State != "SKIPPED") {
 			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
 		}
 		seenTasks[task.ID] = true
+		// Retain the top-level Pod contract for older adapters. Child node
+		// references are resolved against the independently completed graph.
 		if task.PodName != "" && (task.State == "SKIPPED" || !seenNames[task.PodName]) {
+			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+		}
+	}
+	tasks, err := resolvedManagedTasks(workflow, run.Tasks, pods.Items)
+	if err != nil {
+		return biz.ManagedCloseEvidence{}, err
+	}
+	for _, task := range tasks {
+		if !terminalTask(task.State) && task.State != "SKIPPED" {
+			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+		}
+		if task.State == "SKIPPED" {
+			if task.PodName != "" {
+				return biz.ManagedCloseEvidence{}, biz.ErrRuntimeConflict
+			}
+		} else if task.PodName == "" || !seenNames[task.PodName] {
 			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
 		}
 	}

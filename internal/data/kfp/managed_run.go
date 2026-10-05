@@ -17,10 +17,20 @@ import (
 
 var ErrManagedRunUnverified = errors.New("KFP_MANAGED_RUN_UNVERIFIED")
 
+// ManagedTaskReference refers to a dependent task or node. PodName is the
+// backend's raw Argo node ID, not a verified Kubernetes Pod name. Exactly one
+// of TaskID and PodName is set.
+type ManagedTaskReference struct {
+	TaskID  string
+	PodName string
+}
+
 // ManagedTask is an observation from KFP's frozen Run, not a callback claim.
-// DAG tasks without Pods are retained but cannot prove a writer's identity.
+// PodName retains the raw top-level API field for legacy fixtures; neither it
+// nor ChildTasks proves a real Pod identity without the actual Workflow graph.
 type ManagedTask struct {
 	RunID, ID, Name, PodName, State string
+	ChildTasks                      []ManagedTaskReference
 }
 
 // ManagedRun is one authenticated observation of the frozen KFP Run. Terminal
@@ -31,8 +41,9 @@ type ManagedRun struct {
 	Tasks      []ManagedTask
 }
 
-// VerifyManagedRun reads KFP's own Run/task association, independently of
-// caller claims and Kubernetes labels. It never creates or retries a Run.
+// VerifyManagedRun retains the legacy direct-name fixture contract.
+// Deprecated: production workload verification must resolve the raw KFP node
+// references through the actual Workflow and verify the resulting current Pod.
 func (client *Client) VerifyManagedRun(ctx context.Context, plan biz.PipelineDispatchPlan, association biz.ManagedStepAssociation, taskName string) error {
 	if len(validation.IsDNS1123Subdomain(association.PodName)) != 0 || taskName == "" {
 		return ErrManagedRunUnverified
@@ -106,8 +117,8 @@ func (client *Client) GetManagedRun(ctx context.Context, plan biz.PipelineDispat
 	if err != nil || confirmedRunID(body, expected) != runID {
 		return ManagedRun{}, ErrManagedRunUnverified
 	}
-	// KFP 2.16.0 run.proto supplies task_details.run_id/display_name/pod_name.
-	// A Pod label or a callback's claimed Run is never the association source.
+	// KFP 2.16.0 run.proto child_tasks are dependent task/node references.
+	// They are not the logical task's own main Pod or workload identity proof.
 	var run map[string]any
 	if json.Unmarshal(body, &run) != nil {
 		return ManagedRun{}, ErrManagedRunUnverified
@@ -137,6 +148,7 @@ func (client *Client) GetManagedRun(ctx context.Context, plan biz.PipelineDispat
 		return ManagedRun{}, ErrManagedRunUnverified
 	}
 	result.Tasks = make([]ManagedTask, 0, len(tasks))
+	seenTasks := make(map[string]bool, len(tasks))
 	for _, value := range tasks {
 		task, ok := value.(map[string]any)
 		if !ok {
@@ -152,10 +164,53 @@ func (client *Client) GetManagedRun(ctx context.Context, plan biz.PipelineDispat
 				*target = text
 			}
 		}
-		if observed.PodName != "" && (observed.RunID != runID || len(validation.IsDNS1123Subdomain(observed.PodName)) != 0 || observed.Name == "") {
+		if observed.RunID != runID || !managedTaskID(observed.ID) || observed.Name == "" || len(observed.Name) > 256 || strings.TrimSpace(observed.Name) != observed.Name || strings.IndexFunc(observed.Name, func(r rune) bool { return r < ' ' || r == 127 }) >= 0 || seenTasks[observed.ID] {
 			return ManagedRun{}, ErrManagedRunUnverified
+		}
+		seenTasks[observed.ID] = true
+		if observed.PodName != "" && len(validation.IsDNS1123Subdomain(observed.PodName)) != 0 {
+			return ManagedRun{}, ErrManagedRunUnverified
+		}
+		if value, present := task["child_tasks"]; present {
+			children, ok := value.([]any)
+			if !ok {
+				return ManagedRun{}, ErrManagedRunUnverified
+			}
+			seen := make(map[ManagedTaskReference]bool, len(children))
+			for _, value := range children {
+				child, ok := value.(map[string]any)
+				if !ok || len(child) != 1 {
+					return ManagedRun{}, ErrManagedRunUnverified
+				}
+				reference := ManagedTaskReference{}
+				if value, present := child["pod_name"]; present {
+					name, ok := value.(string)
+					if !ok || name == "" || len(validation.IsDNS1123Subdomain(name)) != 0 {
+						return ManagedRun{}, ErrManagedRunUnverified
+					}
+					reference.PodName = name
+				} else if value, present := child["task_id"]; present {
+					id, ok := value.(string)
+					if !ok || !managedTaskID(id) {
+						return ManagedRun{}, ErrManagedRunUnverified
+					}
+					reference.TaskID = id
+				} else {
+					return ManagedRun{}, ErrManagedRunUnverified
+				}
+				if seen[reference] {
+					return ManagedRun{}, ErrManagedRunUnverified
+				}
+				seen[reference] = true
+				observed.ChildTasks = append(observed.ChildTasks, reference)
+			}
 		}
 		result.Tasks = append(result.Tasks, observed)
 	}
 	return result, nil
+}
+
+// Task IDs are opaque upstream strings, not assumed to share Run UUID syntax.
+func managedTaskID(value string) bool {
+	return value != "" && len(value) <= 256 && strings.IndexFunc(value, func(r rune) bool { return r <= ' ' || r > '~' }) < 0
 }

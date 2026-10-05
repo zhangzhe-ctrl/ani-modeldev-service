@@ -160,7 +160,7 @@ func (verifier *Verifier) VerifyWritersAbsent(ctx context.Context, execution biz
 	if err != nil {
 		return biz.ManagedCloseEvidence{}, err
 	}
-	closeTask, err := oneTask(tasks, "close")
+	closeTask, err := closeTaskForPod(tasks, association.PodName)
 	if err != nil || closeTask.PodName != association.PodName {
 		return biz.ManagedCloseEvidence{}, biz.ErrRuntimeConflict
 	}

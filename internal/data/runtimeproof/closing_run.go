@@ -11,7 +11,7 @@ import (
 // VerifyClosingRun recovers only the frozen owner association from independent
 // KFP and Kubernetes reads. It does not authenticate a late managed-step call.
 func (verifier *Verifier) VerifyClosingRun(ctx context.Context, execution biz.Execution, dispatch biz.PipelineDispatch, runID string) (biz.RunAuthorityCandidate, error) {
-	if verifier == nil || verifier.kube == nil || verifier.runs == nil || ctx == nil {
+	if verifier == nil || verifier.kube == nil || verifier.runs == nil || ctx == nil || ctx.Err() != nil {
 		return biz.RunAuthorityCandidate{}, biz.ErrRuntimeNotReady
 	}
 	plan := dispatch.Plan
@@ -35,16 +35,34 @@ func (verifier *Verifier) VerifyClosingRun(ctx context.Context, execution biz.Ex
 		return biz.RunAuthorityCandidate{}, biz.ErrRuntimeNotReady
 	}
 	candidate := biz.RunAuthorityCandidate{TenantID: execution.TenantID, ExecutionID: execution.ExecutionID, OperationID: execution.OperationID, SpecHash: execution.SpecHash, AttemptID: dispatch.AttemptID, PlanHash: dispatch.PlanHash, RunID: runID, NamespaceName: env.NamespaceName, NamespaceUID: env.NamespaceUID}
+	// KFP child PodName fields are Argo node IDs and can also refer to DAG
+	// successors or omitted stages. Enumerate actual Pods independently, then
+	// resolve their controller graph rather than reading node IDs as Pod names.
+	references := make(map[string]bool)
 	for _, task := range run.Tasks {
-		if task.PodName == "" {
+		if task.RunID != runID {
+			return biz.RunAuthorityCandidate{}, biz.ErrRuntimeConflict
+		}
+		if task.PodName != "" {
+			references[task.PodName] = true
+		}
+		for _, child := range task.ChildTasks {
+			if child.PodName != "" {
+				references[child.PodName] = true
+			}
+		}
+	}
+	pods, err := verifier.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "pods"}).Namespace(env.NamespaceName).List(ctx, metav1.ListOptions{})
+	if err != nil || pods == nil || pods.GetContinue() != "" {
+		return biz.RunAuthorityCandidate{}, biz.ErrRuntimeNotReady
+	}
+	for i := range pods.Items {
+		pod := &pods.Items[i]
+		if !references[pod.GetName()] && !references[pod.GetAnnotations()["workflows.argoproj.io/node-id"]] {
 			continue
 		}
-		pod, err := verifier.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "pods"}).Namespace(env.NamespaceName).Get(ctx, task.PodName, metav1.GetOptions{})
-		if err != nil || pod == nil {
-			return biz.RunAuthorityCandidate{}, biz.ErrRuntimeNotReady
-		}
 		account, _ := textAt(pod, "spec", "serviceAccountName")
-		if task.RunID != runID || pod.GetUID() == "" || pod.GetName() != task.PodName || pod.GetNamespace() != env.NamespaceName || pod.GetAPIVersion() != "v1" || pod.GetKind() != "Pod" || account != env.Identities.KFPStepServiceAccount {
+		if pod.GetUID() == "" || pod.GetName() == "" || pod.GetNamespace() != env.NamespaceName || pod.GetAPIVersion() != "v1" || pod.GetKind() != "Pod" || account != env.Identities.KFPStepServiceAccount {
 			return biz.RunAuthorityCandidate{}, biz.ErrRuntimeConflict
 		}
 		controllers := 0
@@ -71,6 +89,9 @@ func (verifier *Verifier) VerifyClosingRun(ctx context.Context, execution biz.Ex
 	workflow, err := verifier.kube.Resource(schema.GroupVersionResource{Group: "argoproj.io", Version: "v1alpha1", Resource: "workflows"}).Namespace(env.NamespaceName).Get(ctx, candidate.WorkflowName, metav1.GetOptions{})
 	if err != nil || !sameObject(workflow, "argoproj.io/v1alpha1", "Workflow", env.NamespaceName, candidate.WorkflowName, candidate.WorkflowUID) || workflow.GetDeletionTimestamp() != nil {
 		return biz.RunAuthorityCandidate{}, biz.ErrRuntimeNotReady
+	}
+	if _, err := resolvedManagedTasks(workflow, run.Tasks, pods.Items); err != nil {
+		return biz.RunAuthorityCandidate{}, err
 	}
 	return candidate, nil
 }

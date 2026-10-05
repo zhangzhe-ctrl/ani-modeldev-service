@@ -43,6 +43,12 @@ type ManagedRunVerifier interface {
 	VerifyManagedRun(context.Context, PipelineDispatchPlan, ManagedStepAssociation, string) error
 }
 
+// ManagedTaskIdentityResolver obtains the real logical task ID from verified
+// Run and workload membership. Legacy verifiers may omit this capability.
+type ManagedTaskIdentityResolver interface {
+	ResolveManagedTaskID(context.Context, PipelineDispatchPlan, ManagedStepAssociation, string) (string, error)
+}
+
 // ManagedSteps handles KFP callbacks; it never advances the normal workflow.
 // The token is used transiently for TokenReview and is never persisted.
 type ManagedSteps struct {

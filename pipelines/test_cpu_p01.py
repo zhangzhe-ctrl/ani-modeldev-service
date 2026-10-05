@@ -37,14 +37,26 @@ class PipelineAssembly(unittest.TestCase):
             inputs = ir["root"]["inputDefinitions"]["parameters"]
             self.assertEqual(set(inputs), {"execution_id", "spec_hash"})
             self.assertTrue(all(p["parameterType"] == "STRING" and "defaultValue" not in p for p in inputs.values()))
-            tasks = ir["root"]["dag"]["tasks"]
+            root_tasks = ir["root"]["dag"]["tasks"]
+            self.assertEqual(len(root_tasks), 2)
+            self.assertIn("finalize-close", root_tasks)
+            body_name, = set(root_tasks) - {"finalize-close"}
+            finalizer = root_tasks["finalize-close"]
+            self.assertEqual(finalizer["dependentTasks"], [body_name])
+            self.assertEqual(finalizer["triggerPolicy"]["strategy"], "ALL_UPSTREAM_TASKS_COMPLETED")
+            self.assertEqual(set(finalizer["inputs"]["parameters"]), {"execution_id", "spec_hash", "run_id"})
+            self.assertEqual(finalizer["taskInfo"]["name"], "close-finalizer")
+            body = ir["components"][root_tasks[body_name]["componentRef"]["name"]]
+            tasks = body["dag"]["tasks"]
             self.assertEqual(set(tasks), {"workspace-name", "createpvc", "prepare", "train-wait", "collect", "publish", "close"})
             for before, after in [("workspace-name", "createpvc"), ("createpvc", "prepare"), ("prepare", "train-wait"), ("train-wait", "collect"), ("collect", "publish"), ("publish", "close")]:
                 self.assertIn(before, tasks[after]["dependentTasks"])
-            self.assertEqual(tasks["close"]["triggerPolicy"]["strategy"], "ALL_UPSTREAM_TASKS_COMPLETED")
+            self.assertNotIn("triggerPolicy", tasks["close"])
+            self.assertEqual(tasks["close"]["inputs"]["parameters"]["candidate"]["taskOutputParameter"],
+                             {"producerTask": "publish", "outputParameterKey": "candidate"})
             close_component = ir["components"][tasks["close"]["componentRef"]["name"]]
             self.assertEqual(close_component["inputDefinitions"]["parameters"]["candidate"]["defaultValue"], "")
-            for name, task in tasks.items():
+            for name, task in {**tasks, "finalize-close": finalizer}.items():
                 self.assertFalse(task.get("cachingOptions", {}).get("enableCache", False))
                 self.assertEqual(int(task.get("retryPolicy", {}).get("maxRetryCount", 0)), 0)
                 if name == "createpvc":
@@ -52,10 +64,18 @@ class PipelineAssembly(unittest.TestCase):
                 executor = ir["components"][task["componentRef"]["name"]]["executorLabel"]
                 container = ir["deploymentSpec"]["executors"][executor]["container"]
                 self.assertEqual(container["image"], configuration["component_image"])
-                self.assertEqual(container["command"], ["/ani-modeldev-step", name])
+                self.assertEqual(container["command"], ["/ani-modeldev-step", "close" if name == "finalize-close" else name])
+                if name == "finalize-close":
+                    self.assertIn("--close-only", container["args"])
+                    self.assertNotIn("--candidate-json", container["args"])
                 if name != "workspace-name":
-                    self.assertIn("{{$.pipeline_job_uuid}}", container["args"])
-                    self.assertIn("{{$.pipeline_task_uuid}}", container["args"])
+                    self.assertEqual(task["inputs"]["parameters"]["run_id"],
+                                     {"runtimeValue": {"constant": "{{$.pipeline_job_uuid}}"}})
+                    self.assertEqual(container["args"][container["args"].index("--run-id") + 1],
+                                     "{{$.inputs.parameters['run_id']}}")
+                    self.assertNotIn("{{$.pipeline_job_uuid}}", container["args"])
+                    self.assertNotIn("--task-id", container["args"])
+                    self.assertNotIn("{{$.pipeline_task_uuid}}", container["args"])
                 self.assertNotIn("sh", container["command"])
                 k8s = platform["platforms"]["kubernetes"]["deploymentSpec"]["executors"][executor]
                 self.assertEqual(bool(k8s.get("pvcMount")), name in {"prepare", "collect", "publish"})

@@ -1,0 +1,911 @@
+{
+  "workflow": {
+    "apiVersion": "argoproj.io/v1alpha1",
+    "kind": "Workflow",
+    "metadata": {
+      "name": "general-cpu-rnggt",
+      "namespace": "ani-cpu-p01-tenant-a",
+      "uid": "593fd6e8-5690-469f-81c6-ca15a8f4a00a",
+      "resourceVersion": "927521"
+    },
+    "status": {
+      "artifactGCStatus": {
+        "notSpecified": true
+      },
+      "artifactRepositoryRef": {
+        "artifactRepository": {
+          "archiveLogs": true,
+          "s3": {
+            "accessKeySecret": {
+              "key": "accesskey",
+              "name": "mlpipeline-minio-artifact"
+            },
+            "bucket": "ani-kfp-ani-cpu-p01-tenant-a",
+            "caSecret": {
+              "key": "ca.crt",
+              "name": "ani-kfp-ca"
+            },
+            "endpoint": "ani-rustfs-svc.ani-platform.svc.cluster.local:9000",
+            "insecure": false,
+            "keyFormat": "artifacts/argo/{{workflow.uid}}/{{pod.name}}",
+            "region": "us-east-1",
+            "secretKeySecret": {
+              "key": "secretkey",
+              "name": "mlpipeline-minio-artifact"
+            }
+          }
+        },
+        "configMap": "artifact-repositories",
+        "key": "default-v1",
+        "namespace": "ani-cpu-p01-tenant-a"
+      },
+      "conditions": [
+        {
+          "status": "False",
+          "type": "PodRunning"
+        },
+        {
+          "status": "True",
+          "type": "Completed"
+        }
+      ],
+      "finishedAt": "2026-10-05T08:11:42Z",
+      "nodes": {
+        "general-cpu-rnggt": {
+          "children": [
+            "general-cpu-rnggt-3519902132"
+          ],
+          "displayName": "general-cpu-rnggt",
+          "finishedAt": "2026-10-05T08:11:42Z",
+          "id": "general-cpu-rnggt",
+          "name": "general-cpu-rnggt",
+          "phase": "Failed",
+          "startedAt": "2026-10-05T08:09:58Z",
+          "templateName": "entrypoint",
+          "type": "DAG"
+        },
+        "general-cpu-rnggt-1467617326": {
+          "boundaryID": "general-cpu-rnggt-3375089848",
+          "children": [
+            "general-cpu-rnggt-3234889654"
+          ],
+          "displayName": "executor(0)",
+          "finishedAt": "2026-10-05T08:10:59Z",
+          "id": "general-cpu-rnggt-1467617326",
+          "name": "general-cpu-rnggt.root.workspace-name.executor(0)",
+          "phase": "Succeeded",
+          "startedAt": "2026-10-05T08:10:39Z",
+          "templateName": "retry-system-container-impl",
+          "type": "Pod"
+        },
+        "general-cpu-rnggt-1471979654": {
+          "boundaryID": "general-cpu-rnggt-844071179",
+          "children": [
+            "general-cpu-rnggt-4146050085"
+          ],
+          "displayName": "close-driver",
+          "finishedAt": "2026-10-05T08:11:13Z",
+          "id": "general-cpu-rnggt-1471979654",
+          "name": "general-cpu-rnggt.root.workspace-name.onExit.close-driver",
+          "phase": "Failed",
+          "startedAt": "2026-10-05T08:11:01Z",
+          "templateName": "system-container-driver",
+          "type": "Pod"
+        },
+        "general-cpu-rnggt-2461908642": {
+          "boundaryID": "general-cpu-rnggt-4293776163",
+          "children": [
+            "general-cpu-rnggt-504368812"
+          ],
+          "displayName": "prepare",
+          "finishedAt": "2026-10-05T08:11:42Z",
+          "id": "general-cpu-rnggt-2461908642",
+          "name": "general-cpu-rnggt.root.prepare",
+          "phase": "Omitted",
+          "startedAt": "2026-10-05T08:11:42Z",
+          "templateName": "retry-system-container-executor",
+          "type": "Skipped"
+        },
+        "general-cpu-rnggt-272878787": {
+          "boundaryID": "general-cpu-rnggt-4293776163",
+          "children": [
+            "general-cpu-rnggt-4036286667"
+          ],
+          "displayName": "collect",
+          "finishedAt": "2026-10-05T08:11:42Z",
+          "id": "general-cpu-rnggt-272878787",
+          "name": "general-cpu-rnggt.root.collect",
+          "phase": "Omitted",
+          "startedAt": "2026-10-05T08:11:42Z",
+          "templateName": "retry-system-container-executor",
+          "type": "Skipped"
+        },
+        "general-cpu-rnggt-3234889654": {
+          "boundaryID": "general-cpu-rnggt-4293776163",
+          "children": [
+            "general-cpu-rnggt-423388935",
+            "general-cpu-rnggt-4003097428",
+            "general-cpu-rnggt-4036286667"
+          ],
+          "displayName": "createpvc",
+          "finishedAt": "2026-10-05T08:11:32Z",
+          "id": "general-cpu-rnggt-3234889654",
+          "name": "general-cpu-rnggt.root.createpvc",
+          "phase": "Failed",
+          "startedAt": "2026-10-05T08:11:22Z",
+          "templateName": "system-container-driver",
+          "type": "Pod"
+        },
+        "general-cpu-rnggt-3375089848": {
+          "boundaryID": "general-cpu-rnggt-4293776163",
+          "children": [
+            "general-cpu-rnggt-807657059",
+            "general-cpu-rnggt-844071179"
+          ],
+          "displayName": "workspace-name",
+          "finishedAt": "2026-10-05T08:11:01Z",
+          "id": "general-cpu-rnggt-3375089848",
+          "name": "general-cpu-rnggt.root.workspace-name",
+          "phase": "Succeeded",
+          "startedAt": "2026-10-05T08:10:39Z",
+          "templateName": "retry-system-container-executor",
+          "type": "DAG"
+        },
+        "general-cpu-rnggt-3519902132": {
+          "boundaryID": "general-cpu-rnggt",
+          "children": [
+            "general-cpu-rnggt-4293776163"
+          ],
+          "displayName": "root-driver",
+          "finishedAt": "2026-10-05T08:10:10Z",
+          "id": "general-cpu-rnggt-3519902132",
+          "name": "general-cpu-rnggt.root-driver",
+          "phase": "Succeeded",
+          "startedAt": "2026-10-05T08:09:58Z",
+          "templateName": "system-dag-driver",
+          "type": "Pod"
+        },
+        "general-cpu-rnggt-3548278366": {
+          "boundaryID": "general-cpu-rnggt-4293776163",
+          "displayName": "publish",
+          "finishedAt": "2026-10-05T08:11:42Z",
+          "id": "general-cpu-rnggt-3548278366",
+          "name": "general-cpu-rnggt.root.publish",
+          "phase": "Omitted",
+          "startedAt": "2026-10-05T08:11:42Z",
+          "templateName": "retry-system-container-executor",
+          "type": "Skipped"
+        },
+        "general-cpu-rnggt-371871435": {
+          "boundaryID": "general-cpu-rnggt-4293776163",
+          "children": [
+            "general-cpu-rnggt-4003097428"
+          ],
+          "displayName": "train-wait",
+          "finishedAt": "2026-10-05T08:11:42Z",
+          "id": "general-cpu-rnggt-371871435",
+          "name": "general-cpu-rnggt.root.train-wait",
+          "phase": "Omitted",
+          "startedAt": "2026-10-05T08:11:42Z",
+          "templateName": "retry-system-container-executor",
+          "type": "Skipped"
+        },
+        "general-cpu-rnggt-3792864325": {
+          "boundaryID": "general-cpu-rnggt-4293776163",
+          "children": [
+            "general-cpu-rnggt-3375089848"
+          ],
+          "displayName": "workspace-name-driver",
+          "finishedAt": "2026-10-05T08:10:30Z",
+          "id": "general-cpu-rnggt-3792864325",
+          "name": "general-cpu-rnggt.root.workspace-name-driver",
+          "phase": "Succeeded",
+          "startedAt": "2026-10-05T08:10:19Z",
+          "templateName": "system-container-driver",
+          "type": "Pod"
+        },
+        "general-cpu-rnggt-4003097428": {
+          "boundaryID": "general-cpu-rnggt-4293776163",
+          "children": [
+            "general-cpu-rnggt-272878787"
+          ],
+          "displayName": "collect-driver",
+          "finishedAt": "2026-10-05T08:11:42Z",
+          "id": "general-cpu-rnggt-4003097428",
+          "name": "general-cpu-rnggt.root.collect-driver",
+          "phase": "Omitted",
+          "startedAt": "2026-10-05T08:11:42Z",
+          "templateName": "system-container-driver",
+          "type": "Skipped"
+        },
+        "general-cpu-rnggt-4036286667": {
+          "boundaryID": "general-cpu-rnggt-4293776163",
+          "children": [
+            "general-cpu-rnggt-3548278366"
+          ],
+          "displayName": "publish-driver",
+          "finishedAt": "2026-10-05T08:11:42Z",
+          "id": "general-cpu-rnggt-4036286667",
+          "name": "general-cpu-rnggt.root.publish-driver",
+          "phase": "Omitted",
+          "startedAt": "2026-10-05T08:11:42Z",
+          "templateName": "system-container-driver",
+          "type": "Skipped"
+        },
+        "general-cpu-rnggt-4146050085": {
+          "boundaryID": "general-cpu-rnggt-844071179",
+          "displayName": "close",
+          "finishedAt": "2026-10-05T08:11:22Z",
+          "id": "general-cpu-rnggt-4146050085",
+          "name": "general-cpu-rnggt.root.workspace-name.onExit.close",
+          "phase": "Omitted",
+          "startedAt": "2026-10-05T08:11:22Z",
+          "templateName": "retry-system-container-executor",
+          "type": "Skipped"
+        },
+        "general-cpu-rnggt-423388935": {
+          "boundaryID": "general-cpu-rnggt-4293776163",
+          "children": [
+            "general-cpu-rnggt-2461908642"
+          ],
+          "displayName": "prepare-driver",
+          "finishedAt": "2026-10-05T08:11:42Z",
+          "id": "general-cpu-rnggt-423388935",
+          "name": "general-cpu-rnggt.root.prepare-driver",
+          "phase": "Omitted",
+          "startedAt": "2026-10-05T08:11:42Z",
+          "templateName": "system-container-driver",
+          "type": "Skipped"
+        },
+        "general-cpu-rnggt-4293776163": {
+          "boundaryID": "general-cpu-rnggt",
+          "children": [
+            "general-cpu-rnggt-3792864325"
+          ],
+          "displayName": "root",
+          "finishedAt": "2026-10-05T08:11:42Z",
+          "id": "general-cpu-rnggt-4293776163",
+          "name": "general-cpu-rnggt.root",
+          "phase": "Failed",
+          "startedAt": "2026-10-05T08:10:19Z",
+          "templateName": "root",
+          "type": "DAG"
+        },
+        "general-cpu-rnggt-504368812": {
+          "boundaryID": "general-cpu-rnggt-4293776163",
+          "children": [
+            "general-cpu-rnggt-371871435"
+          ],
+          "displayName": "train-wait-driver",
+          "finishedAt": "2026-10-05T08:11:42Z",
+          "id": "general-cpu-rnggt-504368812",
+          "name": "general-cpu-rnggt.root.train-wait-driver",
+          "phase": "Omitted",
+          "startedAt": "2026-10-05T08:11:42Z",
+          "templateName": "system-container-driver",
+          "type": "Skipped"
+        },
+        "general-cpu-rnggt-807657059": {
+          "boundaryID": "general-cpu-rnggt-3375089848",
+          "children": [
+            "general-cpu-rnggt-1467617326"
+          ],
+          "displayName": "executor",
+          "finishedAt": "2026-10-05T08:11:01Z",
+          "id": "general-cpu-rnggt-807657059",
+          "name": "general-cpu-rnggt.root.workspace-name.executor",
+          "phase": "Succeeded",
+          "startedAt": "2026-10-05T08:10:39Z",
+          "templateName": "retry-system-container-impl",
+          "type": "Retry"
+        },
+        "general-cpu-rnggt-844071179": {
+          "boundaryID": "general-cpu-rnggt-4293776163",
+          "children": [
+            "general-cpu-rnggt-1471979654"
+          ],
+          "displayName": "workspace-name.onExit",
+          "finishedAt": "2026-10-05T08:11:22Z",
+          "id": "general-cpu-rnggt-844071179",
+          "name": "general-cpu-rnggt.root.workspace-name.onExit",
+          "phase": "Failed",
+          "startedAt": "2026-10-05T08:11:01Z",
+          "templateName": "exit-hook-root-close",
+          "type": "DAG"
+        }
+      },
+      "phase": "Failed",
+      "progress": "3/5",
+      "resourcesDuration": {
+        "cpu": 0,
+        "memory": 23
+      },
+      "startedAt": "2026-10-05T08:09:58Z"
+    }
+  },
+  "pods": [
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "annotations": {
+          "workflows.argoproj.io/node-id": "general-cpu-rnggt-1467617326",
+          "workflows.argoproj.io/node-name": "general-cpu-rnggt.root.workspace-name.executor(0)"
+        },
+        "name": "general-cpu-rnggt-retry-system-container-impl-1467617326",
+        "namespace": "ani-cpu-p01-tenant-a",
+        "ownerReferences": [
+          {
+            "apiVersion": "argoproj.io/v1alpha1",
+            "blockOwnerDeletion": true,
+            "controller": true,
+            "kind": "Workflow",
+            "name": "general-cpu-rnggt",
+            "uid": "593fd6e8-5690-469f-81c6-ca15a8f4a00a"
+          }
+        ],
+        "uid": "cbee9dc7-116f-432d-b639-334fcadf0e7e"
+      },
+      "spec": {
+        "serviceAccountName": "modeldev-step"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "annotations": {
+          "workflows.argoproj.io/node-id": "general-cpu-rnggt-1471979654",
+          "workflows.argoproj.io/node-name": "general-cpu-rnggt.root.workspace-name.onExit.close-driver"
+        },
+        "name": "general-cpu-rnggt-system-container-driver-1471979654",
+        "namespace": "ani-cpu-p01-tenant-a",
+        "ownerReferences": [
+          {
+            "apiVersion": "argoproj.io/v1alpha1",
+            "blockOwnerDeletion": true,
+            "controller": true,
+            "kind": "Workflow",
+            "name": "general-cpu-rnggt",
+            "uid": "593fd6e8-5690-469f-81c6-ca15a8f4a00a"
+          }
+        ],
+        "uid": "3c1db5ec-d996-4d4d-98d5-0cbb9ba1333f"
+      },
+      "spec": {
+        "serviceAccountName": "modeldev-step"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "annotations": {
+          "workflows.argoproj.io/node-id": "general-cpu-rnggt-3234889654",
+          "workflows.argoproj.io/node-name": "general-cpu-rnggt.root.createpvc"
+        },
+        "name": "general-cpu-rnggt-system-container-driver-3234889654",
+        "namespace": "ani-cpu-p01-tenant-a",
+        "ownerReferences": [
+          {
+            "apiVersion": "argoproj.io/v1alpha1",
+            "blockOwnerDeletion": true,
+            "controller": true,
+            "kind": "Workflow",
+            "name": "general-cpu-rnggt",
+            "uid": "593fd6e8-5690-469f-81c6-ca15a8f4a00a"
+          }
+        ],
+        "uid": "d6334214-54a5-4319-b3b5-5303eb9bc5f6"
+      },
+      "spec": {
+        "serviceAccountName": "modeldev-step"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "annotations": {
+          "workflows.argoproj.io/node-id": "general-cpu-rnggt-3792864325",
+          "workflows.argoproj.io/node-name": "general-cpu-rnggt.root.workspace-name-driver"
+        },
+        "name": "general-cpu-rnggt-system-container-driver-3792864325",
+        "namespace": "ani-cpu-p01-tenant-a",
+        "ownerReferences": [
+          {
+            "apiVersion": "argoproj.io/v1alpha1",
+            "blockOwnerDeletion": true,
+            "controller": true,
+            "kind": "Workflow",
+            "name": "general-cpu-rnggt",
+            "uid": "593fd6e8-5690-469f-81c6-ca15a8f4a00a"
+          }
+        ],
+        "uid": "afa6e657-b2be-450b-bdc8-1529975c1b98"
+      },
+      "spec": {
+        "serviceAccountName": "modeldev-step"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "annotations": {
+          "workflows.argoproj.io/node-id": "general-cpu-rnggt-3519902132",
+          "workflows.argoproj.io/node-name": "general-cpu-rnggt.root-driver"
+        },
+        "name": "general-cpu-rnggt-system-dag-driver-3519902132",
+        "namespace": "ani-cpu-p01-tenant-a",
+        "ownerReferences": [
+          {
+            "apiVersion": "argoproj.io/v1alpha1",
+            "blockOwnerDeletion": true,
+            "controller": true,
+            "kind": "Workflow",
+            "name": "general-cpu-rnggt",
+            "uid": "593fd6e8-5690-469f-81c6-ca15a8f4a00a"
+          }
+        ],
+        "uid": "74dcb3e6-05aa-44fa-a90d-a4f5408dc990"
+      },
+      "spec": {
+        "serviceAccountName": "modeldev-step"
+      }
+    }
+  ],
+  "run": {
+    "experiment_id": "5c34aade-a7df-457b-9b52-2b962de6f64a",
+    "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+    "display_name": "md-db77d88f-5d04-4781-9a54-99c1e485c537",
+    "storage_state": "AVAILABLE",
+    "pipeline_version_reference": {
+      "pipeline_id": "cd6016f0-2411-4ee3-bbdb-f40b447f298b",
+      "pipeline_version_id": "f9ae226d-b265-49be-9455-e9b424b425fd"
+    },
+    "runtime_config": {
+      "parameters": {
+        "execution_id": "db77d88f-5d04-4781-9a54-99c1e485c537",
+        "spec_hash": "ad53778e55040c52eb995dababdf7e5ba2f9dd18b821711625107d74753e93fd"
+      },
+      "pipeline_root": "s3://ani-kfp-ani-cpu-p01-tenant-a/artifacts"
+    },
+    "service_account": "modeldev-step",
+    "created_at": "2026-10-05T08:09:58Z",
+    "scheduled_at": "2026-10-05T08:09:58Z",
+    "finished_at": "2026-10-05T08:11:42Z",
+    "state": "FAILED",
+    "run_details": {
+      "task_details": [
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "1376f8c4-de12-4348-9fc0-5dabcc3f8ee2",
+          "display_name": "close",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:11:22Z",
+          "end_time": "2026-10-05T08:11:22Z",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:11:23Z"
+            }
+          ]
+        },
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "1b035ec8-6ec8-4073-bf91-8e944d3ccb61",
+          "display_name": "workspace-name.onExit",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:11:01Z",
+          "end_time": "2026-10-05T08:11:22Z",
+          "state": "FAILED",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:11:03Z",
+              "state": "RUNNING"
+            },
+            {
+              "update_time": "2026-10-05T08:11:23Z",
+              "state": "FAILED"
+            }
+          ],
+          "child_tasks": [
+            {
+              "pod_name": "general-cpu-rnggt-1471979654"
+            }
+          ]
+        },
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "25f4d3fc-cb4d-476d-becf-2b60bd887c03",
+          "display_name": "executor",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:10:39Z",
+          "end_time": "2026-10-05T08:11:01Z",
+          "state": "SUCCEEDED",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:10:41Z",
+              "state": "RUNNING"
+            },
+            {
+              "update_time": "2026-10-05T08:11:03Z",
+              "state": "SUCCEEDED"
+            }
+          ],
+          "child_tasks": [
+            {
+              "pod_name": "general-cpu-rnggt-1467617326"
+            }
+          ]
+        },
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "27ab864d-f3ab-471d-9265-3d30eecbeaff",
+          "display_name": "publish-driver",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:11:42Z",
+          "end_time": "2026-10-05T08:11:42Z",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:11:43Z"
+            }
+          ],
+          "child_tasks": [
+            {
+              "pod_name": "general-cpu-rnggt-3548278366"
+            }
+          ]
+        },
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "35e10c3b-d56f-4260-bdb0-1069ea06f76d",
+          "display_name": "workspace-name",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:10:39Z",
+          "end_time": "2026-10-05T08:11:01Z",
+          "state": "SUCCEEDED",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:10:41Z",
+              "state": "RUNNING"
+            },
+            {
+              "update_time": "2026-10-05T08:11:03Z",
+              "state": "SUCCEEDED"
+            }
+          ],
+          "child_tasks": [
+            {
+              "pod_name": "general-cpu-rnggt-807657059"
+            },
+            {
+              "pod_name": "general-cpu-rnggt-844071179"
+            }
+          ]
+        },
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "5fc39c2e-4365-4fd2-b1e0-2205783223f5",
+          "display_name": "collect",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:11:42Z",
+          "end_time": "2026-10-05T08:11:42Z",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:11:43Z"
+            }
+          ],
+          "child_tasks": [
+            {
+              "pod_name": "general-cpu-rnggt-4036286667"
+            }
+          ]
+        },
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "713423c6-bcd8-4440-a808-2e36a641562a",
+          "display_name": "root",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:10:19Z",
+          "end_time": "2026-10-05T08:11:42Z",
+          "state": "FAILED",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:10:20Z",
+              "state": "RUNNING"
+            },
+            {
+              "update_time": "2026-10-05T08:11:43Z",
+              "state": "FAILED"
+            }
+          ],
+          "child_tasks": [
+            {
+              "pod_name": "general-cpu-rnggt-3792864325"
+            }
+          ]
+        },
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "7a5b3f0c-3a33-4a8c-a33e-bb295f4f0608",
+          "display_name": "general-cpu-rnggt",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:09:58Z",
+          "end_time": "2026-10-05T08:11:42Z",
+          "state": "FAILED",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:10:00Z",
+              "state": "RUNNING"
+            },
+            {
+              "update_time": "2026-10-05T08:11:43Z",
+              "state": "FAILED"
+            }
+          ],
+          "child_tasks": [
+            {
+              "pod_name": "general-cpu-rnggt-3519902132"
+            }
+          ]
+        },
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "85310533-c73a-49d3-a0bd-9ec45f35f44d",
+          "display_name": "publish",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:11:42Z",
+          "end_time": "2026-10-05T08:11:42Z",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:11:43Z"
+            }
+          ]
+        },
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "8638c484-57e0-4af9-bbb9-02ac7a5c45d6",
+          "display_name": "prepare",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:11:42Z",
+          "end_time": "2026-10-05T08:11:42Z",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:11:43Z"
+            }
+          ],
+          "child_tasks": [
+            {
+              "pod_name": "general-cpu-rnggt-504368812"
+            }
+          ]
+        },
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "8acb527f-588d-486c-b664-d2cc0f3723ca",
+          "display_name": "collect-driver",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:11:42Z",
+          "end_time": "2026-10-05T08:11:42Z",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:11:43Z"
+            }
+          ],
+          "child_tasks": [
+            {
+              "pod_name": "general-cpu-rnggt-272878787"
+            }
+          ]
+        },
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "8edc9bbf-fe5f-4149-a0df-a41a4b3c0e86",
+          "display_name": "createpvc",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:11:22Z",
+          "end_time": "2026-10-05T08:11:32Z",
+          "state": "FAILED",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:11:23Z",
+              "state": "PENDING"
+            },
+            {
+              "update_time": "2026-10-05T08:11:33Z",
+              "state": "RUNNING"
+            },
+            {
+              "update_time": "2026-10-05T08:11:43Z",
+              "state": "FAILED"
+            }
+          ],
+          "child_tasks": [
+            {
+              "pod_name": "general-cpu-rnggt-423388935"
+            },
+            {
+              "pod_name": "general-cpu-rnggt-4003097428"
+            },
+            {
+              "pod_name": "general-cpu-rnggt-4036286667"
+            }
+          ]
+        },
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "92671637-a13c-417b-9a28-5f4a8aa8ca25",
+          "display_name": "root-driver",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:09:58Z",
+          "end_time": "2026-10-05T08:10:10Z",
+          "state": "SUCCEEDED",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:10:00Z",
+              "state": "PENDING"
+            },
+            {
+              "update_time": "2026-10-05T08:10:10Z",
+              "state": "RUNNING"
+            },
+            {
+              "update_time": "2026-10-05T08:10:20Z",
+              "state": "SUCCEEDED"
+            }
+          ],
+          "child_tasks": [
+            {
+              "pod_name": "general-cpu-rnggt-4293776163"
+            }
+          ]
+        },
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "a30ad426-97cf-42a1-b7cb-9f753ce41363",
+          "display_name": "prepare-driver",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:11:42Z",
+          "end_time": "2026-10-05T08:11:42Z",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:11:43Z"
+            }
+          ],
+          "child_tasks": [
+            {
+              "pod_name": "general-cpu-rnggt-2461908642"
+            }
+          ]
+        },
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "aa6b8337-fd9a-4f3a-97e2-fd2b25aad740",
+          "display_name": "close-driver",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:11:01Z",
+          "end_time": "2026-10-05T08:11:13Z",
+          "state": "FAILED",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:11:03Z",
+              "state": "PENDING"
+            },
+            {
+              "update_time": "2026-10-05T08:11:23Z",
+              "state": "FAILED"
+            }
+          ],
+          "child_tasks": [
+            {
+              "pod_name": "general-cpu-rnggt-4146050085"
+            }
+          ]
+        },
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "d10a6351-201b-4003-8243-c1543d7596c3",
+          "display_name": "train-wait",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:11:42Z",
+          "end_time": "2026-10-05T08:11:42Z",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:11:43Z"
+            }
+          ],
+          "child_tasks": [
+            {
+              "pod_name": "general-cpu-rnggt-4003097428"
+            }
+          ]
+        },
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "d392ca08-5997-45a5-9c42-87065b788968",
+          "display_name": "executor(0)",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:10:39Z",
+          "end_time": "2026-10-05T08:10:59Z",
+          "state": "SUCCEEDED",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:10:41Z",
+              "state": "PENDING"
+            },
+            {
+              "update_time": "2026-10-05T08:11:03Z",
+              "state": "SUCCEEDED"
+            }
+          ],
+          "child_tasks": [
+            {
+              "pod_name": "general-cpu-rnggt-3234889654"
+            }
+          ]
+        },
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "df97c602-0609-44a8-a434-e352cc15ba17",
+          "display_name": "train-wait-driver",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:11:42Z",
+          "end_time": "2026-10-05T08:11:42Z",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:11:43Z"
+            }
+          ],
+          "child_tasks": [
+            {
+              "pod_name": "general-cpu-rnggt-371871435"
+            }
+          ]
+        },
+        {
+          "run_id": "df5b7167-ac26-4b60-bdca-7652b8036d87",
+          "task_id": "dfa2a341-f83a-4721-a61a-199e190c7aa9",
+          "display_name": "workspace-name-driver",
+          "create_time": "2026-10-05T08:09:58Z",
+          "start_time": "2026-10-05T08:10:19Z",
+          "end_time": "2026-10-05T08:10:30Z",
+          "state": "SUCCEEDED",
+          "state_history": [
+            {
+              "update_time": "2026-10-05T08:10:20Z",
+              "state": "PENDING"
+            },
+            {
+              "update_time": "2026-10-05T08:10:30Z",
+              "state": "RUNNING"
+            },
+            {
+              "update_time": "2026-10-05T08:10:41Z",
+              "state": "SUCCEEDED"
+            }
+          ],
+          "child_tasks": [
+            {
+              "pod_name": "general-cpu-rnggt-3375089848"
+            }
+          ]
+        }
+      ]
+    },
+    "state_history": [
+      {
+        "update_time": "2026-10-05T08:09:58Z",
+        "state": "PENDING"
+      },
+      {
+        "update_time": "2026-10-05T08:10:00Z",
+        "state": "RUNNING"
+      },
+      {
+        "update_time": "2026-10-05T08:11:43Z",
+        "state": "FAILED"
+      }
+    ]
+  }
+}

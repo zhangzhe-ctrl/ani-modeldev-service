@@ -56,6 +56,7 @@ func (step *Step) GetExecutionConfiguration(ctx context.Context, request *modeld
 	return &modeldevv1.GetExecutionConfigurationResponse{
 		Identity: runtimeIdentity(result.Execution), Snapshot: snapshot,
 		Authority: authority, Workspace: encodeRuntimeWorkspace(result.Runtime.Workspace), States: states,
+		KfpTaskId: result.TaskID,
 		Admission: &modeldevv1.AcceptExecutionRequest{Identity: runtimeIdentity(result.Execution), ResourceTenantId: result.Execution.TenantID, AdmittedActorId: result.Execution.Actor, IntentHash: result.Execution.IntentHash, Snapshot: snapshot, AcceptedAt: timestamppb.New(result.Execution.AcceptedAt), Intent: intent},
 	}, nil
 }

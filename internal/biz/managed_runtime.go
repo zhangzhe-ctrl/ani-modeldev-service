@@ -30,6 +30,7 @@ type ManagedRuntimeResult struct {
 	Authority RunAuthority
 	Runtime   ExecutionRuntime
 	Replayed  bool
+	TaskID    string
 }
 
 // Every callback rechecks current workload identity and the KFP-owned task
@@ -132,10 +133,32 @@ func runtimeResult(result ManagedRuntimeResult, state ExecutionRuntime, replayed
 func (runtime *ManagedRuntime) Configuration(ctx context.Context, token string, request BeginManagedExecutionRequest, task string) (ManagedRuntimeResult, error) {
 	switch task {
 	case "prepare", "train-wait", "collect", "publish", "close":
-		return runtime.authenticate(ctx, token, request, task)
 	default:
 		return ManagedRuntimeResult{}, ErrManagedStepUnauthorized
 	}
+	result, err := runtime.authenticate(ctx, token, request, task)
+	if err != nil {
+		return result, err
+	}
+	resolver, ok := runtime.steps.runs.(ManagedTaskIdentityResolver)
+	if !ok {
+		return result, nil
+	}
+	dispatch, err := runtime.steps.repository.Get(ctx, request.TenantID, request.ExecutionID)
+	if err != nil {
+		return ManagedRuntimeResult{}, ErrManagedStepUnavailable
+	}
+	plan, a := dispatch.Plan, request.Association
+	expected := RunAuthorityCandidate{TenantID: plan.TenantID, ExecutionID: plan.ExecutionID, OperationID: plan.OperationID, SpecHash: plan.SpecHash, AttemptID: dispatch.AttemptID, PlanHash: dispatch.PlanHash, RunID: a.RunID, NamespaceName: plan.Environment.NamespaceName, NamespaceUID: plan.Environment.NamespaceUID, WorkflowName: a.WorkflowName, WorkflowUID: a.WorkflowUID}
+	if expected != result.Authority.RunAuthorityCandidate {
+		return ManagedRuntimeResult{}, ErrManagedStepUnauthorized
+	}
+	taskID, err := resolver.ResolveManagedTaskID(ctx, plan, a, task)
+	if err != nil || taskID == "" || len(taskID) > 256 || strings.IndexFunc(taskID, func(r rune) bool { return r <= ' ' || r > '~' }) >= 0 {
+		return ManagedRuntimeResult{}, ErrManagedStepUnauthorized
+	}
+	result.TaskID = taskID
+	return result, nil
 }
 func (runtime *ManagedRuntime) Prepared(ctx context.Context, token string, request BeginManagedExecutionRequest, workspace WorkspaceBinding, input cpup01.InputRef) (ManagedRuntimeResult, error) {
 	result, err := runtime.authenticate(ctx, token, request, "prepare")

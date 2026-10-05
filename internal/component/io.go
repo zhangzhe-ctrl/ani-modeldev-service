@@ -60,6 +60,12 @@ func (runner *Runner) configuration(ctx context.Context) (biz.Execution, *traini
 	if snapshot.Environment.NamespaceName != association.NamespaceName || snapshot.Environment.NamespaceUID != association.NamespaceUid {
 		return biz.Execution{}, nil, ErrConfiguration
 	}
+	if taskID := response.GetKfpTaskId(); taskID != "" {
+		if len(taskID) > 256 || strings.IndexFunc(taskID, func(r rune) bool { return r <= ' ' || r > '~' }) >= 0 || (runner.config.TaskID != "" && runner.config.TaskID != taskID) {
+			return biz.Execution{}, nil, ErrConfiguration
+		}
+		runner.config.TaskID = taskID
+	}
 	// Only the authenticated, canonically checked committed admission can fill
 	// the operation omitted by KFP's execution_id/spec_hash parameters.
 	runner.config.Context.Identity = proto.Clone(admission.Identity).(*trainingv1.ExecutionIdentity)
@@ -136,12 +142,15 @@ func (runner *Runner) collect(ctx context.Context) error {
 }
 
 func (runner *Runner) publish(ctx context.Context) error {
-	if runner.store == nil || runner.config.TaskID == "" || !absoluteClean(runner.config.CandidateFile) {
+	if runner.store == nil || !absoluteClean(runner.config.CandidateFile) {
 		return ErrConfiguration
 	}
 	execution, binding, err := runner.configuration(ctx)
 	if err != nil {
 		return err
+	}
+	if runner.config.TaskID == "" {
+		return ErrConfiguration
 	}
 	if err := runner.checkWorkspace(execution, binding); err != nil {
 		return err
@@ -209,12 +218,16 @@ func (runner *Runner) close(ctx context.Context) (firstError error) {
 			return err
 		}
 	}
+	return runner.requestClose(ctx, modeldevv1.CloseReason_CLOSE_REASON_NATURAL_TERMINAL)
+}
+
+func (runner *Runner) requestClose(ctx context.Context, reason modeldevv1.CloseReason) error {
 	for {
 		call, err := runner.callContext(ctx)
 		if err != nil {
 			return err
 		}
-		result, err := runner.client.RequestExecutionClose(call, &modeldevv1.RequestExecutionCloseRequest{Context: runner.config.Context, Reason: modeldevv1.CloseReason_CLOSE_REASON_NATURAL_TERMINAL})
+		result, err := runner.client.RequestExecutionClose(call, &modeldevv1.RequestExecutionCloseRequest{Context: runner.config.Context, Reason: reason})
 		if err != nil {
 			if !retryObservation(err) {
 				return err

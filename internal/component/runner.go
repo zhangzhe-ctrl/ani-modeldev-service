@@ -37,6 +37,7 @@ type Config struct {
 	PVCName            string
 	InventoryFile      string
 	CandidateFile      string
+	CloseOnly          bool
 	TaskID             string
 	PollInterval       time.Duration
 }
@@ -50,6 +51,9 @@ type Runner struct {
 
 func New(config Config, client modeldevv1.ModelDevStepServiceClient, kube dynamic.Interface, store *s3.Client) (*Runner, error) {
 	if client == nil || config.Context == nil || config.Context.Identity == nil || config.Context.Association == nil || config.TenantID == "" || config.TokenFile == "" {
+		return nil, ErrConfiguration
+	}
+	if config.CloseOnly && config.Context.Step != modeldevv1.PipelineStep_PIPELINE_STEP_CLOSE {
 		return nil, ErrConfiguration
 	}
 	identifiers := []string{config.TenantID, config.Context.Identity.ExecutionId, config.Context.Association.KfpRunId, config.Context.Association.NamespaceUid, config.Context.Association.PodUid}
@@ -101,6 +105,12 @@ func (runner *Runner) Run(ctx context.Context, step string) error {
 	case "publish":
 		return runner.publish(ctx)
 	case "close":
+		if runner.config.CloseOnly {
+			// RequestExecutionClose verifies the current workload and Run even
+			// when a failed CreatePVC prevented Begin from binding an authority.
+			// The owner preserves an existing close fence and publication.
+			return runner.requestClose(ctx, modeldevv1.CloseReason_CLOSE_REASON_STEP_FAILED)
+		}
 		return runner.close(ctx)
 	default:
 		return ErrConfiguration

@@ -27,6 +27,7 @@ type invocation struct {
 	config        ownerConfig
 	claim         *modeldevv1.StepContext
 	candidateJSON *string
+	closeOnly     bool
 	kube          dynamic.Interface
 }
 
@@ -59,11 +60,15 @@ func bootstrapInvocation(ctx context.Context, args []string, kube dynamic.Interf
 	pvcName := flags.String("pvc-name", "", "allocated workspace PVC candidate")
 	candidateFile := flags.String("candidate-file", "", "KFP candidate output file")
 	candidateJSON := flags.String("candidate-json", "", "KFP candidate input parameter")
+	closeOnly := flags.Bool("close-only", false, "fence and observe close without publication proof")
 	if flags.Parse(args[1:]) != nil || flags.NArg() != 0 || *configFile == "" {
 		return invocation{}, invalid
 	}
 	provided := map[string]bool{}
 	flags.Visit(func(f *flag.Flag) { provided[f.Name] = true })
+	if provided["close-only"] && (step != "close" || (*closeOnly && (provided["candidate-file"] || provided["candidate-json"]))) {
+		return invocation{}, invalid
+	}
 	var config ownerConfig
 	if err := readConfig(*configFile, &config); err != nil {
 		return invocation{}, err
@@ -121,7 +126,7 @@ func bootstrapInvocation(ctx context.Context, args []string, kube dynamic.Interf
 		if claim.Step != stepValue {
 			return invocation{}, invalid
 		}
-		return invocation{step: step, config: config, claim: claim, candidateJSON: candidate, kube: kube}, nil
+		return invocation{step: step, config: config, claim: claim, candidateJSON: candidate, closeOnly: *closeOnly, kube: kube}, nil
 	}
 	if !canonicalUUID(config.TenantID) || !canonicalUUID(config.NamespaceUID) || !canonicalUUID(*executionID) || !canonicalUUID(*runID) || len(*specHash) != 64 || strings.ToLower(*specHash) != *specHash {
 		return invocation{}, invalid
@@ -129,13 +134,15 @@ func bootstrapInvocation(ctx context.Context, args []string, kube dynamic.Interf
 	if _, err := hex.DecodeString(*specHash); err != nil {
 		return invocation{}, invalid
 	}
-	if *taskID == "" || len(*taskID) > 256 || strings.IndexFunc(*taskID, func(r rune) bool { return r <= ' ' || r > '~' }) >= 0 {
-		return invocation{}, invalid
+	if provided["task-id"] {
+		if *taskID == "" || len(*taskID) > 256 || strings.IndexFunc(*taskID, func(r rune) bool { return r <= ' ' || r > '~' }) >= 0 {
+			return invocation{}, invalid
+		}
+		if config.TaskID != "" && config.TaskID != *taskID {
+			return invocation{}, invalid
+		}
+		config.TaskID = *taskID
 	}
-	if config.TaskID != "" && config.TaskID != *taskID {
-		return invocation{}, invalid
-	}
-	config.TaskID = *taskID
 	podName, podUID, namespace := os.Getenv("ANI_POD_NAME"), os.Getenv("ANI_POD_UID"), os.Getenv("ANI_POD_NAMESPACE")
 	if podName == "" || namespace == "" || len(validation.IsDNS1123Subdomain(podName)) != 0 || len(validation.IsDNS1123Label(namespace)) != 0 || !canonicalUUID(podUID) {
 		return invocation{}, invalid
@@ -170,7 +177,7 @@ func bootstrapInvocation(ctx context.Context, args []string, kube dynamic.Interf
 		Association: &modeldevv1.RunAssociation{KfpRunId: *runID, NamespaceName: namespace, NamespaceUid: config.NamespaceUID, WorkflowName: controller.Name, WorkflowUid: string(controller.UID), PodName: podName, PodUid: podUID},
 		Step:        stepValue,
 	}
-	return invocation{step: step, config: config, claim: claim, candidateJSON: candidate, kube: kube}, nil
+	return invocation{step: step, config: config, claim: claim, candidateJSON: candidate, closeOnly: *closeOnly, kube: kube}, nil
 }
 
 func canonicalUUID(value string) bool {

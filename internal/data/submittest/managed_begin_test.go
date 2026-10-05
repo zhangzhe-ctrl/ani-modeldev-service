@@ -102,7 +102,7 @@ func runManagedBeginFlow(t *testing.T, lostResponse bool) {
 			"pipeline_version_reference": map[string]string{"pipeline_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "pipeline_version_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd"},
 			"runtime_config":             map[string]any{"parameters": map[string]string{"execution_id": request.Admission.ExecutionID, "spec_hash": request.Admission.SpecHash}, "pipeline_root": "s3://fixture-kfp-artifacts/frozen-submit-root"},
 			"service_account":            "cpu-managed-step", "state": "RUNNING",
-			"run_details": map[string]any{"task_details": []any{map[string]string{"run_id": association.RunID, "display_name": "prepare", "pod_name": podName}}},
+			"run_details": map[string]any{"task_details": []any{map[string]string{"run_id": association.RunID, "task_id": "synthetic-task-id", "display_name": "prepare", "pod_name": podName}}},
 		})
 	}))
 	t.Cleanup(peer.Close)

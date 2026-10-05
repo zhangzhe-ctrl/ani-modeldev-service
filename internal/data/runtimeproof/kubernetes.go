@@ -18,15 +18,54 @@ func (v *Verifier) currentTasks(ctx context.Context, execution biz.Execution, as
 	if _, _, err := execution.CanonicalPayloads(); err != nil {
 		return nil, biz.ErrRuntimeConflict
 	}
-	environment := execution.Snapshot.Environment
-	if association.NamespaceName != environment.NamespaceName || association.NamespaceUID != environment.NamespaceUID || association.WorkflowName == "" || association.WorkflowUID == "" {
-		return nil, biz.ErrRuntimeConflict
-	}
 	plan, err := v.plans.Get(ctx, execution.TenantID, execution.ExecutionID)
 	if err != nil {
 		return nil, err
 	}
 	if plan.Plan.TenantID != execution.TenantID || plan.Plan.ExecutionID != execution.ExecutionID || plan.Plan.OperationID != execution.OperationID || plan.Plan.SpecHash != execution.SpecHash {
+		return nil, biz.ErrRuntimeConflict
+	}
+	return v.tasksForPlan(ctx, plan.Plan, association)
+}
+
+// VerifyManagedRun combines authenticated KFP membership with current controller
+// node and Pod ownership. KFP child references alone are not Pod identities.
+func (v *Verifier) VerifyManagedRun(ctx context.Context, plan biz.PipelineDispatchPlan, association biz.ManagedStepAssociation, taskName string) error {
+	_, err := v.ResolveManagedTaskID(ctx, plan, association, taskName)
+	return err
+}
+
+func (v *Verifier) ResolveManagedTaskID(ctx context.Context, plan biz.PipelineDispatchPlan, association biz.ManagedStepAssociation, taskName string) (string, error) {
+	tasks, err := v.tasksForPlan(ctx, plan, association)
+	if err != nil {
+		return "", err
+	}
+	var task kfp.ManagedTask
+	if taskName == "close" {
+		task, err = closeTaskForPod(tasks, association.PodName)
+	} else {
+		task, err = oneTask(tasks, taskName)
+	}
+	if err != nil || task.RunID != association.RunID || task.PodName != association.PodName {
+		return "", biz.ErrRuntimeConflict
+	}
+	pod, err := v.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "pods"}).Namespace(association.NamespaceName).Get(ctx, association.PodName, metav1.GetOptions{})
+	if err != nil || !sameObject(pod, "v1", "Pod", association.NamespaceName, association.PodName, association.PodUID) || pod.GetDeletionTimestamp() != nil || !workflowOwner(pod, association) {
+		return "", biz.ErrRuntimeNotReady
+	}
+	account, _ := textAt(pod, "spec", "serviceAccountName")
+	if account != plan.Environment.Identities.KFPStepServiceAccount {
+		return "", biz.ErrRuntimeConflict
+	}
+	return task.ID, nil
+}
+
+func (v *Verifier) tasksForPlan(ctx context.Context, plan biz.PipelineDispatchPlan, association biz.ManagedStepAssociation) ([]kfp.ManagedTask, error) {
+	if v == nil || v.kube == nil || v.runs == nil || ctx == nil || ctx.Err() != nil {
+		return nil, biz.ErrRuntimeNotReady
+	}
+	environment := plan.Environment
+	if association.NamespaceName != environment.NamespaceName || association.NamespaceUID != environment.NamespaceUID || association.WorkflowName == "" || association.WorkflowUID == "" {
 		return nil, biz.ErrRuntimeConflict
 	}
 	namespace, err := v.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}).Get(ctx, environment.NamespaceName, metav1.GetOptions{})
@@ -37,7 +76,15 @@ func (v *Verifier) currentTasks(ctx context.Context, execution biz.Execution, as
 	if err != nil || !sameObject(workflow, "argoproj.io/v1alpha1", "Workflow", environment.NamespaceName, association.WorkflowName, association.WorkflowUID) || workflow.GetDeletionTimestamp() != nil {
 		return nil, biz.ErrRuntimeNotReady
 	}
-	return v.runs.GetManagedTasks(ctx, plan.Plan, association.RunID)
+	tasks, err := v.runs.GetManagedTasks(ctx, plan, association.RunID)
+	if err != nil {
+		return nil, err
+	}
+	pods, err := v.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "pods"}).Namespace(environment.NamespaceName).List(ctx, metav1.ListOptions{})
+	if err != nil || pods == nil || pods.GetContinue() != "" {
+		return nil, biz.ErrRuntimeNotReady
+	}
+	return resolvedManagedTasks(workflow, tasks, pods.Items)
 }
 
 func oneTask(tasks []kfp.ManagedTask, name string) (kfp.ManagedTask, error) {
