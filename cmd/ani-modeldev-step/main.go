@@ -56,18 +56,18 @@ func main() {
 	if err := execute(ctx, os.Args[1:]); err != nil {
 		// Never print errors containing remote response bodies, credentials,
 		// signed URLs or owner configuration. The exit code fails this KFP task.
-		fmt.Fprintln(os.Stderr, "managed component failed")
+		fmt.Fprintln(os.Stderr, failureDiagnostic(err))
 		os.Exit(1)
 	}
 }
 
 func execute(ctx context.Context, args []string) error {
 	if len(args) > 0 && args[0] == "workspace-name" {
-		return writeWorkspaceName(args[1:])
+		return stageFailure("bootstrap", writeWorkspaceName(args[1:]))
 	}
 	invocation, err := bootstrapInvocation(ctx, args, nil)
 	if err != nil {
-		return err
+		return stageFailure("bootstrap", err)
 	}
 	step, config, claim := invocation.step, invocation.config, invocation.claim
 	if invocation.candidateJSON != nil {
@@ -75,28 +75,28 @@ func execute(ctx context.Context, args []string) error {
 		// It does not require the execution PVC or share a path with publishers.
 		directory, err := os.MkdirTemp("", "ani-modeldev-close-")
 		if err != nil {
-			return component.ErrConfiguration
+			return stageFailure("bootstrap", component.ErrConfiguration)
 		}
 		defer os.RemoveAll(directory)
 		config.CandidateFile = filepath.Join(directory, "publication.json")
 		if err := os.WriteFile(config.CandidateFile, []byte(*invocation.candidateJSON), 0600); err != nil {
-			return component.ErrConfiguration
+			return stageFailure("bootstrap", component.ErrConfiguration)
 		}
 	}
 	roots, err := trustedRoots(config.CAFile)
 	if err != nil {
-		return err
+		return stageFailure("grpc-ca", err)
 	}
 	connection, err := grpc.NewClient(config.Target, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots, ServerName: config.ServerName})))
 	if err != nil {
-		return component.ErrConfiguration
+		return stageFailure("grpc-ca", component.ErrConfiguration)
 	}
 	defer connection.Close()
 	kube := invocation.kube
 	if step == "prepare" && kube == nil {
 		kube, err = inClusterKubernetes()
 		if err != nil {
-			return component.ErrConfiguration
+			return stageFailure("bootstrap", component.ErrConfiguration)
 		}
 	}
 	stepClient := modeldevv1.NewModelDevStepServiceClient(connection)
@@ -104,20 +104,20 @@ func execute(ctx context.Context, args []string) error {
 	if step == "prepare" || step == "publish" {
 		provider, providerErr := stepStorageCredentials(stepClient, config.TenantID, config.TokenFile, claim)
 		if providerErr != nil {
-			return providerErr
+			return stageFailure("storage-client", providerErr)
 		}
 		objects, err = storageClient(config.S3, provider)
 		if err != nil {
-			return err
+			return stageFailure("storage-client", err)
 		}
 	}
 	runner, err := component.New(component.Config{TenantID: config.TenantID, Context: claim, TokenFile: config.TokenFile, WorkspaceDirectory: config.WorkspaceDirectory, PVCName: config.PVCName, InventoryFile: config.InventoryFile, CandidateFile: config.CandidateFile, CloseOnly: invocation.closeOnly, TaskID: config.TaskID, PollInterval: time.Duration(config.PollIntervalSeconds) * time.Second}, stepClient, kube, objects)
 	if err != nil {
-		return err
+		return stageFailure("runner", err)
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(config.TimeoutSeconds)*time.Second)
 	defer cancel()
-	return runner.Run(ctx, step)
+	return stageFailure("run", runner.Run(ctx, step))
 }
 
 func storageClient(config *storageConfig, provider aws.CredentialsProvider) (*s3.Client, error) {
