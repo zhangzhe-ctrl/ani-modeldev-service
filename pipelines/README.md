@@ -58,7 +58,9 @@ the path under `reports` must match the frozen workspace contract:
 ```
 
 Do not set `context_file` or a static `task_id` in this dynamic mode. KFP supplies
-the actual Run/task IDs and Downward API Pod identity. Each component reads its
+the actual Run ID and Downward API Pod identity. The service resolves the actual
+task ID from the authenticated Run and Workflow and returns it to the component.
+Each component reads its
 current Pod through the Kubernetes API and checks its UID and Workflow controller
 owner. The server independently verifies TokenReview, current objects and KFP's
 own task association. No component creates TrainJobs.

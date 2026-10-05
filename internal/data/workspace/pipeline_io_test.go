@@ -24,6 +24,7 @@ import (
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/workspace"
+	"golang.org/x/sys/unix"
 )
 
 func TestPipelineIOPreparesFixedCSVAndUploadsActualBytesWithoutOverwrite(t *testing.T) {
@@ -161,6 +162,101 @@ func TestPipelineIORejectsSymlinkMountAndUnfixedInputBeforeWriting(t *testing.T)
 	refreshSpec(t, &execution)
 	if _, err := workspace.PrepareInput(context.Background(), client, execution, binding, t.TempDir()); err == nil {
 		t.Fatal("unfixed source version accepted")
+	}
+}
+
+func TestPrepareInputAtomicCreationRetryAndConflicts(t *testing.T) {
+	for _, mode := range []string{"create-and-retry", "changed-input", "symlink-input", "hardlink-input", "changed-manifest"} {
+		t.Run(mode, func(t *testing.T) {
+			_, execution, _ := preparedWorkspace(t)
+			csv := pipelineCSVFixture()
+			execution.Snapshot.Input.Object.SizeBytes = int64(len(csv))
+			execution.Snapshot.Input.Object.SHA256 = pipelineDigest(csv)
+			refreshSpec(t, &execution)
+			_, client := newPipelineS3(t, execution, csv)
+			contract := execution.Snapshot.Workspace
+			binding := biz.WorkspaceBinding{Mode: contract.Mode, NamespaceName: execution.Snapshot.Environment.NamespaceName, NamespaceUID: execution.Snapshot.Environment.NamespaceUID,
+				PVCName: "execution-workspace", PVCUID: "55555555-5555-4555-8555-555555555555", InputSubpath: contract.InputSubpath, TrainingSubpath: contract.TrainingSubpath,
+				ReportsSubpath: contract.ReportsSubpath, PublicationSubpath: contract.PublicationSubpath}
+			root := t.TempDir()
+			inputDirectory := filepath.Join(root, contract.InputSubpath)
+			reportDirectory := filepath.Join(root, contract.ReportsSubpath)
+			for _, directory := range []string{inputDirectory, reportDirectory} {
+				if err := os.MkdirAll(directory, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			inputPath := filepath.Join(inputDirectory, "data.csv")
+			manifestPath := filepath.Join(reportDirectory, "prepared-manifest.json")
+			original := []byte("existing bytes must survive a conflicting retry")
+			protectedPath := inputPath
+			switch mode {
+			case "changed-input":
+				writeFile(t, inputPath, original)
+			case "symlink-input":
+				protectedPath = filepath.Join(t.TempDir(), "outside.csv")
+				writeFile(t, protectedPath, original)
+				if err := os.Symlink(protectedPath, inputPath); err != nil {
+					t.Fatal(err)
+				}
+			case "hardlink-input":
+				// Matching bytes do not make a multiply linked input trustworthy.
+				original = csv
+				protectedPath = filepath.Join(t.TempDir(), "outside.csv")
+				writeFile(t, protectedPath, original)
+				if err := os.Link(protectedPath, inputPath); err != nil {
+					t.Fatal(err)
+				}
+			case "changed-manifest":
+				protectedPath = manifestPath
+				writeFile(t, protectedPath, original)
+			}
+			prepared, err := workspace.PrepareInput(context.Background(), client, execution, binding, root)
+			if mode != "create-and-retry" {
+				if err == nil {
+					t.Fatal("prepare accepted a conflicting or linked existing file")
+				}
+				retained, readErr := os.ReadFile(protectedPath)
+				if readErr != nil || !bytes.Equal(retained, original) {
+					t.Fatalf("prepare overwrote protected bytes: %v", readErr)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("prepare create-only publication: %v", err)
+				}
+				var before unix.Stat_t
+				if err := unix.Stat(inputPath, &before); err != nil || before.Nlink != 1 || before.Mode&unix.S_IFMT != unix.S_IFREG {
+					t.Fatalf("prepared input must be a regular single-link file: %v", err)
+				}
+				again, err := workspace.PrepareInput(context.Background(), client, execution, binding, root)
+				if err != nil || again != prepared {
+					t.Fatalf("identical prepare retry changed its receipt: %v", err)
+				}
+				var after unix.Stat_t
+				if err := unix.Stat(inputPath, &after); err != nil || after.Ino != before.Ino || after.Nlink != 1 {
+					t.Fatalf("identical retry replaced or multiply linked the original inode: %v", err)
+				}
+				inputBytes, err := os.ReadFile(inputPath)
+				if err != nil || !bytes.Equal(inputBytes, csv) {
+					t.Fatalf("prepared input differs from verified S3 bytes: %v", err)
+				}
+				manifest, err := os.ReadFile(manifestPath)
+				if err != nil || pipelineDigest(manifest) != prepared.PreparedManifestSHA256 || int64(len(manifest)) != prepared.PreparedManifestBytes {
+					t.Fatalf("prepared manifest differs from the persisted byte receipt: %v", err)
+				}
+			}
+			for _, directory := range []string{inputDirectory, reportDirectory} {
+				entries, err := os.ReadDir(directory)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, entry := range entries {
+					if strings.HasPrefix(entry.Name(), ".cpu-p01-") {
+						t.Fatal("prepare left a named temporary file in the execution workspace")
+					}
+				}
+			}
+		})
 	}
 }
 

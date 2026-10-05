@@ -252,18 +252,27 @@ func writePipelineFile(ctx context.Context, root int, name string, content []byt
 	if err := file.Sync(); err != nil {
 		return biz.ErrInvalidWorkspaceOutput
 	}
-	if err := unix.Renameat2(root, temporary, root, name, unix.RENAME_NOREPLACE); err != nil {
-		if !errors.Is(err, unix.EEXIST) {
-			return biz.ErrInvalidWorkspaceOutput
-		}
-		// Retries retain the original file only after checking actual bytes; no
-		// symlink, hardlink, partial previous write or changed content is reused.
-		existing, err := capturePipelineFile(ctx, root, cpup01.OutputFile{RelativePath: name, SizeBytes: int64(len(content)), SHA256: pipelineContentHash(content)})
-		if err != nil {
-			return err
-		}
-		_ = existing.Close()
+	if err := ctx.Err(); err != nil {
+		return err
 	}
+	// Linkat atomically creates a previously absent name on the same mounted
+	// filesystem, including CephFS where RENAME_NOREPLACE is not supported.
+	// It cannot replace an existing target. Remove our temporary name before
+	// verification so the published file must have exactly one remaining link.
+	if err := unix.Linkat(root, temporary, root, name, 0); err != nil && !errors.Is(err, unix.EEXIST) {
+		return biz.ErrInvalidWorkspaceOutput
+	}
+	if err := unix.Unlinkat(root, temporary, 0); err != nil {
+		return biz.ErrInvalidWorkspaceOutput
+	}
+	// Both new publication and retries require the actual bytes and inode
+	// constraints. A crash leaving two names remains untrusted; never remove
+	// an arbitrary alias or overwrite a conflicting file to make a retry pass.
+	existing, err := capturePipelineFile(ctx, root, cpup01.OutputFile{RelativePath: name, SizeBytes: int64(len(content)), SHA256: pipelineContentHash(content)})
+	if err != nil {
+		return err
+	}
+	_ = existing.Close()
 	if err := unix.Fsync(root); err != nil {
 		return biz.ErrInvalidWorkspaceOutput
 	}
