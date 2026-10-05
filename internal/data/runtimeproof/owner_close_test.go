@@ -17,6 +17,7 @@ import (
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/kfp"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/runtimeproof"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -28,6 +29,62 @@ func TestClosingRunRecoversActualWorkflowFromKFPChildNodeReferences(t *testing.T
 	candidate, err := f.verifier().VerifyClosingRun(context.Background(), f.execution, f.dispatch, f.runID)
 	if err != nil || candidate.WorkflowName != f.workflow.GetName() || candidate.WorkflowUID != string(f.workflow.GetUID()) || candidate.RunID != f.runID {
 		t.Fatalf("closing Run must recover the actual owner of long-named Pods, without treating a child node ID as a Pod name: %+v %v", candidate, err)
+	}
+}
+
+func TestClosingRunRecoversConfirmedOwnerWithoutElectingAMissingWriter(t *testing.T) {
+	f := newOwnerCloseFixture(t)
+	f.terminateExternalRecords(t)
+	for i := range f.pods {
+		if f.pods[i].GetName() == "general-cpu-rnggt-retry-system-container-impl-1467617326" {
+			f.pods = append(f.pods[:i], f.pods[i+1:]...)
+			break
+		}
+	}
+	candidate, err := f.verifier().VerifyClosingRun(context.Background(), f.execution, f.dispatch, f.runID)
+	if err != nil || candidate != f.authority() {
+		t.Fatalf("the original confirmed Run must retain its independently observed Workflow owner before writer completion proof: %+v %v", candidate, err)
+	}
+	if evidence, err := f.verifier().VerifyOwnerWritersAbsent(context.Background(), f.execution, candidate, nil); !errors.Is(err, biz.ErrRuntimeNotReady) || evidence.OwnerTermination != nil {
+		t.Fatalf("recovering an owner cannot replace the missing historical Pod exit: %+v %v", evidence, err)
+	}
+	// A consumed but unresolved send permit has no durable sole confirmed Run.
+	// Its discovery must retain the complete independent task/Pod proof.
+	f.dispatch.State, f.dispatch.ConfirmedRuns = biz.PipelineDispatchUncertain, nil
+	if candidate, err := f.verifier().VerifyClosingRun(context.Background(), f.execution, f.dispatch, f.runID); err == nil {
+		t.Fatalf("unknown create borrowed confirmed-owner recovery: %+v", candidate)
+	}
+}
+
+func TestOwnerCloseRetainsDeletingPodExitsWithoutGrantingCurrentCallerIdentity(t *testing.T) {
+	f := newOwnerCloseFixture(t)
+	f.terminateExternalRecords(t)
+	for i := range f.pods {
+		at := metav1.NewTime(time.Now().UTC().Add(-30 * time.Second))
+		f.pods[i].SetDeletionTimestamp(&at)
+		f.pods[i].SetFinalizers([]string{"modeldev.ani.io/step-exit-evidence"})
+	}
+	candidate, err := f.verifier().VerifyClosingRun(context.Background(), f.execution, f.dispatch, f.runID)
+	if err != nil || candidate != f.authority() {
+		t.Fatalf("retained terminal Pods must remain usable by the independent owner: %+v %v", candidate, err)
+	}
+	evidence, err := f.verifier().VerifyOwnerWritersAbsent(context.Background(), f.execution, candidate, nil)
+	if err != nil || evidence.OwnerTermination == nil || len(evidence.Resources) != len(f.pods) {
+		t.Fatalf("retention must preserve every actual independently observed exit: %+v %v", evidence, err)
+	}
+	for _, resource := range evidence.Resources {
+		if !resource.APIObjectPresent || !resource.Terminal || resource.ExitCode == nil {
+			t.Fatal("retention fabricated or lost an actual Pod exit")
+		}
+	}
+	association := biz.ManagedStepAssociation{RunID: f.runID, NamespaceName: candidate.NamespaceName, NamespaceUID: candidate.NamespaceUID, WorkflowName: candidate.WorkflowName, WorkflowUID: candidate.WorkflowUID}
+	for i := range f.pods {
+		if f.pods[i].GetName() == "general-cpu-rnggt-retry-system-container-impl-1467617326" {
+			association.PodName, association.PodUID = f.pods[i].GetName(), string(f.pods[i].GetUID())
+		}
+	}
+	if _, err := f.verifier().ResolveManagedTaskID(context.Background(), f.dispatch.Plan, association, "workspace-name"); !errors.Is(err, biz.ErrRuntimeNotReady) {
+		t.Fatalf("a deleting Pod became a current authenticated step caller: %v", err)
 	}
 }
 
@@ -83,7 +140,7 @@ func TestOwnerClosePreservesUncertaintyWithoutCompleteWriterAndControllerProof(t
 }
 
 func TestClosingRunRejectsNonUniqueCurrentWorkflowAndMainPod(t *testing.T) {
-	for _, attack := range []string{"other-workflow", "duplicate-main-pod", "missing-main-pod"} {
+	for _, attack := range []string{"other-workflow", "duplicate-main-pod"} {
 		t.Run(attack, func(t *testing.T) {
 			f := newOwnerCloseFixture(t)
 			for i := range f.pods {
@@ -101,8 +158,6 @@ func TestClosingRunRejectsNonUniqueCurrentWorkflowAndMainPod(t *testing.T) {
 					pod.SetName("duplicate-main-pod")
 					pod.SetUID("duplicate-main-uid")
 					f.pods = append(f.pods, *pod)
-				case "missing-main-pod":
-					f.pods = append(f.pods[:i], f.pods[i+1:]...)
 				}
 				break
 			}

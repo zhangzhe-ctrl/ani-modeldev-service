@@ -18,6 +18,22 @@ func (verifier *Verifier) VerifyClosingRun(ctx context.Context, execution biz.Ex
 	if plan.TenantID != execution.TenantID || plan.ExecutionID != execution.ExecutionID || plan.OperationID != execution.OperationID || plan.SpecHash != execution.SpecHash || plan.Environment != execution.Snapshot.Environment {
 		return biz.RunAuthorityCandidate{}, biz.ErrRuntimeConflict
 	}
+	frozen, err := (biz.PipelineDispatchRequest{Admission: execution.Admission, Owner: plan.Owner}).Freeze()
+	if err != nil {
+		return biz.RunAuthorityCandidate{}, biz.ErrRuntimeConflict
+	}
+	digest, err := frozen.Digest()
+	actualDigest, actualErr := plan.Digest()
+	if err != nil || actualErr != nil || digest != actualDigest || dispatch.PlanHash != digest {
+		return biz.RunAuthorityCandidate{}, biz.ErrRuntimeConflict
+	}
+	if runID == "" && len(dispatch.ConfirmedRuns) == 1 {
+		runID = dispatch.ConfirmedRuns[0].RunID
+	}
+	confirmed := dispatch.State == biz.PipelineDispatchConfirmed && len(dispatch.ConfirmedRuns) == 1 && dispatch.ConfirmedRuns[0].RunID == runID
+	if len(dispatch.ConfirmedRuns) > 1 || (len(dispatch.ConfirmedRuns) == 1 && dispatch.ConfirmedRuns[0].RunID != runID) {
+		return biz.RunAuthorityCandidate{}, biz.ErrRunAuthorityConflict
+	}
 	if runID == "" {
 		var err error
 		runID, err = verifier.runs.FindClosingRun(ctx, plan)
@@ -56,11 +72,20 @@ func (verifier *Verifier) VerifyClosingRun(ctx context.Context, execution biz.Ex
 	if err != nil || pods == nil || pods.GetContinue() != "" {
 		return biz.RunAuthorityCandidate{}, biz.ErrRuntimeNotReady
 	}
+	seenReferences := make(map[string]bool)
 	for i := range pods.Items {
 		pod := &pods.Items[i]
-		if !references[pod.GetName()] && !references[pod.GetAnnotations()["workflows.argoproj.io/node-id"]] {
+		reference := pod.GetName()
+		if nodeID := pod.GetAnnotations()["workflows.argoproj.io/node-id"]; references[nodeID] {
+			reference = nodeID
+		}
+		if !references[reference] {
 			continue
 		}
+		if seenReferences[reference] {
+			return biz.RunAuthorityCandidate{}, biz.ErrRunAuthorityConflict
+		}
+		seenReferences[reference] = true
 		account, _ := textAt(pod, "spec", "serviceAccountName")
 		if pod.GetUID() == "" || pod.GetName() == "" || pod.GetNamespace() != env.NamespaceName || pod.GetAPIVersion() != "v1" || pod.GetKind() != "Pod" || account != env.Identities.KFPStepServiceAccount {
 			return biz.RunAuthorityCandidate{}, biz.ErrRuntimeConflict
@@ -90,8 +115,16 @@ func (verifier *Verifier) VerifyClosingRun(ctx context.Context, execution biz.Ex
 	if err != nil || !sameObject(workflow, "argoproj.io/v1alpha1", "Workflow", env.NamespaceName, candidate.WorkflowName, candidate.WorkflowUID) || workflow.GetDeletionTimestamp() != nil {
 		return biz.RunAuthorityCandidate{}, biz.ErrRuntimeNotReady
 	}
-	if _, err := resolvedManagedTasks(workflow, run.Tasks, pods.Items); err != nil {
-		return biz.RunAuthorityCandidate{}, err
+	// A sole durably confirmed original Run permits owner-only recovery from
+	// independent KFP membership and actual Workflow controller ownership.
+	// Completing normal step identity first would prevent the owner from
+	// stopping an early-deadline Run whose executor has not completed yet.
+	// Writer closure still independently requires every historical actual Pod
+	// and its complete exit evidence in VerifyOwnerWritersAbsent.
+	if !confirmed {
+		if _, err := resolvedManagedTasks(workflow, run.Tasks, pods.Items); err != nil {
+			return biz.RunAuthorityCandidate{}, err
+		}
 	}
 	return candidate, nil
 }

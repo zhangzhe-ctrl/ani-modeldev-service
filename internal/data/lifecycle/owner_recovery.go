@@ -62,7 +62,7 @@ func (repository *Repository) RecordClosingRun(ctx context.Context, candidate bi
 		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return false, biz.ErrPersistence
 		}
-		if len(dispatch.ConfirmedRuns) == 1 && current.state.CloseAuthority != nil && current.state.CloseReviewReason == "" {
+		if len(dispatch.ConfirmedRuns) == 1 && current.state.CloseAuthority != nil {
 			return false, nil
 		}
 		attemptID, _ := databaseID(candidate.AttemptID)
@@ -76,7 +76,9 @@ func (repository *Repository) RecordClosingRun(ctx context.Context, candidate bi
 				return false, biz.ErrPersistence
 			}
 		}
-		current.state.CloseAuthority, current.state.CloseReviewReason = &candidate, ""
+		// Recovering the original owner cannot resolve missing writer evidence.
+		// ConfirmRuntimeClosed clears review only with the durable close proof.
+		current.state.CloseAuthority = &candidate
 		return true, nil
 	})
 }
