@@ -79,6 +79,7 @@ func (verifier *Verifier) VerifyOwnerWritersAbsent(ctx context.Context, executio
 	association := biz.ManagedStepAssociation{RunID: authority.RunID, NamespaceName: authority.NamespaceName, NamespaceUID: authority.NamespaceUID, WorkflowName: authority.WorkflowName, WorkflowUID: authority.WorkflowUID}
 	evidence := biz.ManagedCloseEvidence{RunID: authority.RunID, WorkflowUID: authority.WorkflowUID, OwnerTermination: &proof}
 	seenNames, seenUIDs, seenNodes := make(map[string]bool), make(map[string]bool), make(map[string]bool)
+	abortedPods := make(map[string]string)
 	for i := range pods.Items {
 		pod := &pods.Items[i]
 		if pod.GetAPIVersion() != "v1" || pod.GetKind() != "Pod" || pod.GetNamespace() != environment.NamespaceName {
@@ -98,6 +99,13 @@ func (verifier *Verifier) VerifyOwnerWritersAbsent(ctx context.Context, executio
 			continue
 		}
 		terminal, _, completed, code := terminatedPod(pod)
+		var abort *biz.PodInitializationAbort
+		if !terminal && owned {
+			abort = ownerInitializationAbort(pod, observedAt)
+			if abort != nil {
+				terminal, completed = true, abort.DeletedAt
+			}
+		}
 		if !terminal || pod.GetUID() == "" || pod.GetName() == "" || completed.After(observedAt) {
 			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
 		}
@@ -105,7 +113,7 @@ func (verifier *Verifier) VerifyOwnerWritersAbsent(ctx context.Context, executio
 			continue
 		}
 		account, _ := textAt(pod, "spec", "serviceAccountName")
-		if code == nil || account != environment.Identities.KFPStepServiceAccount || seenNames[pod.GetName()] || seenUIDs[string(pod.GetUID())] {
+		if (code == nil && abort == nil) || account != environment.Identities.KFPStepServiceAccount || seenNames[pod.GetName()] || seenUIDs[string(pod.GetUID())] {
 			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeConflict
 		}
 		// Argo 3.7.8 common.AnnotationKeyNodeID defines the Pod-name fallback
@@ -118,7 +126,12 @@ func (verifier *Verifier) VerifyOwnerWritersAbsent(ctx context.Context, executio
 			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
 		}
 		seenNames[pod.GetName()], seenUIDs[string(pod.GetUID())], seenNodes[nodeID] = true, true, true
-		evidence.Resources = append(evidence.Resources, podFact(pod, authority.WorkflowUID, *code))
+		if abort != nil {
+			evidence.Resources = append(evidence.Resources, biz.RuntimeResource{APIVersion: "v1", Kind: "Pod", Namespace: pod.GetNamespace(), Name: pod.GetName(), UID: string(pod.GetUID()), OwnerUID: authority.WorkflowUID, APIObjectPresent: true, CreationDisabled: true, Terminal: true, InitializationAbort: abort})
+			abortedPods[pod.GetName()] = string(pod.GetUID())
+		} else {
+			evidence.Resources = append(evidence.Resources, podFact(pod, authority.WorkflowUID, *code))
+		}
 	}
 	if len(seenNodes) != len(nodes) {
 		// A disappeared historical Pod is missing evidence, not a stopped writer.
@@ -153,6 +166,15 @@ func (verifier *Verifier) VerifyOwnerWritersAbsent(ctx context.Context, executio
 		}
 	}
 	// A controller mutation/retry during enumeration invalidates this observation.
+	for _, resource := range evidence.Resources {
+		if resource.InitializationAbort == nil {
+			continue
+		}
+		current, err := verifier.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "pods"}).Namespace(environment.NamespaceName).Get(ctx, resource.Name, metav1.GetOptions{})
+		if err != nil || !sameObject(current, "v1", "Pod", environment.NamespaceName, resource.Name, abortedPods[resource.Name]) || current.GetResourceVersion() != resource.InitializationAbort.PodResourceVersion {
+			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+		}
+	}
 	current, err := workflows.Get(ctx, authority.WorkflowName, metav1.GetOptions{})
 	if err != nil || !sameObject(current, "argoproj.io/v1alpha1", "Workflow", environment.NamespaceName, authority.WorkflowName, authority.WorkflowUID) || current.GetDeletionTimestamp() != nil || current.GetResourceVersion() != proof.WorkflowResourceVersion {
 		return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady

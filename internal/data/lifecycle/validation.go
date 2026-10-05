@@ -82,6 +82,11 @@ func mergeObservation(state biz.ExecutionRuntime, observation biz.TrainingRuntim
 	allTerminal := true
 	allSuccessful := true
 	for _, resource := range history {
+		// Initialization abort proves only an owner-controlled KFP Pod. It
+		// cannot replace any training controller or writer exit observation.
+		if resource.InitializationAbort != nil {
+			return biz.TrainingRuntimeObservation{}, biz.ErrRuntimeConflict
+		}
 		switch resource.Kind {
 		case "TrainJob":
 			if resource.UID != state.TrainingHandle.TrainJobUID || resource.Name != state.Training.Name || resource.OwnerUID != "" {
@@ -221,7 +226,17 @@ func validCloseEvidence(authority biz.RunAuthorityCandidate, reason string, evid
 	}
 	seen := make(map[string]bool, len(evidence.Resources))
 	for _, resource := range evidence.Resources {
-		if !validOpaqueID(resource.UID) || seen[resource.UID] || resource.APIVersion != "v1" || resource.Kind != "Pod" || resource.Namespace != authority.NamespaceName || len(validation.IsDNS1123Subdomain(resource.Name)) != 0 || resource.OwnerUID != authority.WorkflowUID || !resource.APIObjectPresent || !resource.Terminal || resource.ExitCode == nil {
+		if !validOpaqueID(resource.UID) || seen[resource.UID] || resource.APIVersion != "v1" || resource.Kind != "Pod" || resource.Namespace != authority.NamespaceName || len(validation.IsDNS1123Subdomain(resource.Name)) != 0 || resource.OwnerUID != authority.WorkflowUID || !resource.APIObjectPresent || !resource.Terminal {
+			return false
+		}
+		if abort := resource.InitializationAbort; abort != nil {
+			if evidence.OwnerTermination == nil || reason == "NATURAL_TERMINAL" || resource.ExitCode != nil || !resource.CreationDisabled || !validOpaqueID(abort.PodResourceVersion) || len(validation.IsDNS1123Subdomain(abort.NodeName)) != 0 || !abort.ValidAt(evidence.ObservedAt) {
+				return false
+			}
+			seen[resource.UID] = true
+			continue
+		}
+		if resource.ExitCode == nil {
 			return false
 		}
 		if reason == "NATURAL_TERMINAL" && *resource.ExitCode != 0 {

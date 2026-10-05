@@ -1,0 +1,21 @@
+{
+  "apiVersion": "v1",
+  "kind": "Pod",
+  "metadata": {"resourceVersion": "1170948", "generation": 2, "deletionTimestamp": "2026-10-05T18:10:48Z", "finalizers": ["modeldev.ani.io/step-exit-evidence"]},
+  "spec": {"nodeName": "ani-01", "restartPolicy": "Never", "initContainers": [{"name": "init"}, {"name": "kfp-launcher"}], "containers": [{"name": "wait"}, {"name": "main"}]},
+  "status": {
+    "phase": "Failed",
+    "initContainerStatuses": [
+      {"name": "init", "state": {"terminated": {"containerID": "containerd://1329bad26063bb53d51e850e5f58b82d48b3abccb13377489443629f9ad486c7", "exitCode": 0, "finishedAt": "2026-10-05T18:10:46Z", "reason": "Completed", "startedAt": "2026-10-05T18:10:44Z"}}, "lastState": {}, "restartCount": 0, "started": false, "containerID": "containerd://1329bad26063bb53d51e850e5f58b82d48b3abccb13377489443629f9ad486c7", "imageID": "172.16.101.10:5000/ani-kubeflow/argoproj/argoexec@sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a", "ready": true},
+      {"name": "kfp-launcher", "state": {"waiting": {"reason": "PodInitializing"}}, "lastState": {}, "restartCount": 0, "started": false, "containerID": null, "imageID": "", "ready": false}
+    ],
+    "containerStatuses": [
+      {"name": "main", "state": {"waiting": {"reason": "PodInitializing"}}, "lastState": {}, "restartCount": 0, "started": false, "containerID": null, "imageID": "", "ready": false},
+      {"name": "wait", "state": {"waiting": {"reason": "PodInitializing"}}, "lastState": {}, "restartCount": 0, "started": false, "containerID": null, "imageID": "", "ready": false}
+    ],
+    "conditions": [
+      {"type": "Initialized", "status": "False", "observedGeneration": 2, "lastTransitionTime": "2026-10-05T18:10:38Z", "reason": "ContainersNotInitialized"},
+      {"type": "PodReadyToStartContainers", "status": "False", "observedGeneration": 2, "lastTransitionTime": "2026-10-05T18:10:47Z"}
+    ]
+  }
+}

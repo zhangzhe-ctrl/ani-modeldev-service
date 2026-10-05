@@ -60,6 +60,56 @@ type RuntimeResource struct {
 	CreationDisabled                                 bool
 	Terminal                                         bool
 	ExitCode                                         *int32
+	// InitializationAbort is owner-only Pod evidence, never a main-container
+	// exit or permission for a managed step, training writer, or publication.
+	InitializationAbort *PodInitializationAbort `json:",omitempty"`
+}
+
+// PodInitializationAbort retains the kubelet's explicit stopped-sandbox and
+// incomplete-init facts. Waiting containers have no invented termination code.
+type PodInitializationAbort struct {
+	PodResourceVersion, NodeName, Phase, RestartPolicy string
+	PodGeneration                                      int64
+	DeletedAt, NotInitializedAt, SandboxStoppedAt      time.Time
+	DeclaredInitContainers, DeclaredContainers         []string
+	InitContainerExits                                 []InitializationContainerExit
+	UnstartedInitContainers, UnstartedContainers       []string
+}
+
+type InitializationContainerExit struct {
+	Name, ContainerID, ImageID string
+	ExitCode                   int32
+	StartedAt, FinishedAt      time.Time
+}
+
+// ValidAt validates the persisted abort facts independently of the Kubernetes
+// adapter. A completed owner Run/Workflow is additionally required by close.
+func (proof *PodInitializationAbort) ValidAt(observedAt time.Time) bool {
+	if proof == nil || proof.PodResourceVersion == "" || proof.NodeName == "" || proof.Phase != "Failed" || proof.RestartPolicy != "Never" || proof.PodGeneration <= 0 || observedAt.IsZero() || proof.DeletedAt.IsZero() || proof.NotInitializedAt.IsZero() || proof.SandboxStoppedAt.IsZero() || proof.DeletedAt.After(observedAt) || proof.SandboxStoppedAt.After(observedAt) || proof.NotInitializedAt.After(proof.SandboxStoppedAt) || len(proof.InitContainerExits) == 0 || len(proof.UnstartedInitContainers) == 0 || len(proof.UnstartedContainers) == 0 || len(proof.DeclaredInitContainers) != len(proof.InitContainerExits)+len(proof.UnstartedInitContainers) || len(proof.DeclaredContainers) != len(proof.UnstartedContainers) {
+		return false
+	}
+	seen := make(map[string]bool)
+	var previous time.Time
+	for i, exit := range proof.InitContainerExits {
+		if exit.Name == "" || seen[exit.Name] || proof.DeclaredInitContainers[i] != exit.Name || exit.ContainerID == "" || exit.ImageID == "" || exit.ExitCode != 0 || exit.StartedAt.IsZero() || exit.FinishedAt.IsZero() || exit.FinishedAt.Before(exit.StartedAt) || exit.StartedAt.Before(previous) || exit.FinishedAt.After(proof.SandboxStoppedAt) {
+			return false
+		}
+		seen[exit.Name], previous = true, exit.FinishedAt
+	}
+	for i, name := range proof.UnstartedInitContainers {
+		if name == "" || seen[name] || proof.DeclaredInitContainers[len(proof.InitContainerExits)+i] != name {
+			return false
+		}
+		seen[name] = true
+	}
+	main := false
+	for i, name := range proof.UnstartedContainers {
+		if name == "" || seen[name] || proof.DeclaredContainers[i] != name {
+			return false
+		}
+		seen[name], main = true, main || name == "main"
+	}
+	return main
 }
 
 // WritersAbsent requires verified current controller/child facts and all known
