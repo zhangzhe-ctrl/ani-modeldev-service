@@ -23,6 +23,7 @@ func (a *Adapter) ObserveTraining(ctx context.Context, plan biz.TrainingPlan, ha
 	}
 	namespace := plan.Workspace.NamespaceName
 	resources := make(map[string]biz.RuntimeResource)
+	objects := map[string]*unstructured.Unstructured{string(train.GetUID()): train}
 	trainTerminal, trainSuccess, trainFailure := terminalConditions(train, "Complete")
 	resources[string(train.GetUID())] = resourceFact(train, "", trainTerminal, nil)
 	jobset, err := a.client.Resource(schema.GroupVersionResource{Group: "jobset.x-k8s.io", Version: "v1alpha2", Resource: "jobsets"}).Namespace(namespace).Get(ctx, plan.Name, metav1.GetOptions{})
@@ -75,6 +76,7 @@ func (a *Adapter) ObserveTraining(ctx context.Context, plan biz.TrainingPlan, ha
 	}
 	setTerminal, setSuccess, setFailure := terminalConditions(jobset, "Completed")
 	resources[string(jobset.GetUID())] = resourceFact(jobset, handle.TrainJobUID, setTerminal, nil)
+	objects[string(jobset.GetUID())] = jobset
 	jobs, err := a.client.Resource(schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "jobs"}).Namespace(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil || jobs.GetContinue() != "" {
 		return observation, biz.ErrTrainingUnavailable
@@ -96,6 +98,7 @@ func (a *Adapter) ObserveTraining(ctx context.Context, plan biz.TrainingPlan, ha
 		}
 		jobUIDs[string(job.GetUID())] = job.GetName()
 		resources[string(job.GetUID())] = resourceFact(job, string(jobset.GetUID()), terminal, nil)
+		objects[string(job.GetUID())] = job
 	}
 	pods, err := a.client.Resource(schema.GroupVersionResource{Version: "v1", Resource: "pods"}).Namespace(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil || pods.GetContinue() != "" {
@@ -119,6 +122,7 @@ func (a *Adapter) ObserveTraining(ctx context.Context, plan biz.TrainingPlan, ha
 		}
 		terminal, code := podTermination(pod)
 		resources[string(pod.GetUID())] = resourceFact(pod, ownerUID, terminal, code)
+		objects[string(pod.GetUID())] = pod
 		podCount++
 		allPodsTerminal = allPodsTerminal && terminal
 		allZero = allZero && terminal && code != nil && *code == 0
@@ -163,6 +167,7 @@ func (a *Adapter) ObserveTraining(ctx context.Context, plan biz.TrainingPlan, ha
 		if actual.GetAPIVersion() != prior.APIVersion || actual.GetKind() != prior.Kind || actual.GetNamespace() != namespace || actual.GetName() != prior.Name || string(actual.GetUID()) != prior.UID || controllerUID(actual) != prior.OwnerUID {
 			return observation, biz.ErrRuntimeConflict
 		}
+		objects[prior.UID] = actual
 		if prior.Kind == "Pod" {
 			terminal, code := podTermination(actual)
 			resources[prior.UID] = resourceFact(actual, prior.OwnerUID, terminal, code)
@@ -184,7 +189,11 @@ func (a *Adapter) ObserveTraining(ctx context.Context, plan biz.TrainingPlan, ha
 	trainSuspended, _, _ := unstructured.NestedBool(train.Object, "spec", "suspend")
 	setSuspended, _, _ := unstructured.NestedBool(jobset.Object, "spec", "suspend")
 	creationStopped := (trainTerminal && setTerminal) || (trainSuspended && setSuspended && jobsStopped)
-	observation.WritersAbsent = creationStopped && jobsStopped && podCount > 0 && allPodsTerminal
+	exitPending, err := a.releaseRecordedPodExits(ctx, plan, handle, resources, objects, history)
+	if err != nil {
+		return observation, err
+	}
+	observation.WritersAbsent = creationStopped && jobsStopped && podCount > 0 && allPodsTerminal && !exitPending
 	switch {
 	case trainSuccess && setSuccess && allZero && observation.WritersAbsent:
 		observation.Outcome = "SUCCEEDED"

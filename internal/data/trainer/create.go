@@ -8,6 +8,7 @@ import (
 	"errors"
 	"path"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
@@ -25,7 +26,7 @@ var trainJobs = schema.GroupVersionResource{Group: "trainer.kubeflow.org", Versi
 // CreateTraining is called only by the holder of the durable first creation
 // permit. Reading an existing intent must use FindTraining, never another POST.
 func (a *Adapter) CreateTraining(ctx context.Context, plan biz.TrainingPlan) (biz.TrainingHandle, error) {
-	wanted, err := a.trainingRequest(ctx, plan)
+	wanted, err := a.trainingRequest(ctx, plan, true)
 	if err != nil {
 		return biz.TrainingHandle{}, err
 	}
@@ -64,7 +65,7 @@ func (a *Adapter) FindTraining(ctx context.Context, plan biz.TrainingPlan) (biz.
 }
 
 func (a *Adapter) currentTraining(ctx context.Context, plan biz.TrainingPlan) (*unstructured.Unstructured, biz.TrainingHandle, error) {
-	wanted, err := a.trainingRequest(ctx, plan)
+	wanted, err := a.trainingRequest(ctx, plan, false)
 	if err != nil {
 		return nil, biz.TrainingHandle{}, err
 	}
@@ -118,7 +119,7 @@ func (a *Adapter) StopTraining(ctx context.Context, plan biz.TrainingPlan, handl
 	return nil
 }
 
-func (a *Adapter) trainingRequest(ctx context.Context, plan biz.TrainingPlan) (*unstructured.Unstructured, error) {
+func (a *Adapter) trainingRequest(ctx context.Context, plan biz.TrainingPlan, requireExitRetention bool) (*unstructured.Unstructured, error) {
 	if a == nil || a.client == nil || ctx == nil || ctx.Err() != nil || !validTrainingPlan(plan) {
 		return nil, biz.ErrRuntimeConflict
 	}
@@ -149,7 +150,7 @@ func (a *Adapter) trainingRequest(ctx context.Context, plan biz.TrainingPlan) (*
 	if err != nil {
 		return nil, biz.ErrTrainingUnavailable
 	}
-	if runtime == nil || runtime.GetAPIVersion() != "trainer.kubeflow.org/v1alpha1" || runtime.GetKind() != snapshot.Release.Runtime.Kind || runtime.GetName() != snapshot.Release.Runtime.Name || runtime.GetNamespace() != runtimeNamespace || runtime.GetDeletionTimestamp() != nil || !safeRuntime(runtime, snapshot.Release.Runtime.ContentSHA256, snapshot.Release.Runtime.TargetJobs[0]) {
+	if runtime == nil || runtime.GetAPIVersion() != "trainer.kubeflow.org/v1alpha1" || runtime.GetKind() != snapshot.Release.Runtime.Kind || runtime.GetName() != snapshot.Release.Runtime.Name || runtime.GetNamespace() != runtimeNamespace || runtime.GetDeletionTimestamp() != nil || !safeRuntime(runtime, snapshot.Release.Runtime.ContentSHA256, snapshot.Release.Runtime.TargetJobs[0], requireExitRetention) {
 		return nil, biz.ErrRuntimeConflict
 	}
 
@@ -231,7 +232,7 @@ func validTrainingPlan(plan biz.TrainingPlan) bool {
 	return true
 }
 
-func safeRuntime(runtime *unstructured.Unstructured, expectedSHA, targetJob string) bool {
+func safeRuntime(runtime *unstructured.Unstructured, expectedSHA, targetJob string, requireExitRetention bool) bool {
 	spec, found, err := unstructured.NestedMap(runtime.Object, "spec")
 	if err != nil || !found {
 		return false
@@ -277,6 +278,14 @@ func safeRuntime(runtime *unstructured.Unstructured, expectedSHA, targetJob stri
 	label, _, _ := unstructured.NestedString(job, "template", "metadata", "labels", "trainer.kubeflow.org/trainjob-ancestor-step")
 	if label != "trainer" {
 		return false
+	}
+	if requireExitRetention {
+		// Trainer v2.1.0 overrides merge labels/annotations only. Retention must
+		// be frozen in the Runtime's real Pod template before first creation.
+		finalizers, found, err := unstructured.NestedStringSlice(job, "template", "spec", "template", "metadata", "finalizers")
+		if err != nil || !found || !slices.Contains(finalizers, trainingExitEvidenceFinalizer) {
+			return false
+		}
 	}
 	pod, found, err := unstructured.NestedMap(job, "template", "spec", "template", "spec")
 	if err != nil || !found || pod["restartPolicy"] != "Never" || pod["automountServiceAccountToken"] != false {

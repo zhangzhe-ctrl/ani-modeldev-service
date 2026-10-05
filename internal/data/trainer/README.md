@@ -126,3 +126,29 @@ and 48 table cases in 0.048 seconds, exit 0; the same package passed `-race` in
 1.195 seconds, exit 0. The new Fedora worktree remained clean. This closes the
 reviewed observer defect within the HTTP boundary; CPU06 remains IN_PROGRESS,
 with live observation and the independent Pod/writer facts still NOT_RUN.
+
+## Retaining training exit evidence
+
+First creation requires the frozen Runtime's actual training Pod template at
+`spec.template.spec.replicatedJobs[].template.spec.template.metadata.finalizers`
+to contain `modeldev.ani.io/training-exit-evidence`. The selected Job must still
+be the sole frozen target with the `trainer` ancestor-step label. ModelDev needs
+`patch` permission on Pods in the bound tenant namespace. In
+[Trainer v2.1.0's override merge](https://github.com/kubeflow/trainer/blob/v2.1.0/pkg/runtime/core/trainingruntime.go#L185-L195),
+Pod template override metadata propagates labels and annotations only; placing
+this finalizer in a TrainJob override does not retain derived Pods.
+
+The first real all-container exit observation keeps the finalizer and withholds
+writer absence so that the exact Pod UID, owner and exit are persisted. A later
+observation uses that durable history, revalidates the namespace and complete
+TrainJob/JobSet/Job/Pod owner chain, then conditionally removes only ModelDev's
+key. The JSON patch tests Pod UID, resourceVersion, ownerReferences and the
+complete finalizer list, preserving other controllers' finalizers. Natural
+exits may release retention before parent completion; writer absence still
+requires the independent parent creation fences or terminal conditions.
+
+Already-created legacy Runs may use `FindTraining`, `ObserveTraining` and
+`StopTraining` with their original finalizer-less Runtime, retaining the full
+frozen Runtime hash checks. That Runtime cannot authorize new creation. A
+previously missing Pod without durable terminal exit remains unresolved: neither
+a single NotFound nor a suspended parent recovers the lost process evidence.

@@ -108,6 +108,9 @@ func newCompleteFixture(t *testing.T) *completeFixture {
 	if err := json.Unmarshal([]byte(`{"apiVersion":"trainer.kubeflow.org/v1alpha1","kind":"ClusterTrainingRuntime","metadata":{"name":"cpu-runtime-v1","uid":"77777777-aaaa-4bbb-8ccc-111111111111"},"spec":{"mlPolicy":{"numNodes":1},"template":{"spec":{"failurePolicy":{"maxRestarts":0},"replicatedJobs":[{"name":"trainer","replicas":1,"template":{"metadata":{"labels":{"trainer.kubeflow.org/trainjob-ancestor-step":"trainer"}},"spec":{"parallelism":1,"completions":1,"backoffLimit":0,"template":{"spec":{"restartPolicy":"Never","automountServiceAccountToken":false,"securityContext":{"runAsNonRoot":true,"runAsUser":10001,"fsGroup":10001},"containers":[{"name":"node","image":"registry.example.test/placeholder:never-used","securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}}}}]}}}}`), &runtime); err != nil {
 		t.Fatal(err)
 	}
+	runtimeJobs := runtime["spec"].(map[string]any)["template"].(map[string]any)["spec"].(map[string]any)["replicatedJobs"].([]any)
+	runtimePod := runtimeJobs[0].(map[string]any)["template"].(map[string]any)["spec"].(map[string]any)["template"].(map[string]any)
+	runtimePod["metadata"] = map[string]any{"finalizers": []any{"modeldev.ani.io/training-exit-evidence"}}
 	runtimeSpec, _ := json.Marshal(runtime["spec"])
 	snapshot.Release.Runtime.ContentSHA256 = completeHash(runtimeSpec)
 	f.objects["/apis/trainer.kubeflow.org/v1alpha1/clustertrainingruntimes/cpu-runtime-v1"] = runtime

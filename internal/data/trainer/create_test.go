@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -385,6 +386,9 @@ type trainingFixture struct {
 	plan                                                     biz.TrainingPlan
 	namespace, pvc, runtime, train, jobset, job, pod, oldPod map[string]any
 	posts, patches, deletes                                  int
+	podPatches                                               int
+	podPatchStatusCode                                       int
+	beforePodPatch                                           func()
 	loseCreateResponse                                       bool
 	createStatusCode                                         int
 	createStatusBody                                         string
@@ -400,6 +404,7 @@ func newTrainingFixture(t *testing.T) *trainingFixture {
 	f.jobset = trainingObject(t, `{"apiVersion":"jobset.x-k8s.io/v1alpha2","kind":"JobSet","metadata":{"namespace":"cpu-execution","name":"md-22222222-2222-4222-8222-222222222222","uid":"dddddddd-dddd-4ddd-8ddd-dddddddddddd","generation":1,"ownerReferences":[{"apiVersion":"trainer.kubeflow.org/v1alpha1","kind":"TrainJob","name":"md-22222222-2222-4222-8222-222222222222","uid":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","controller":true}]},"spec":{"suspend":false},"status":{"conditions":[]}}`)
 	f.job = trainingObject(t, `{"apiVersion":"batch/v1","kind":"Job","metadata":{"namespace":"cpu-execution","name":"md-22222222-2222-4222-8222-222222222222-trainer-0","uid":"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee","ownerReferences":[{"apiVersion":"jobset.x-k8s.io/v1alpha2","kind":"JobSet","name":"md-22222222-2222-4222-8222-222222222222","uid":"dddddddd-dddd-4ddd-8ddd-dddddddddddd","controller":true}]},"spec":{"backoffLimit":0,"parallelism":1,"completions":1},"status":{"active":1,"conditions":[]}}`)
 	f.pod = trainingObject(t, `{"apiVersion":"v1","kind":"Pod","metadata":{"namespace":"cpu-execution","name":"training-pod","uid":"ffffffff-ffff-4fff-8fff-ffffffffffff","ownerReferences":[{"apiVersion":"batch/v1","kind":"Job","name":"md-22222222-2222-4222-8222-222222222222-trainer-0","uid":"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee","controller":true}]},"spec":{"serviceAccountName":"cpu-training","restartPolicy":"Never","automountServiceAccountToken":false,"containers":[{"name":"node"}]},"status":{"phase":"Running","containerStatuses":[{"name":"node","state":{"running":{"startedAt":"2026-10-03T00:00:00Z"}}}]}}`)
+	runtimePodTemplate(f)["metadata"] = map[string]any{"finalizers": []any{exitEvidenceFinalizer}}
 	runtimeSpec, _ := json.Marshal(f.runtime["spec"])
 	digest := sha256.Sum256(runtimeSpec)
 	f.plan = biz.TrainingPlan{TenantID: "11111111-1111-4111-8111-111111111111", OperationID: "33333333-3333-4333-8333-333333333333", ExecutionID: "22222222-2222-4222-8222-222222222222", SpecHash: strings.Repeat("a", 64), Name: "md-22222222-2222-4222-8222-222222222222", RequestSHA256: strings.Repeat("b", 64),
@@ -523,6 +528,50 @@ func (f *trainingFixture) adapter(t *testing.T) *trainer.Adapter {
 		case path == "/apis/batch/v1/namespaces/cpu-execution/jobs/"+f.job["metadata"].(map[string]any)["name"].(string):
 			response = f.job
 		case path == "/api/v1/namespaces/cpu-execution/pods/training-pod":
+			if r.Method == http.MethodPatch {
+				f.podPatches++
+				if f.beforePodPatch != nil {
+					f.beforePodPatch()
+				}
+				if f.podPatchStatusCode != 0 {
+					w.WriteHeader(f.podPatchStatusCode)
+					_ = json.NewEncoder(w).Encode(map[string]any{"apiVersion": "v1", "kind": "Status", "status": "Failure", "reason": "Forbidden", "code": f.podPatchStatusCode})
+					return
+				}
+				var patch []map[string]any
+				if r.Header.Get("Content-Type") != "application/json-patch+json" || json.NewDecoder(r.Body).Decode(&patch) != nil || f.pod == nil {
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				metadata := f.pod["metadata"].(map[string]any)
+				tested := make(map[string]bool)
+				var finalizers any
+				for _, op := range patch {
+					field, ok := op["path"].(string)
+					if !ok || !strings.HasPrefix(field, "/metadata/") {
+						w.WriteHeader(http.StatusBadRequest)
+						return
+					}
+					field = strings.TrimPrefix(field, "/metadata/")
+					if op["op"] == "test" && reflect.DeepEqual(op["value"], metadata[field]) {
+						tested[field] = true
+					} else if op["op"] == "replace" && field == "finalizers" {
+						finalizers = op["value"]
+					} else {
+						w.WriteHeader(http.StatusConflict)
+						return
+					}
+				}
+				if !tested["uid"] || !tested["resourceVersion"] || !tested["ownerReferences"] || !tested["finalizers"] || finalizers == nil {
+					t.Error("Pod finalizer removal omitted an identity or ownership guard")
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				metadata["finalizers"], metadata["resourceVersion"] = finalizers, "2"
+				if len(finalizers.([]any)) == 0 {
+					delete(metadata, "finalizers")
+				}
+			}
 			response = f.pod
 		case path == "/api/v1/namespaces/cpu-execution/pods/prior-training-pod":
 			response = f.oldPod
