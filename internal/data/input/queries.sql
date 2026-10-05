@@ -23,6 +23,14 @@ WHERE tenant_id = sqlc.arg(tenant_id)::uuid
   AND input_version_id = sqlc.arg(input_version_id)::uuid
 FOR UPDATE;
 
+-- name: ListInputVersions :many
+SELECT * FROM modeldev_input_versions
+WHERE tenant_id = sqlc.arg(tenant_id)::uuid
+  AND (sqlc.arg(state_filter)::text = '' OR state = sqlc.arg(state_filter)::text)
+  AND (sqlc.narg(after_id)::uuid IS NULL OR input_version_id > sqlc.narg(after_id)::uuid)
+ORDER BY input_version_id
+LIMIT sqlc.arg(row_limit)::integer;
+
 -- name: RecordVerifiedCSV :one
 UPDATE modeldev_input_versions
 SET state = 'READY',

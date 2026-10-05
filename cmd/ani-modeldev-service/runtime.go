@@ -48,10 +48,6 @@ func buildRuntimeApp(config *conf.Bootstrap, logger *slog.Logger) (*application,
 	}
 	middlewares := observability.ServerMiddleware(logger)
 	query := service.NewQuery(execution.New(pool), objectstore.NewDownloadSigner(clients.store, config.Runtime.ObjectStorage.ConnectionId), clients.logs)
-	command, err := buildCommandServerWithQuery(config.Server.Grpc, config.Command, pool, query, middlewares...)
-	if err != nil {
-		return failed("managed command listener configuration invalid")
-	}
 	admissions, dispatch, facts := execution.New(pool), submission.New(pool), lifecycle.New(pool)
 	identity, err := stepidentity.New(clients.kube, config.Runtime.TokenAudience)
 	if err != nil {
@@ -66,7 +62,7 @@ func buildRuntimeApp(config *conf.Bootstrap, logger *slog.Logger) (*application,
 	if err != nil {
 		return failed("managed runtime configuration invalid")
 	}
-	step, err := server.NewManagedStepServer(config.Runtime.Step, clients.certificate, service.NewRuntimeStep(steps, runtime), middlewares...)
+	step, err := server.NewManagedStepServer(config.Runtime.Step, clients.certificate, service.NewRuntimeStep(steps, runtime, clients.storageIssuer), middlewares...)
 	if err != nil {
 		return failed("managed step listener configuration invalid")
 	}
@@ -81,6 +77,14 @@ func buildRuntimeApp(config *conf.Bootstrap, logger *slog.Logger) (*application,
 	closer, err := biz.NewExecutionCloser(runtime, clients.runs, proof)
 	if err != nil {
 		return failed("managed execution close configuration invalid")
+	}
+	operations, err := buildExecutionOperations(pool, clients, closer, proof)
+	if err != nil {
+		return failed("managed execution operations configuration invalid")
+	}
+	command, err := buildCommandServerWithCapabilities(config.Server.Grpc, config.Command, pool, query, objectstore.NewVerifier(clients.store, config.Runtime.ObjectStorage.ConnectionId, config.Runtime.ObjectStorage.MaxObjectBytes), operations, middlewares...)
+	if err != nil {
+		return failed("managed command listener configuration invalid")
 	}
 	closeWorker, err := biz.NewCloseWorker(facts, closer, clients.binding, int(config.Runtime.DispatchBatchSize), config.Runtime.DispatchInterval.AsDuration())
 	if err != nil {

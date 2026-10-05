@@ -33,6 +33,7 @@ func NewManagedStepServer(c *conf.Server_GRPC, certificate tls.Certificate, step
 			switch info.FullMethod {
 			case modeldevv1.ModelDevStepService_BeginExecution_FullMethodName,
 				modeldevv1.ModelDevStepService_GetExecutionConfiguration_FullMethodName,
+				modeldevv1.ModelDevStepService_GetStorageCredentials_FullMethodName,
 				modeldevv1.ModelDevStepService_EnsureTraining_FullMethodName,
 				modeldevv1.ModelDevStepService_GetTrainingStatus_FullMethodName,
 				modeldevv1.ModelDevStepService_ReportStepResult_FullMethodName,

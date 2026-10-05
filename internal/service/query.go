@@ -20,6 +20,12 @@ type Query struct {
 	repository biz.ArtifactQueryRepository
 	signer     biz.ArtifactSigner
 	logs       biz.TrainingLogReader
+	materials  *biz.ManagedMaterials
+}
+
+func (query *Query) WithMaterials(materials *biz.ManagedMaterials) *Query {
+	query.materials = materials
+	return query
 }
 
 func NewQuery(repository biz.ArtifactQueryRepository, signer biz.ArtifactSigner, logs ...biz.TrainingLogReader) *Query {

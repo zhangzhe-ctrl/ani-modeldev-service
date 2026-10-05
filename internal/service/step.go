@@ -22,14 +22,19 @@ type Step struct {
 	modeldevv1.UnimplementedModelDevStepServiceServer
 	steps   *biz.ManagedSteps
 	runtime *biz.ManagedRuntime
+	storage biz.StorageCredentialIssuer
 }
 
 func NewStep(steps *biz.ManagedSteps) *Step {
 	return &Step{steps: steps}
 }
 
-func NewRuntimeStep(steps *biz.ManagedSteps, runtime *biz.ManagedRuntime) *Step {
-	return &Step{steps: steps, runtime: runtime}
+func NewRuntimeStep(steps *biz.ManagedSteps, runtime *biz.ManagedRuntime, storage ...biz.StorageCredentialIssuer) *Step {
+	step := &Step{steps: steps, runtime: runtime}
+	if len(storage) == 1 {
+		step.storage = storage[0]
+	}
+	return step
 }
 
 func (step *Step) BeginExecution(ctx context.Context, request *modeldevv1.BeginExecutionRequest) (*modeldevv1.BeginExecutionResponse, error) {

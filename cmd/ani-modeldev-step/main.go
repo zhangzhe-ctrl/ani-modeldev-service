@@ -62,6 +62,9 @@ func main() {
 }
 
 func execute(ctx context.Context, args []string) error {
+	if len(args) > 0 && args[0] == "workspace-name" {
+		return writeWorkspaceName(args[1:])
+	}
 	invocation, err := bootstrapInvocation(ctx, args, nil)
 	if err != nil {
 		return err
@@ -96,14 +99,19 @@ func execute(ctx context.Context, args []string) error {
 			return component.ErrConfiguration
 		}
 	}
+	stepClient := modeldevv1.NewModelDevStepServiceClient(connection)
 	var objects *s3.Client
 	if step == "prepare" || step == "publish" {
-		objects, err = storageClient(config.S3)
+		provider, providerErr := stepStorageCredentials(stepClient, config.TenantID, config.TokenFile, claim)
+		if providerErr != nil {
+			return providerErr
+		}
+		objects, err = storageClient(config.S3, provider)
 		if err != nil {
 			return err
 		}
 	}
-	runner, err := component.New(component.Config{TenantID: config.TenantID, Context: claim, TokenFile: config.TokenFile, WorkspaceDirectory: config.WorkspaceDirectory, PVCName: config.PVCName, InventoryFile: config.InventoryFile, CandidateFile: config.CandidateFile, TaskID: config.TaskID, PollInterval: time.Duration(config.PollIntervalSeconds) * time.Second}, modeldevv1.NewModelDevStepServiceClient(connection), kube, objects)
+	runner, err := component.New(component.Config{TenantID: config.TenantID, Context: claim, TokenFile: config.TokenFile, WorkspaceDirectory: config.WorkspaceDirectory, PVCName: config.PVCName, InventoryFile: config.InventoryFile, CandidateFile: config.CandidateFile, TaskID: config.TaskID, PollInterval: time.Duration(config.PollIntervalSeconds) * time.Second}, stepClient, kube, objects)
 	if err != nil {
 		return err
 	}
@@ -112,8 +120,8 @@ func execute(ctx context.Context, args []string) error {
 	return runner.Run(ctx, step)
 }
 
-func storageClient(config *storageConfig) (*s3.Client, error) {
-	if config == nil || config.Region == "" || config.CredentialsFile == "" {
+func storageClient(config *storageConfig, provider aws.CredentialsProvider) (*s3.Client, error) {
+	if config == nil || config.Region == "" || config.CredentialsFile != "" || provider == nil {
 		return nil, component.ErrConfiguration
 	}
 	endpoint, err := url.Parse(config.Endpoint)
@@ -124,21 +132,6 @@ func storageClient(config *storageConfig) (*s3.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	provider := aws.CredentialsProviderFunc(func(ctx context.Context) (aws.Credentials, error) {
-		if err := ctx.Err(); err != nil {
-			return aws.Credentials{}, err
-		}
-		var value struct {
-			AccessKeyID     string    `json:"access_key_id"`
-			SecretAccessKey string    `json:"secret_access_key"`
-			SessionToken    string    `json:"session_token"`
-			Expires         time.Time `json:"expires_at"`
-		}
-		if readConfig(config.CredentialsFile, &value) != nil || value.AccessKeyID == "" || value.SecretAccessKey == "" || value.SessionToken == "" || !value.Expires.After(time.Now()) {
-			return aws.Credentials{}, component.ErrConfiguration
-		}
-		return aws.Credentials{AccessKeyID: value.AccessKeyID, SecretAccessKey: value.SecretAccessKey, SessionToken: value.SessionToken, CanExpire: true, Expires: value.Expires, Source: "owner-mounted-temporary-credentials"}, nil
-	})
 	transport := &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots}, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 30 * time.Second}
 	client := &http.Client{Transport: transport, Timeout: 2 * time.Minute, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	return s3.New(s3.Options{Region: config.Region, BaseEndpoint: aws.String(config.Endpoint), Credentials: provider, UsePathStyle: true, HTTPClient: client, RetryMaxAttempts: 1, RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired, ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired}), nil

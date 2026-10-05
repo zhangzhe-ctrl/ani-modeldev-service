@@ -169,6 +169,14 @@ func (fixture *schemaFixture) install(t *testing.T, migrations []string, ownerRe
 		}
 	}
 	for _, migration := range migrations {
+		if filepath.Base(migration) == "0016_execution_cleanup_audit.up.sql" {
+			if _, err := transaction.Exec(ctx, "GRANT INSERT, SELECT, UPDATE ON "+schemaSQL+".modeldev_execution_cleanup_audits TO "+roleSQL); err != nil {
+				t.Fatal("CPU10_DB_PREFLIGHT: runtime cleanup audit grant failed; behavior NOT_RUN")
+			}
+			break
+		}
+	}
+	for _, migration := range migrations {
 		if filepath.Base(migration) == "0014_execution_runtime.up.sql" {
 			if _, err := transaction.Exec(ctx, "GRANT INSERT, SELECT, UPDATE ON "+schemaSQL+".modeldev_execution_runtimes TO "+roleSQL); err != nil {
 				t.Fatal("CPU04_DB_PREFLIGHT: runtime lifecycle grant failed; behavior NOT_RUN")

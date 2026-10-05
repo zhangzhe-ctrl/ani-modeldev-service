@@ -36,7 +36,10 @@ runtime:
     endpoint: "${S3_ENDPOINT}"
     ca_file: "${S3_CA_FILE}"
     region: "${S3_REGION}"
-    # JSON: access_key_id, secret_access_key, optional session_token.
+    # JSON: restricted ordinary IAM access_key_id/secret_access_key and
+    # sts_bindings (tenant_id, purpose, connection_id, bucket, prefix).
+    # Only the control service mounts this identity; steps obtain scoped STS
+    # sessions through their current authenticated workload RPC.
     credentials_file: "${S3_CREDENTIALS_FILE}"
     connection_id: "${PUBLICATION_STORAGE_CONNECTION_ID}"
     max_object_bytes: "${MAX_PUBLICATION_OBJECT_BYTES}"

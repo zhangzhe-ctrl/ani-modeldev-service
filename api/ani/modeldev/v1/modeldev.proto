@@ -40,6 +40,9 @@ service ModelDevCommandService {
 service ModelDevStepService {
   rpc BeginExecution(BeginExecutionRequest) returns (BeginExecutionResponse);
   rpc GetExecutionConfiguration(GetExecutionConfigurationRequest) returns (GetExecutionConfigurationResponse);
+  // Temporary object access is derived from the current execution snapshot.
+  // Every refresh repeats the same workload and Run authority verification.
+  rpc GetStorageCredentials(GetStorageCredentialsRequest) returns (GetStorageCredentialsResponse);
   rpc EnsureTraining(EnsureTrainingRequest) returns (EnsureTrainingResponse);
   rpc GetTrainingStatus(GetTrainingStatusRequest) returns (GetTrainingStatusResponse);
   rpc ReportStepResult(ReportStepResultRequest) returns (ReportStepResultResponse);
@@ -537,6 +540,33 @@ message GetExecutionConfigurationResponse {
   // Immutable committed command envelope for authenticated managed component
   // canonicalization. Returning it grants no command delivery authority.
   AcceptExecutionRequest admission = 6;
+}
+
+message GetStorageCredentialsRequest {
+  StepContext context = 1;
+}
+
+// Secret values are confined to the authenticated TLS step channel; they are
+// never persisted in execution snapshots, projections, logs or ordinary YAML.
+message TemporaryStorageCredentials {
+  string access_key_id = 1;
+  string secret_access_key = 2;
+  string session_token = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  string storage_connection_id = 5;
+  string bucket = 6;
+  // prepare receives exactly the frozen input key; publish receives only the
+  // execution's publication subtree. Exactly one of these fields is present.
+  oneof scope {
+    string object_key = 7;
+    string object_prefix = 8;
+  }
+}
+
+message GetStorageCredentialsResponse {
+  ani.training.v1.ExecutionIdentity identity = 1;
+  PipelineStep step = 2;
+  TemporaryStorageCredentials credentials = 3;
 }
 
 // Ensure accepts only execution/authority references. ModelDev derives the

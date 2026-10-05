@@ -18,7 +18,6 @@ class PipelineAssembly(unittest.TestCase):
             configuration = {
                 "component_image": "registry.example.test/modeldev-step@sha256:" + "a" * 64,
                 "owner_config_map": "cpu-step-owner-fixture",
-                "storage_credentials_secret": "cpu-step-temporary-storage-fixture",
                 "storage_class": "cpu-workspace-fixture",
                 "workspace_size": "2Gi",
                 "workspace_access_mode": "ReadWriteOnce",
@@ -39,8 +38,8 @@ class PipelineAssembly(unittest.TestCase):
             self.assertEqual(set(inputs), {"execution_id", "spec_hash"})
             self.assertTrue(all(p["parameterType"] == "STRING" and "defaultValue" not in p for p in inputs.values()))
             tasks = ir["root"]["dag"]["tasks"]
-            self.assertEqual(set(tasks), {"createpvc", "prepare", "train-wait", "collect", "publish", "close"})
-            for before, after in [("createpvc", "prepare"), ("prepare", "train-wait"), ("train-wait", "collect"), ("collect", "publish"), ("publish", "close")]:
+            self.assertEqual(set(tasks), {"workspace-name", "createpvc", "prepare", "train-wait", "collect", "publish", "close"})
+            for before, after in [("workspace-name", "createpvc"), ("createpvc", "prepare"), ("prepare", "train-wait"), ("train-wait", "collect"), ("collect", "publish"), ("publish", "close")]:
                 self.assertIn(before, tasks[after]["dependentTasks"])
             self.assertEqual(tasks["close"]["triggerPolicy"]["strategy"], "ALL_UPSTREAM_TASKS_COMPLETED")
             close_component = ir["components"][tasks["close"]["componentRef"]["name"]]
@@ -54,12 +53,13 @@ class PipelineAssembly(unittest.TestCase):
                 container = ir["deploymentSpec"]["executors"][executor]["container"]
                 self.assertEqual(container["image"], configuration["component_image"])
                 self.assertEqual(container["command"], ["/ani-modeldev-step", name])
-                self.assertIn("{{$.pipeline_job_uuid}}", container["args"])
-                self.assertIn("{{$.pipeline_task_uuid}}", container["args"])
+                if name != "workspace-name":
+                    self.assertIn("{{$.pipeline_job_uuid}}", container["args"])
+                    self.assertIn("{{$.pipeline_task_uuid}}", container["args"])
                 self.assertNotIn("sh", container["command"])
                 k8s = platform["platforms"]["kubernetes"]["deploymentSpec"]["executors"][executor]
                 self.assertEqual(bool(k8s.get("pvcMount")), name in {"prepare", "collect", "publish"})
-                self.assertEqual(bool(k8s.get("secretAsVolume")), name in {"prepare", "publish"})
+                self.assertFalse(k8s.get("secretAsVolume"))
                 self.assertEqual({item["name"] for item in k8s["fieldPathAsEnv"]}, {"ANI_POD_NAME", "ANI_POD_UID", "ANI_POD_NAMESPACE"})
             self.assertNotIn("deletepvc", output.read_text(encoding="utf-8"))
 

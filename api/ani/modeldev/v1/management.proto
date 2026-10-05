@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package ani.modeldev.v1;
+
+import "ani/modeldev/v1/modeldev.proto";
+import "ani/training/v1/training.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/zhangzhe-ctrl/ani-modeldev-service/api/ani/modeldev/v1;modeldevv1";
+
+// Governance checks the current management permission and delegates this exact
+// method over its authenticated mTLS connection. No user identity is in a body.
+service ModelDevManagementService {
+  rpc ImportRelease(ImportReleaseRequest) returns (ImportReleaseResponse);
+  rpc ValidateRelease(ValidateReleaseRequest) returns (ValidateReleaseResponse);
+  rpc ImportCSV(ImportCSVRequest) returns (ImportCSVResponse);
+}
+
+message ImportReleaseRequest {
+  string preset_id = 1;
+  string release_id = 2;
+  string release_digest = 3;
+  bytes canonical_release = 4;
+}
+
+message ImportReleaseResponse {
+  string preset_id = 1;
+  string release_id = 2;
+  string release_digest = 3;
+  bool created = 4;
+}
+
+message ValidateReleaseRequest {
+  string preset_id = 1;
+  string release_id = 2;
+  string release_digest = 3;
+}
+
+message ValidateReleaseResponse {
+  string preset_id = 1;
+  string release_id = 2;
+  string release_digest = 3;
+}
+
+message ImportCSVRequest {
+  string input_version_id = 1;
+  // Selects owner-approved input scope, never an arbitrary bucket prefix.
+  string release_id = 2;
+  string release_digest = 3;
+  ani.training.v1.FixedObjectRef object = 4;
+  // Immutable import fact; retries keep the original time and request identity.
+  google.protobuf.Timestamp requested_at = 5;
+}
+
+message ImportCSVResponse {
+  InputVersionView input_version = 1;
+}

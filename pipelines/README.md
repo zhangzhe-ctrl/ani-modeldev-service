@@ -27,7 +27,6 @@ An uploaded registry copy must retain the digest before an actual Run uses it.
 {
   "component_image": "${PUBLISHED_COMPONENT_IMAGE_AT_SHA256}",
   "owner_config_map": "${OWNER_CONFIG_MAP}",
-  "storage_credentials_secret": "${TEMPORARY_STORAGE_CREDENTIALS_SECRET}",
   "storage_class": "${ENV_STORAGE_CLASS}",
   "workspace_size": "${FROZEN_WORKSPACE_CAPACITY}",
   "workspace_access_mode": "${ENV_WORKSPACE_ACCESS_MODE}"
@@ -53,8 +52,7 @@ the path under `reports` must match the frozen workspace contract:
   "s3": {
     "endpoint": "${ENV_HTTPS_S3_ENDPOINT}",
     "region": "${ENV_S3_REGION}",
-    "ca_file": "/etc/modeldev-step/s3-ca.pem",
-    "credentials_file": "/var/run/modeldev-storage/credentials.json"
+    "ca_file": "/etc/modeldev-step/s3-ca.pem"
   }
 }
 ```
@@ -65,16 +63,19 @@ current Pod through the Kubernetes API and checks its UID and Workflow controlle
 owner. The server independently verifies TokenReview, current objects and KFP's
 own task association. No component creates TrainJobs.
 
-Only prepare/publish mount the storage Secret. Its `credentials.json` contains
-issuer-managed temporary `access_key_id`, `secret_access_key`, `session_token`
-and `expires_at`; expired or incomplete credentials fail. Never put values in
-the ConfigMap, IR, Git or command arguments. ENV must supply credential refresh
-for the Run lifetime. The shown token path uses the current bound ServiceAccount
+Prepare and publish request execution-scoped STS credentials from ModelDev using
+their current authenticated workload identity. The SDK refreshes them through
+the same RPC. Only ModelDev control mounts the ordinary restricted RustFS IAM
+user's long-lived credential; no storage Secret is mounted into these components
+or training. Closing executions cannot obtain or renew sessions. Never put values
+in the ConfigMap, IR, Git or command arguments. The shown token path uses the current bound ServiceAccount
 token; its actual audience must match the server's configured TokenReview
 audience. A different projected audience requires an ENV-managed injection and
 the corresponding explicit file path; the compiler does not invent one.
 
-The official KFP `CreatePVC` primitive allocates a distinct Workflow workspace.
+The `workspace-name` component computes `ani-kfp-workspace-<execution UUID>`
+without any API client or storage credential. KFP's official `CreatePVC` then
+allocates that execution's retained workspace without a Workflow ownerReference.
 Its `argostub/createpvc` marker is interpreted by KFP's backend, not run as a
 container image. Prepare/collect/publish mount that PVC; train-wait and close do
 not. Components and the CPU training image use UID/GID 10001. ENV must establish

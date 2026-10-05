@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package ani.modeldev.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/zhangzhe-ctrl/ani-modeldev-service/api/ani/modeldev/v1;modeldevv1";
+
+// Dedicated platform operations. The mTLS Governance caller must delegate
+// current exact-method/tenant-wide authorization on every request.
+service ModelDevOperationsService {
+  rpc InspectExecution(InspectExecutionRequest) returns (InspectExecutionResponse);
+  rpc ReconcileExecution(ReconcileExecutionRequest) returns (ReconcileExecutionResponse);
+  rpc PlanExecutionCleanup(PlanExecutionCleanupRequest) returns (PlanExecutionCleanupResponse);
+  rpc ApplyExecutionCleanup(ApplyExecutionCleanupRequest) returns (ApplyExecutionCleanupResponse);
+}
+
+message InspectExecutionRequest { string execution_id = 1; }
+message ReconcileExecutionRequest { string execution_id = 1; }
+message PlanExecutionCleanupRequest { string execution_id = 1; }
+// The server reconstructs the original exact-UID plan and revalidates it;
+// clients cannot choose a namespace, arbitrary resource, or desired state.
+message ApplyExecutionCleanupRequest {
+  string execution_id = 1;
+  string plan_sha256 = 2;
+}
+
+message OperationResource {
+  string api_version = 1;
+  string kind = 2;
+  string namespace = 3;
+  string name = 4;
+  string uid = 5;
+  string owner_uid = 6;
+  bool api_object_present = 7;
+  bool creation_disabled = 8;
+  bool terminal = 9;
+  optional int32 exit_code = 10;
+}
+
+message InspectExecutionResponse { ExecutionInspection inspection = 1; }
+message ReconcileExecutionResponse { ExecutionInspection inspection = 1; }
+
+message ExecutionInspection {
+  string execution_id = 1;
+  string operation_id = 2;
+  string execution_spec_hash = 3;
+  uint64 owner_revision = 4;
+  string namespace = 5;
+  string namespace_uid = 6;
+  string run_id = 7;
+  string workflow_uid = 8;
+  string pvc_uid = 9;
+  repeated OperationResource resources = 10;
+  string compute_state = 11;
+  string delivery_state = 12;
+  string close_state = 13;
+  string dispatch_state = 14;
+  bool run_create_in_flight = 15;
+  bool training_create_in_flight = 16;
+  uint64 close_generation = 17;
+  string close_reason = 18;
+  string close_review_reason = 19;
+  google.protobuf.Timestamp closed_at = 20;
+  string publication_id = 21;
+  google.protobuf.Timestamp observed_at = 22;
+  google.protobuf.Timestamp retrieved_at = 23;
+  bool observation_stale = 24;
+  string compute_outcome = 25;
+  string cleanup_phase = 26;
+  string cleanup_plan_sha256 = 27;
+}
+
+message PlanExecutionCleanupResponse {
+  string execution_id = 1;
+  string operation_id = 2;
+  string execution_spec_hash = 3;
+  uint64 owner_revision = 4;
+  uint64 close_generation = 5;
+  string namespace_uid = 6;
+  string publication_id = 7;
+  repeated OperationResource targets = 8;
+  string plan_sha256 = 9;
+  repeated string retained = 10;
+  google.protobuf.Timestamp observed_at = 11;
+}
+
+message ApplyExecutionCleanupResponse {
+  string execution_id = 1;
+  string plan_sha256 = 2;
+  string phase = 3;
+  repeated OperationResource requested = 4;
+  repeated OperationResource confirmed_absent = 5;
+  string actor = 6;
+  google.protobuf.Timestamp started_at = 7;
+  google.protobuf.Timestamp completed_at = 8;
+}

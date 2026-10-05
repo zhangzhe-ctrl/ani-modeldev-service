@@ -78,6 +78,9 @@ func TestTrainingCreateFreezesCPUWorkspaceAndFindsUncertainResultWithoutRecreate
 		t.Fatalf("unexpected training containers: %v", containers)
 	}
 	mounts, _, _ := unstructured.NestedSlice(containers[0].(map[string]any), "volumeMounts")
+	if len(mounts) != 2 || mounts[0].(map[string]any)["name"] == mounts[1].(map[string]any)["name"] {
+		t.Fatalf("Trainer strict CRD requires distinct names for input/output mounts: %v", mounts)
+	}
 	inputReadOnly, outputPrivate := false, false
 	for _, item := range mounts {
 		mount := item.(map[string]any)
@@ -90,6 +93,113 @@ func TestTrainingCreateFreezesCPUWorkspaceAndFindsUncertainResultWithoutRecreate
 	}
 	if !inputReadOnly || !outputPrivate || len(mounts) != 2 {
 		t.Fatalf("workspace isolation lost: %v", mounts)
+	}
+}
+
+func TestTrainingUsesFrozenNodeJobTargetThroughCreateFindStopAndObserve(t *testing.T) {
+	f := newTrainingFixture(t)
+	jobs, _, _ := unstructured.NestedSlice(f.runtime, "spec", "template", "spec", "replicatedJobs")
+	jobs[0].(map[string]any)["name"] = "node"
+	if err := unstructured.SetNestedSlice(f.runtime, jobs, "spec", "template", "spec", "replicatedJobs"); err != nil {
+		t.Fatal(err)
+	}
+	spec, _, _ := unstructured.NestedMap(f.runtime, "spec")
+	encoded, err := json.Marshal(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(encoded)
+	f.plan.Snapshot.Release.Runtime.ContentSHA256 = hex.EncodeToString(digest[:])
+	f.plan.Snapshot.Release.Runtime.TargetJobs = []string{"node"}
+	jobName := f.plan.Name + "-node-0"
+	if err := unstructured.SetNestedField(f.job, jobName, "metadata", "name"); err != nil {
+		t.Fatal(err)
+	}
+	owners, _, _ := unstructured.NestedSlice(f.pod, "metadata", "ownerReferences")
+	owners[0].(map[string]any)["name"] = jobName
+	if err := unstructured.SetNestedSlice(f.pod, owners, "metadata", "ownerReferences"); err != nil {
+		t.Fatal(err)
+	}
+	a := f.adapter(t)
+	ctx := context.Background()
+	handle, err := a.CreateTraining(ctx, f.plan)
+	if err != nil {
+		t.Fatalf("create with the frozen node training Job: %v", err)
+	}
+	f.mu.Lock()
+	overrides, _, _ := unstructured.NestedSlice(f.train, "spec", "podTemplateOverrides")
+	f.mu.Unlock()
+	if len(overrides) != 1 {
+		t.Fatalf("expected one workspace override: %v", overrides)
+	}
+	targets, _, _ := unstructured.NestedSlice(overrides[0].(map[string]any), "targetJobs")
+	if len(targets) != 1 || targets[0].(map[string]any)["name"] != "node" {
+		t.Fatalf("workspace and identity must target the frozen node Job: %v", targets)
+	}
+	found, err := a.FindTraining(ctx, f.plan)
+	if err != nil || found != handle {
+		t.Fatalf("find the same node-targeted TrainJob: %+v / %v", found, err)
+	}
+	if err := a.StopTraining(ctx, f.plan, handle); err != nil {
+		t.Fatalf("suspend the same node-targeted TrainJob: %v", err)
+	}
+	f.setTerminal(t, 0)
+	observation, err := a.ObserveTraining(ctx, f.plan, handle, nil)
+	if err != nil || observation.Outcome != "SUCCEEDED" || !observation.WritersAbsent {
+		t.Fatalf("observe the real node Job Pod exit: %+v / %v", observation, err)
+	}
+	for _, resource := range observation.Resources {
+		if resource.Kind == "Job" && resource.Name == jobName && resource.UID == childJobUID {
+			return
+		}
+	}
+	t.Fatal("observation lost the exact node Job identity")
+}
+
+func TestTrainingRejectsUnboundOrUnsafeRuntimeTargetsBeforeCreate(t *testing.T) {
+	for _, mode := range []string{"target mismatch", "missing target", "multiple targets", "invalid target", "wrong training role", "digest mismatch", "multiple Jobs"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newTrainingFixture(t)
+			switch mode {
+			case "target mismatch":
+				f.plan.Snapshot.Release.Runtime.TargetJobs = []string{"node"}
+			case "missing target":
+				f.plan.Snapshot.Release.Runtime.TargetJobs = nil
+			case "multiple targets":
+				f.plan.Snapshot.Release.Runtime.TargetJobs = []string{"trainer", "node"}
+			case "invalid target":
+				f.plan.Snapshot.Release.Runtime.TargetJobs = []string{"../trainer"}
+			case "wrong training role", "multiple Jobs":
+				jobs, _, _ := unstructured.NestedSlice(f.runtime, "spec", "template", "spec", "replicatedJobs")
+				if mode == "wrong training role" {
+					if err := unstructured.SetNestedField(jobs[0].(map[string]any), "dataset-initializer", "template", "metadata", "labels", "trainer.kubeflow.org/trainjob-ancestor-step"); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					jobs = append(jobs, jobs[0])
+				}
+				if err := unstructured.SetNestedSlice(f.runtime, jobs, "spec", "template", "spec", "replicatedJobs"); err != nil {
+					t.Fatal(err)
+				}
+				spec, _, _ := unstructured.NestedMap(f.runtime, "spec")
+				encoded, err := json.Marshal(spec)
+				if err != nil {
+					t.Fatal(err)
+				}
+				digest := sha256.Sum256(encoded)
+				f.plan.Snapshot.Release.Runtime.ContentSHA256 = hex.EncodeToString(digest[:])
+			case "digest mismatch":
+				f.plan.Snapshot.Release.Runtime.ContentSHA256 = strings.Repeat("0", 64)
+			}
+			if _, err := f.adapter(t).CreateTraining(context.Background(), f.plan); !errors.Is(err, biz.ErrRuntimeConflict) {
+				t.Fatalf("unbound or unsafe target must fail closed: %v", err)
+			}
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			if f.posts != 0 || f.train != nil {
+				t.Fatalf("invalid runtime created a TrainJob: posts=%d", f.posts)
+			}
+		})
 	}
 }
 
@@ -364,7 +474,7 @@ func (f *trainingFixture) adapter(t *testing.T) *trainer.Adapter {
 				items = append(items, f.pod)
 			}
 			response = map[string]any{"apiVersion": "v1", "kind": "PodList", "metadata": map[string]any{}, "items": items}
-		case path == "/apis/batch/v1/namespaces/cpu-execution/jobs/"+f.plan.Name+"-trainer-0":
+		case path == "/apis/batch/v1/namespaces/cpu-execution/jobs/"+f.job["metadata"].(map[string]any)["name"].(string):
 			response = f.job
 		case path == "/api/v1/namespaces/cpu-execution/pods/training-pod":
 			response = f.pod

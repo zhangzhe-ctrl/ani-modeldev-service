@@ -102,7 +102,7 @@ func bootstrapFixture(t *testing.T) (*completeFixture, modeldevv1.ModelDevStepSe
 	return bootstrapFixtureWithPool(t, f, pool)
 }
 
-func bootstrapFixtureWithPool(t *testing.T, f *completeFixture, pool *pgxpool.Pool) (*completeFixture, modeldevv1.ModelDevStepServiceClient, *lifecycle.Repository, dynamic.Interface, *s3.Client) {
+func bootstrapFixtureWithPool(t *testing.T, f *completeFixture, pool *pgxpool.Pool, issuers ...biz.StorageCredentialIssuer) (*completeFixture, modeldevv1.ModelDevStepServiceClient, *lifecycle.Repository, dynamic.Interface, *s3.Client) {
 	t.Helper()
 	admissions, dispatch, facts := execution.New(pool), submission.New(pool), lifecycle.New(pool)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -130,10 +130,10 @@ func bootstrapFixtureWithPool(t *testing.T, f *completeFixture, pool *pgxpool.Po
 	store := s3.New(s3.Options{Region: "us-east-1", Credentials: aws.CredentialsProviderFunc(func(context.Context) (aws.Credentials, error) {
 		return aws.Credentials{AccessKeyID: "synthetic-key", SecretAccessKey: "synthetic-secret"}, nil
 	}), BaseEndpoint: aws.String(f.storage.URL), UsePathStyle: true, HTTPClient: f.storage.Client(), RetryMaxAttempts: 1, RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired, ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired})
-	return f, newFixtureRuntimeClient(t, f, pool, kube, store, runs), facts, kube, store
+	return f, newFixtureRuntimeClient(t, f, pool, kube, store, runs, issuers...), facts, kube, store
 }
 
-func newFixtureRuntimeClient(t *testing.T, f *completeFixture, pool *pgxpool.Pool, kube dynamic.Interface, store *s3.Client, runs *kfp.Client) modeldevv1.ModelDevStepServiceClient {
+func newFixtureRuntimeClient(t *testing.T, f *completeFixture, pool *pgxpool.Pool, kube dynamic.Interface, store *s3.Client, runs *kfp.Client, issuers ...biz.StorageCredentialIssuer) modeldevv1.ModelDevStepServiceClient {
 	t.Helper()
 	identity, err := stepidentity.New(kube, "ani-modeldev-managed-step")
 	if err != nil {
@@ -149,7 +149,7 @@ func newFixtureRuntimeClient(t *testing.T, f *completeFixture, pool *pgxpool.Poo
 	if err != nil {
 		t.Fatal(err)
 	}
-	client, stop := startMainFlowStepHandler(t, service.NewRuntimeStep(steps, managed))
+	client, stop := startMainFlowStepHandler(t, service.NewRuntimeStep(steps, managed, issuers...))
 	t.Cleanup(stop)
 	return client
 }

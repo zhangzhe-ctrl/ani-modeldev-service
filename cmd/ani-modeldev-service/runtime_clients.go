@@ -23,6 +23,7 @@ import (
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 	conf "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/conf/v1"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/kfp"
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/storagecredentials"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/traininglogs"
 	"k8s.io/client-go/dynamic"
 	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -30,13 +31,14 @@ import (
 )
 
 type runtimeClients struct {
-	certificate tls.Certificate
-	binding     biz.PipelineDispatchBinding
-	kube        dynamic.Interface
-	runs        *kfp.Client
-	store       *s3.Client
-	logs        biz.TrainingLogReader
-	close       func()
+	certificate   tls.Certificate
+	binding       biz.PipelineDispatchBinding
+	kube          dynamic.Interface
+	runs          *kfp.Client
+	store         *s3.Client
+	storageIssuer *storagecredentials.Issuer
+	logs          biz.TrainingLogReader
+	close         func()
 }
 
 func loadRuntimeClients(config *conf.ManagedRuntime) (runtimeClients, error) {
@@ -91,6 +93,17 @@ func loadRuntimeClients(config *conf.ManagedRuntime) (runtimeClients, error) {
 	if _, err := credentials.Retrieve(context.Background()); err != nil {
 		return failure()
 	}
+	storageMaterial, err := runtimeStorageMaterial(config.ObjectStorage.CredentialsFile)
+	if err != nil {
+		return failure()
+	}
+	issuer, err := storagecredentials.New(storagecredentials.Config{
+		Endpoint: config.ObjectStorage.Endpoint, Region: config.ObjectStorage.Region, RootCAs: storageCA,
+		Credentials: credentials, Bindings: storageMaterial.STSBindings, Timeout: config.ApiTimeout.AsDuration(),
+	})
+	if err != nil {
+		return failure()
+	}
 	timeout := config.ApiTimeout.AsDuration()
 	kubeConfig := &rest.Config{
 		Host: config.Kubernetes.Endpoint, BearerTokenFile: config.Kubernetes.TokenFile,
@@ -129,7 +142,7 @@ func loadRuntimeClients(config *conf.ManagedRuntime) (runtimeClients, error) {
 		HTTPClient: storageHTTP, Credentials: credentials, RetryMaxAttempts: 1,
 		RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired, ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired,
 	})
-	return runtimeClients{certificate: certificate, binding: binding, kube: kube, runs: runs, store: store, logs: traininglogs.New(core), close: func() { kubeHTTP.CloseIdleConnections(); storageHTTP.CloseIdleConnections() }}, nil
+	return runtimeClients{certificate: certificate, binding: binding, kube: kube, runs: runs, store: store, storageIssuer: issuer, logs: traininglogs.New(core), close: func() { kubeHTTP.CloseIdleConnections(); storageHTTP.CloseIdleConnections(); issuer.Close() }}, nil
 }
 
 type mountedPipelineToken struct {
@@ -166,22 +179,30 @@ func mountedStorageCredentials(file string) aws.CredentialsProvider {
 		if err := ctx.Err(); err != nil {
 			return aws.Credentials{}, err
 		}
-		data, err := readCommandMaterial(file, 16<<10)
+		value, err := runtimeStorageMaterial(file)
 		if err != nil {
-			return aws.Credentials{}, errors.New("storage credential unavailable")
-		}
-		var value struct {
-			AccessKeyID     string `json:"access_key_id"`
-			SecretAccessKey string `json:"secret_access_key"`
-			SessionToken    string `json:"session_token,omitempty"`
-		}
-		if decodeRuntimeMaterial(data, &value) != nil || value.AccessKeyID == "" || value.SecretAccessKey == "" || strings.ContainsAny(value.AccessKeyID+value.SecretAccessKey+value.SessionToken, " \t\r\n") {
 			return aws.Credentials{}, errors.New("storage credential invalid")
 		}
 		// Read on every SDK retrieval so mounted rotation does not require an
 		// application restart. Never consult ambient AWS environment variables.
 		return aws.Credentials{AccessKeyID: value.AccessKeyID, SecretAccessKey: value.SecretAccessKey, SessionToken: value.SessionToken, Source: "mounted-runtime-material"}, nil
 	})
+}
+
+type storageMaterial struct {
+	AccessKeyID     string                       `json:"access_key_id"`
+	SecretAccessKey string                       `json:"secret_access_key"`
+	SessionToken    string                       `json:"session_token,omitempty"`
+	STSBindings     []storagecredentials.Binding `json:"sts_bindings"`
+}
+
+func runtimeStorageMaterial(file string) (storageMaterial, error) {
+	data, err := readCommandMaterial(file, 64<<10)
+	var value storageMaterial
+	if err != nil || decodeRuntimeMaterial(data, &value) != nil || value.AccessKeyID == "" || value.SecretAccessKey == "" || value.SessionToken != "" || strings.ContainsAny(value.AccessKeyID+value.SecretAccessKey, " \t\r\n") {
+		return storageMaterial{}, errors.New("storage issuer material invalid")
+	}
+	return value, nil
 }
 
 func runtimeRoots(file string) (*x509.CertPool, error) {

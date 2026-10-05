@@ -36,10 +36,15 @@ type CommandTLS struct {
 // configured private CA and current certificate validity; a prior TLS handshake
 // is not permanent access.
 func NewGovernanceCommandServer(c *conf.Server_GRPC, security CommandTLS, command modeldevv1.ModelDevCommandServiceServer, admission modeldevv1.ModelDevAdmissionServiceServer, middlewares ...middleware.Middleware) (*kratosgrpc.Server, error) {
-	return newGovernanceServer(c, security, command, admission, nil, middlewares...)
+	return newGovernanceServer(c, security, command, admission, nil, GovernanceServices{}, middlewares...)
 }
 
-func newGovernanceServer(c *conf.Server_GRPC, security CommandTLS, command modeldevv1.ModelDevCommandServiceServer, admission modeldevv1.ModelDevAdmissionServiceServer, query modeldevv1.ModelDevQueryServiceServer, middlewares ...middleware.Middleware) (*kratosgrpc.Server, error) {
+type GovernanceServices struct {
+	Management modeldevv1.ModelDevManagementServiceServer
+	Operations modeldevv1.ModelDevOperationsServiceServer
+}
+
+func newGovernanceServer(c *conf.Server_GRPC, security CommandTLS, command modeldevv1.ModelDevCommandServiceServer, admission modeldevv1.ModelDevAdmissionServiceServer, query modeldevv1.ModelDevQueryServiceServer, extra GovernanceServices, middlewares ...middleware.Middleware) (*kratosgrpc.Server, error) {
 	if c == nil || security.ClientCAs == nil || len(security.Certificate.Certificate) == 0 || security.Certificate.PrivateKey == nil || security.GovernanceDNSName == "" || strings.ContainsAny(security.GovernanceDNSName, "* /\t\r\n") || command == nil {
 		return nil, errors.New("explicit command TLS and handler configuration required")
 	}
@@ -73,6 +78,9 @@ func newGovernanceServer(c *conf.Server_GRPC, security CommandTLS, command model
 			info.FullMethod == modeldevv1.ModelDevCommandService_AcceptExecution_FullMethodName ||
 			(admission != nil && info.FullMethod == modeldevv1.ModelDevAdmissionService_ResolveAdmission_FullMethodName)
 		isQuery := query != nil && (info.FullMethod == modeldevv1.ModelDevQueryService_GetExecution_FullMethodName || info.FullMethod == modeldevv1.ModelDevQueryService_ListExecutions_FullMethodName || info.FullMethod == modeldevv1.ModelDevQueryService_GetExecutionLogs_FullMethodName || info.FullMethod == modeldevv1.ModelDevQueryService_ListExecutionArtifacts_FullMethodName || info.FullMethod == modeldevv1.ModelDevQueryService_AuthorizeArtifactDownload_FullMethodName)
+		isQuery = isQuery || (query != nil && (info.FullMethod == modeldevv1.ModelDevQueryService_ListPresets_FullMethodName || info.FullMethod == modeldevv1.ModelDevQueryService_GetInputVersion_FullMethodName || info.FullMethod == modeldevv1.ModelDevQueryService_ListInputVersions_FullMethodName))
+		isQuery = isQuery || (extra.Management != nil && (info.FullMethod == modeldevv1.ModelDevManagementService_ImportRelease_FullMethodName || info.FullMethod == modeldevv1.ModelDevManagementService_ValidateRelease_FullMethodName || info.FullMethod == modeldevv1.ModelDevManagementService_ImportCSV_FullMethodName))
+		isQuery = isQuery || (extra.Operations != nil && (info.FullMethod == modeldevv1.ModelDevOperationsService_InspectExecution_FullMethodName || info.FullMethod == modeldevv1.ModelDevOperationsService_ReconcileExecution_FullMethodName || info.FullMethod == modeldevv1.ModelDevOperationsService_PlanExecutionCleanup_FullMethodName || info.FullMethod == modeldevv1.ModelDevOperationsService_ApplyExecutionCleanup_FullMethodName))
 		allowed = allowed || isQuery
 		if !allowed {
 			return nil, status.Error(codes.PermissionDenied, "Governance delivery does not permit this method")
@@ -133,6 +141,12 @@ func newGovernanceServer(c *conf.Server_GRPC, security CommandTLS, command model
 	}
 	if query != nil {
 		modeldevv1.RegisterModelDevQueryServiceServer(s, query)
+	}
+	if extra.Management != nil {
+		modeldevv1.RegisterModelDevManagementServiceServer(s, extra.Management)
+	}
+	if extra.Operations != nil {
+		modeldevv1.RegisterModelDevOperationsServiceServer(s, extra.Operations)
 	}
 	return s, nil
 }

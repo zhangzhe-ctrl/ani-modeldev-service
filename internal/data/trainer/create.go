@@ -138,7 +138,7 @@ func (a *Adapter) trainingRequest(ctx context.Context, plan biz.TrainingPlan) (*
 	if err != nil {
 		return nil, biz.ErrTrainingUnavailable
 	}
-	if runtime == nil || runtime.GetAPIVersion() != "trainer.kubeflow.org/v1alpha1" || runtime.GetKind() != snapshot.Release.Runtime.Kind || runtime.GetName() != snapshot.Release.Runtime.Name || runtime.GetNamespace() != runtimeNamespace || runtime.GetDeletionTimestamp() != nil || !safeRuntime(runtime, snapshot.Release.Runtime.ContentSHA256) {
+	if runtime == nil || runtime.GetAPIVersion() != "trainer.kubeflow.org/v1alpha1" || runtime.GetKind() != snapshot.Release.Runtime.Kind || runtime.GetName() != snapshot.Release.Runtime.Name || runtime.GetNamespace() != runtimeNamespace || runtime.GetDeletionTimestamp() != nil || !safeRuntime(runtime, snapshot.Release.Runtime.ContentSHA256, snapshot.Release.Runtime.TargetJobs[0]) {
 		return nil, biz.ErrRuntimeConflict
 	}
 
@@ -153,12 +153,12 @@ func (a *Adapter) trainingRequest(ctx context.Context, plan biz.TrainingPlan) (*
 				"requests": map[string]any{"cpu": resource.NewMilliQuantity(snapshot.Resources.RequestMillicpu, resource.DecimalSI).String(), "memory": resource.NewQuantity(snapshot.Resources.RequestMemoryBytes, resource.BinarySI).String()},
 				"limits":   map[string]any{"cpu": resource.NewMilliQuantity(snapshot.Resources.LimitMillicpu, resource.DecimalSI).String(), "memory": resource.NewQuantity(snapshot.Resources.LimitMemoryBytes, resource.BinarySI).String()},
 			}},
-			"podTemplateOverrides": []any{map[string]any{"targetJobs": []any{map[string]any{"name": "trainer"}}, "spec": map[string]any{
+			"podTemplateOverrides": []any{map[string]any{"targetJobs": []any{map[string]any{"name": snapshot.Release.Runtime.TargetJobs[0]}}, "spec": map[string]any{
 				"serviceAccountName": snapshot.Environment.Identities.TrainerServiceAccount,
-				"volumes":            []any{map[string]any{"name": "workspace", "persistentVolumeClaim": map[string]any{"claimName": workspace.PVCName}}},
+				"volumes":            []any{map[string]any{"name": "input", "persistentVolumeClaim": map[string]any{"claimName": workspace.PVCName}}, map[string]any{"name": "output", "persistentVolumeClaim": map[string]any{"claimName": workspace.PVCName}}},
 				"containers": []any{map[string]any{"name": "node", "volumeMounts": []any{
-					map[string]any{"name": "workspace", "mountPath": "/inputs", "subPath": workspace.InputSubpath, "readOnly": true},
-					map[string]any{"name": "workspace", "mountPath": "/outputs", "subPath": workspace.TrainingSubpath, "readOnly": false},
+					map[string]any{"name": "input", "mountPath": "/inputs", "subPath": workspace.InputSubpath, "readOnly": true},
+					map[string]any{"name": "output", "mountPath": "/outputs", "subPath": workspace.TrainingSubpath, "readOnly": false},
 				}}},
 			}}},
 		},
@@ -211,7 +211,7 @@ func validTrainingPlan(plan biz.TrainingPlan) bool {
 			return false
 		}
 	}
-	if s.Release.Runtime.APIGroup != "trainer.kubeflow.org" || (s.Release.Runtime.Kind != "TrainingRuntime" && s.Release.Runtime.Kind != "ClusterTrainingRuntime") || len(validation.IsDNS1123Subdomain(s.Release.Runtime.Name)) != 0 || !reflect.DeepEqual(s.Release.Runtime.TargetJobs, []string{"trainer"}) {
+	if s.Release.Runtime.APIGroup != "trainer.kubeflow.org" || (s.Release.Runtime.Kind != "TrainingRuntime" && s.Release.Runtime.Kind != "ClusterTrainingRuntime") || len(validation.IsDNS1123Subdomain(s.Release.Runtime.Name)) != 0 || len(s.Release.Runtime.TargetJobs) != 1 || len(validation.IsDNS1123Label(s.Release.Runtime.TargetJobs[0])) != 0 {
 		return false
 	}
 	if len(s.Program.Command) == 0 || !strings.Contains(s.Program.ImageDigest, "@sha256:") || s.Resources.Nodes != 1 || s.Resources.ProcessesPerNode != 1 || s.Resources.RequestMillicpu <= 0 || s.Resources.LimitMillicpu < s.Resources.RequestMillicpu || s.Resources.RequestMemoryBytes <= 0 || s.Resources.LimitMemoryBytes < s.Resources.RequestMemoryBytes {
@@ -220,7 +220,7 @@ func validTrainingPlan(plan biz.TrainingPlan) bool {
 	return true
 }
 
-func safeRuntime(runtime *unstructured.Unstructured, expectedSHA string) bool {
+func safeRuntime(runtime *unstructured.Unstructured, expectedSHA, targetJob string) bool {
 	spec, found, err := unstructured.NestedMap(runtime.Object, "spec")
 	if err != nil || !found {
 		return false
@@ -248,7 +248,9 @@ func safeRuntime(runtime *unstructured.Unstructured, expectedSHA string) bool {
 		return false
 	}
 	job, ok := jobs[0].(map[string]any)
-	if !ok || job["name"] != "trainer" {
+	// The frozen target names the Job; its ancestor-step label below identifies
+	// the training role independently of that name.
+	if !ok || job["name"] != targetJob {
 		return false
 	}
 	for _, fields := range [][]string{{"replicas"}, {"template", "spec", "parallelism"}, {"template", "spec", "completions"}} {

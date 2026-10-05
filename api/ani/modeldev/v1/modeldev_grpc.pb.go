@@ -653,6 +653,7 @@ var ModelDevCommandService_ServiceDesc = grpc.ServiceDesc{
 const (
 	ModelDevStepService_BeginExecution_FullMethodName            = "/ani.modeldev.v1.ModelDevStepService/BeginExecution"
 	ModelDevStepService_GetExecutionConfiguration_FullMethodName = "/ani.modeldev.v1.ModelDevStepService/GetExecutionConfiguration"
+	ModelDevStepService_GetStorageCredentials_FullMethodName     = "/ani.modeldev.v1.ModelDevStepService/GetStorageCredentials"
 	ModelDevStepService_EnsureTraining_FullMethodName            = "/ani.modeldev.v1.ModelDevStepService/EnsureTraining"
 	ModelDevStepService_GetTrainingStatus_FullMethodName         = "/ani.modeldev.v1.ModelDevStepService/GetTrainingStatus"
 	ModelDevStepService_ReportStepResult_FullMethodName          = "/ani.modeldev.v1.ModelDevStepService/ReportStepResult"
@@ -669,6 +670,9 @@ const (
 type ModelDevStepServiceClient interface {
 	BeginExecution(ctx context.Context, in *BeginExecutionRequest, opts ...grpc.CallOption) (*BeginExecutionResponse, error)
 	GetExecutionConfiguration(ctx context.Context, in *GetExecutionConfigurationRequest, opts ...grpc.CallOption) (*GetExecutionConfigurationResponse, error)
+	// Temporary object access is derived from the current execution snapshot.
+	// Every refresh repeats the same workload and Run authority verification.
+	GetStorageCredentials(ctx context.Context, in *GetStorageCredentialsRequest, opts ...grpc.CallOption) (*GetStorageCredentialsResponse, error)
 	EnsureTraining(ctx context.Context, in *EnsureTrainingRequest, opts ...grpc.CallOption) (*EnsureTrainingResponse, error)
 	GetTrainingStatus(ctx context.Context, in *GetTrainingStatusRequest, opts ...grpc.CallOption) (*GetTrainingStatusResponse, error)
 	ReportStepResult(ctx context.Context, in *ReportStepResultRequest, opts ...grpc.CallOption) (*ReportStepResultResponse, error)
@@ -697,6 +701,16 @@ func (c *modelDevStepServiceClient) GetExecutionConfiguration(ctx context.Contex
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetExecutionConfigurationResponse)
 	err := c.cc.Invoke(ctx, ModelDevStepService_GetExecutionConfiguration_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modelDevStepServiceClient) GetStorageCredentials(ctx context.Context, in *GetStorageCredentialsRequest, opts ...grpc.CallOption) (*GetStorageCredentialsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetStorageCredentialsResponse)
+	err := c.cc.Invoke(ctx, ModelDevStepService_GetStorageCredentials_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -753,6 +767,9 @@ func (c *modelDevStepServiceClient) RequestExecutionClose(ctx context.Context, i
 type ModelDevStepServiceServer interface {
 	BeginExecution(context.Context, *BeginExecutionRequest) (*BeginExecutionResponse, error)
 	GetExecutionConfiguration(context.Context, *GetExecutionConfigurationRequest) (*GetExecutionConfigurationResponse, error)
+	// Temporary object access is derived from the current execution snapshot.
+	// Every refresh repeats the same workload and Run authority verification.
+	GetStorageCredentials(context.Context, *GetStorageCredentialsRequest) (*GetStorageCredentialsResponse, error)
 	EnsureTraining(context.Context, *EnsureTrainingRequest) (*EnsureTrainingResponse, error)
 	GetTrainingStatus(context.Context, *GetTrainingStatusRequest) (*GetTrainingStatusResponse, error)
 	ReportStepResult(context.Context, *ReportStepResultRequest) (*ReportStepResultResponse, error)
@@ -772,6 +789,9 @@ func (UnimplementedModelDevStepServiceServer) BeginExecution(context.Context, *B
 }
 func (UnimplementedModelDevStepServiceServer) GetExecutionConfiguration(context.Context, *GetExecutionConfigurationRequest) (*GetExecutionConfigurationResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetExecutionConfiguration not implemented")
+}
+func (UnimplementedModelDevStepServiceServer) GetStorageCredentials(context.Context, *GetStorageCredentialsRequest) (*GetStorageCredentialsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetStorageCredentials not implemented")
 }
 func (UnimplementedModelDevStepServiceServer) EnsureTraining(context.Context, *EnsureTrainingRequest) (*EnsureTrainingResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method EnsureTraining not implemented")
@@ -838,6 +858,24 @@ func _ModelDevStepService_GetExecutionConfiguration_Handler(srv interface{}, ctx
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModelDevStepServiceServer).GetExecutionConfiguration(ctx, req.(*GetExecutionConfigurationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModelDevStepService_GetStorageCredentials_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetStorageCredentialsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModelDevStepServiceServer).GetStorageCredentials(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModelDevStepService_GetStorageCredentials_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModelDevStepServiceServer).GetStorageCredentials(ctx, req.(*GetStorageCredentialsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -928,6 +966,10 @@ var ModelDevStepService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetExecutionConfiguration",
 			Handler:    _ModelDevStepService_GetExecutionConfiguration_Handler,
+		},
+		{
+			MethodName: "GetStorageCredentials",
+			Handler:    _ModelDevStepService_GetStorageCredentials_Handler,
 		},
 		{
 			MethodName: "EnsureTraining",

@@ -46,6 +46,10 @@ func buildCommandServerWithPool(listener *conf.Server_GRPC, config *conf.Governa
 }
 
 func buildCommandServerWithQuery(listener *conf.Server_GRPC, config *conf.GovernanceCommand, pool *pgxpool.Pool, query modeldevv1.ModelDevQueryServiceServer, middlewares ...middleware.Middleware) (*kratosgrpc.Server, error) {
+	return buildCommandServerWithCapabilities(listener, config, pool, query, nil, nil, middlewares...)
+}
+
+func buildCommandServerWithCapabilities(listener *conf.Server_GRPC, config *conf.GovernanceCommand, pool *pgxpool.Pool, query modeldevv1.ModelDevQueryServiceServer, verifier biz.CSVVerifier, operations modeldevv1.ModelDevOperationsServiceServer, middlewares ...middleware.Middleware) (*kratosgrpc.Server, error) {
 	failed := func(message string) (*kratosgrpc.Server, error) { return nil, errors.New(message) }
 	ca, err := readCommandMaterial(config.ClientCaFile, 1<<20)
 	if err != nil {
@@ -71,6 +75,7 @@ func buildCommandServerWithQuery(listener *conf.Server_GRPC, config *conf.Govern
 	defer cancel()
 	command := service.NewCommand(execution.New(pool))
 	var admission modeldevv1.ModelDevAdmissionServiceServer
+	var management modeldevv1.ModelDevManagementServiceServer
 	if resolution := config.AdmissionResolution; resolution != nil {
 		sources := make([]admissionfacts.FileSource, len(resolution.FactsFiles))
 		for i, file := range resolution.FactsFiles {
@@ -84,9 +89,17 @@ func buildCommandServerWithQuery(listener *conf.Server_GRPC, config *conf.Govern
 		if err := releases.Check(ctx); err != nil {
 			return failed("command admission catalogue unavailable or invalid")
 		}
-		admission = service.NewAdmission(biz.NewManagedAdmissionResolver(releases, input.New(pool), facts))
+		inputs := input.New(pool)
+		admission = service.NewAdmission(biz.NewManagedAdmissionResolver(releases, inputs, facts))
+		materials := biz.NewManagedMaterials(releases, facts, inputs, biz.NewInputImporter(inputs, verifier))
+		management = service.NewManagement(materials)
+		if query == nil {
+			query = service.NewQuery(execution.New(pool), nil).WithMaterials(materials)
+		} else if concrete, ok := query.(*service.Query); ok {
+			concrete.WithMaterials(materials)
+		}
 	}
-	s, err := server.NewGovernanceQueryServer(listener, server.CommandTLS{Certificate: certificate, ClientCAs: roots, GovernanceDNSName: config.GovernanceDnsName}, command, admission, query, middlewares...)
+	s, err := server.NewGovernanceServicesServer(listener, server.CommandTLS{Certificate: certificate, ClientCAs: roots, GovernanceDNSName: config.GovernanceDnsName}, command, admission, query, server.GovernanceServices{Management: management, Operations: operations}, middlewares...)
 	if err != nil {
 		return failed("command listener configuration invalid")
 	}

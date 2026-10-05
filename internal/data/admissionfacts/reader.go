@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"sort"
 	"strings"
 	"syscall"
 	"unicode/utf8"
@@ -76,6 +77,26 @@ type documentKey struct {
 	tenantID      string
 	releaseID     string
 	releaseDigest string
+}
+
+func (reader *Reader) ListReleaseSelections(ctx context.Context, tenantID string) ([]biz.ManagedReleaseSelection, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if !canonicalID(tenantID) {
+		return nil, biz.ErrInvalidAdmission
+	}
+	if reader == nil {
+		return nil, biz.ErrAdmissionEnvironmentNotReady
+	}
+	result := make([]biz.ManagedReleaseSelection, 0)
+	for key := range reader.documents {
+		if key.tenantID == tenantID {
+			result = append(result, biz.ManagedReleaseSelection{ReleaseID: key.releaseID, ReleaseDigest: key.releaseDigest})
+		}
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].ReleaseID < result[j].ReleaseID })
+	return result, nil
 }
 
 var _ biz.AdmissionFactsReader = (*Reader)(nil)

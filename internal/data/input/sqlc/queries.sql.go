@@ -123,6 +123,68 @@ func (q *Queries) InsertFrozenImport(ctx context.Context, arg InsertFrozenImport
 	return i, err
 }
 
+const listInputVersions = `-- name: ListInputVersions :many
+SELECT tenant_id, input_version_id, request_id, actor, requested_at, storage_connection_id, bucket, approved_prefix, object_key, object_version_id, size_bytes, sha256, state, credential_reference, verified_at, verified_schema_version, verified_row_count, verified_feature_count, failure_code, failure_observed_at FROM modeldev_input_versions
+WHERE tenant_id = $1::uuid
+  AND ($2::text = '' OR state = $2::text)
+  AND ($3::uuid IS NULL OR input_version_id > $3::uuid)
+ORDER BY input_version_id
+LIMIT $4::integer
+`
+
+type ListInputVersionsParams struct {
+	TenantID    pgtype.UUID
+	StateFilter string
+	AfterID     pgtype.UUID
+	RowLimit    int32
+}
+
+func (q *Queries) ListInputVersions(ctx context.Context, arg ListInputVersionsParams) ([]ModeldevInputVersion, error) {
+	rows, err := q.db.Query(ctx, listInputVersions,
+		arg.TenantID,
+		arg.StateFilter,
+		arg.AfterID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ModeldevInputVersion
+	for rows.Next() {
+		var i ModeldevInputVersion
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.InputVersionID,
+			&i.RequestID,
+			&i.Actor,
+			&i.RequestedAt,
+			&i.StorageConnectionID,
+			&i.Bucket,
+			&i.ApprovedPrefix,
+			&i.ObjectKey,
+			&i.ObjectVersionID,
+			&i.SizeBytes,
+			&i.Sha256,
+			&i.State,
+			&i.CredentialReference,
+			&i.VerifiedAt,
+			&i.VerifiedSchemaVersion,
+			&i.VerifiedRowCount,
+			&i.VerifiedFeatureCount,
+			&i.FailureCode,
+			&i.FailureObservedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockInputVersion = `-- name: LockInputVersion :one
 SELECT tenant_id, input_version_id, request_id, actor, requested_at, storage_connection_id, bucket, approved_prefix, object_key, object_version_id, size_bytes, sha256, state, credential_reference, verified_at, verified_schema_version, verified_row_count, verified_feature_count, failure_code, failure_observed_at FROM modeldev_input_versions
 WHERE tenant_id = $1::uuid

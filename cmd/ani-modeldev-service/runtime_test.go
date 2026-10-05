@@ -26,6 +26,7 @@ import (
 	contractpb "github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01/protobuf"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 	conf "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/conf/v1"
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/storagecredentials"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/submission"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/testsupport/commandtls"
 	"google.golang.org/grpc"
@@ -246,11 +247,18 @@ func runtimeAppFixture(t *testing.T) configuredRuntimeFixture {
 	for stepAddress == config.Server.Grpc.Addr || stepAddress == config.Server.Admin.Addr {
 		stepAddress = reserveAddress(t)
 	}
+	storageBytes, err := json.Marshal(storageMaterial{AccessKeyID: "synthetic-key", SecretAccessKey: "synthetic-secret", STSBindings: []storagecredentials.Binding{
+		{TenantID: admission.TenantID, Purpose: "prepare", ConnectionID: snapshot.Input.Object.StorageConnectionID, Bucket: snapshot.Input.Object.Bucket, Prefix: "fixed/input"},
+		{TenantID: admission.TenantID, Purpose: "publish", ConnectionID: snapshot.PublicationScope.StorageConnectionID, Bucket: snapshot.PublicationScope.Bucket, Prefix: snapshot.PublicationScope.ApprovedPrefix},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	config.Runtime = &conf.ManagedRuntime{
 		Step: &conf.Server_GRPC{Network: "tcp", Addr: stepAddress, Timeout: durationpb.New(3 * time.Second)}, CertificateFile: config.Command.CertificateFile, PrivateKeyFile: config.Command.PrivateKeyFile,
 		Kubernetes:    &conf.HTTPSWorkloadConnection{Endpoint: peer.URL, CaFile: caFile, TokenFile: write("kube-token", []byte("synthetic-kube-owner"))},
 		Pipeline:      &conf.HTTPSWorkloadConnection{Endpoint: peer.URL, CaFile: caFile, TokenFile: write("pipeline-token", []byte("synthetic-kfp-owner"))},
-		ObjectStorage: &conf.ObjectStorageConnection{Endpoint: peer.URL, CaFile: caFile, Region: "us-east-1", CredentialsFile: write("storage-credentials", []byte(`{"access_key_id":"synthetic-key","secret_access_key":"synthetic-secret"}`)), ConnectionId: snapshot.PublicationScope.StorageConnectionID, MaxObjectBytes: 64 << 20},
+		ObjectStorage: &conf.ObjectStorageConnection{Endpoint: peer.URL, CaFile: caFile, Region: "us-east-1", CredentialsFile: write("storage-credentials", storageBytes), ConnectionId: snapshot.PublicationScope.StorageConnectionID, MaxObjectBytes: 64 << 20},
 		BindingFile:   write("binding.json", bindingBytes), BindingSha256: hex.EncodeToString(bindingDigest[:]), TokenAudience: "ani-modeldev-managed-step", ApiTimeout: durationpb.New(3 * time.Second), DispatchInterval: durationpb.New(100 * time.Millisecond), DispatchBatchSize: 4,
 	}
 	return configuredRuntimeFixture{config: config, openPool: openPool, certificates: certificates, admission: admission, peer: peer, posts: posts, reviews: reviews}
