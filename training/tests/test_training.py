@@ -365,7 +365,7 @@ class FixedCSVTrainingTest(unittest.TestCase):
             ]
             self.assertEqual(persisted, metrics)
 
-    def test_managed_slow_recipe_stops_after_observed_optimization_without_success_artifacts(self):
+    def test_managed_slow_recipe_remains_stoppable_after_owner_window_without_success_artifacts(self):
         dependency = self.run_python(
             "-c", "import torch; assert torch.version.cuda is None, 'CPU wheel required'"
         )
@@ -406,22 +406,54 @@ class FixedCSVTrainingTest(unittest.TestCase):
                                 break
                             else:
                                 time.sleep(0.02)
-                    self.assertGreaterEqual(
-                        len(observed_metrics), 3,
-                        "slow-stop must perform real optimization before the stop request\n"
+                        self.assertGreaterEqual(
+                            len(observed_metrics), 3,
+                            "slow-stop must perform real optimization before the stop request\n"
+                            + stderr_path.read_text(encoding="utf-8"),
+                        )
+                        # Real close-owner/API reconciliation can take more than
+                        # ten seconds after an observed step. Keep training real
+                        # and observe its progress throughout that stop window.
+                        hold_started = time.monotonic()
+                        hold_deadline = hold_started + 12.5
+                        while time.monotonic() < hold_deadline:
+                            line = reader.readline()
+                            if line:
+                                event = json.loads(line)
+                                events.append(event)
+                                if event.get("name") == "train.loss":
+                                    observed_metrics.append(event)
+                            else:
+                                time.sleep(0.02)
+                    held_seconds = time.monotonic() - hold_started
+                    self.assertGreaterEqual(held_seconds, 12)
+                    self.assertIsNone(
+                        process.poll(),
+                        "stop must target a still-running training process after the owner window; "
+                        f"held_seconds={held_seconds:.3f}, exit={process.returncode}, "
+                        f"real_metrics={len(observed_metrics)}\n"
                         + stderr_path.read_text(encoding="utf-8"),
                     )
+                    self.assertGreaterEqual(
+                        len(observed_metrics), 9,
+                        "slow-stop must continue real optimization during the owner window",
+                    )
+                    self.assertLess(len(observed_metrics), 48)
                     descriptors = [event for event in events if event.get("schema") == "ani.cpu03.recipe.v1"]
                     self.assertEqual(len(descriptors), 1)
                     self.assertEqual(descriptors[0]["recipe"], "slow-stop")
                     self.assertEqual(descriptors[0]["max_steps"], 48)
-                    self.assertEqual(descriptors[0]["step_delay_seconds"], 0.2)
-                    self.assertEqual(descriptors[0]["deadline_seconds"], 30)
+                    self.assertEqual(descriptors[0]["step_delay_seconds"], 2)
+                    self.assertEqual(descriptors[0]["deadline_seconds"], 180)
                     self.assertTrue(all(math.isfinite(event["value"]) for event in observed_metrics))
-                    self.assertIsNone(process.poll(), "stop must target a still-running training process")
                     process.terminate()
                     exit_code = process.wait(timeout=10)
-                    self.assertIn(exit_code, (-signal.SIGTERM, 128 + signal.SIGTERM))
+                    self.assertEqual(exit_code, 128 + signal.SIGTERM)
+                    print(
+                        f"slow-stop owner-window behavior: held_seconds={held_seconds:.3f}, "
+                        f"real_metrics={len(observed_metrics)}, exit={exit_code}",
+                        flush=True,
+                    )
                 finally:
                     if process.poll() is None:
                         process.kill()
@@ -438,6 +470,11 @@ class FixedCSVTrainingTest(unittest.TestCase):
             self.assertGreaterEqual(len(persisted), 3)
             self.assertLess(len(persisted), 48)
             self.assertEqual([event["step"] for event in persisted], list(range(1, len(persisted) + 1)))
+            emitted_metrics = [
+                event for event in map(json.loads, stdout_path.read_text(encoding="utf-8").splitlines())
+                if event.get("name") == "train.loss"
+            ]
+            self.assertEqual(persisted, emitted_metrics)
 
 
 if __name__ == "__main__":

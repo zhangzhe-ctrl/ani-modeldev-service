@@ -24,8 +24,9 @@ Three registered internal recipes use this same workload:
 - `success`: complete 48 steps and emit candidate files and their digests.
 - `fail`: complete five optimizer updates, exit with `CPU03_RECIPE_FAILURE`,
   and retain only metrics.
-- `slow-stop`: perform real optimization with a fixed 0.2-second delay after each
-  update and a 30-second POSIX alarm. SIGTERM exits 143 while closing open files.
+- `slow-stop`: perform real optimization with a fixed 2-second delay after each
+  update and a 180-second POSIX alarm, leaving time for the managed close path
+  to interrupt an active trainer. SIGTERM exits 143 while closing open files.
 
 These recipes are internal acceptance commands, not ordinary user parameters or
 a second training API. Callers cannot supply custom failure steps or time budgets.

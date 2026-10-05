@@ -85,7 +85,7 @@ def write_json(path, value):
 
 
 def recipe_deadline(_signal, _frame):
-    raise TimeoutError("CPU03_RECIPE_DEADLINE: 30-second training budget expired")
+    raise TimeoutError("CPU03_RECIPE_DEADLINE: 180-second training budget expired")
 
 
 def terminate(signum, _frame):
@@ -119,7 +119,7 @@ def main():
     )
     if args.recipe == "slow-stop":
         signal.signal(signal.SIGALRM, recipe_deadline)
-        signal.alarm(30)
+        signal.alarm(180)
 
     # Validate the entire selected input before importing the training runtime,
     # constructing tensors, or creating any output directory.
@@ -145,8 +145,8 @@ def main():
             "schema": "ani.cpu03.recipe.v1",
             "recipe": "slow-stop",
             "max_steps": 48,
-            "step_delay_seconds": 0.2,
-            "deadline_seconds": 30,
+            "step_delay_seconds": 2,
+            "deadline_seconds": 180,
         }), flush=True)
 
     step = 0
@@ -174,7 +174,7 @@ def main():
                 if args.recipe == "fail" and step == 5:
                     raise RuntimeError("CPU03_RECIPE_FAILURE: failed after five real optimizer steps")
                 if args.recipe == "slow-stop":
-                    time.sleep(0.2)
+                    time.sleep(2)
 
     model.eval()
     with torch.no_grad():
