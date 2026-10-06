@@ -3412,8 +3412,10 @@ func (x *ApplyCloseIntentRequest) GetRequestedActorId() string {
 type ApplyCloseIntentResponse struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	Identity *v1.ExecutionIdentity  `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
-	// ModelDev allocates this monotonic creation fence in the commit transaction.
-	// Governance, managed steps and deadline handling cannot supply its value.
+	// CLOSING reports the command's ModelDev-allocated monotonic creation fence.
+	// CLOSED reports the generation of the already-confirmed terminal closure;
+	// the command's distinct fence and source intent remain durably recorded.
+	// Callers cannot supply either value or replace an earlier close's evidence.
 	CloseGeneration uint64     `protobuf:"varint,2,opt,name=close_generation,json=closeGeneration,proto3" json:"close_generation,omitempty"`
 	CloseState      CloseState `protobuf:"varint,3,opt,name=close_state,json=closeState,proto3,enum=ani.modeldev.v1.CloseState" json:"close_state,omitempty"`
 	Replayed        bool       `protobuf:"varint,4,opt,name=replayed,proto3" json:"replayed,omitempty"`

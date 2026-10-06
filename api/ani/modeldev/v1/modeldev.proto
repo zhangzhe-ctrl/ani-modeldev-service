@@ -484,8 +484,10 @@ message ApplyCloseIntentRequest {
 
 message ApplyCloseIntentResponse {
   ani.training.v1.ExecutionIdentity identity = 1;
-  // ModelDev allocates this monotonic creation fence in the commit transaction.
-  // Governance, managed steps and deadline handling cannot supply its value.
+  // CLOSING reports the command's ModelDev-allocated monotonic creation fence.
+  // CLOSED reports the generation of the already-confirmed terminal closure;
+  // the command's distinct fence and source intent remain durably recorded.
+  // Callers cannot supply either value or replace an earlier close's evidence.
   uint64 close_generation = 2;
   CloseState close_state = 3;
   bool replayed = 4;

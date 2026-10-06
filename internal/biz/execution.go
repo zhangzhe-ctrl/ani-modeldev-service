@@ -129,6 +129,10 @@ type CloseReceipt struct {
 	CloseRecord
 	OwnerRevision uint64
 	Replayed      bool
+	// ClosedGeneration is the generation of an independently validated,
+	// already-persisted terminal close. Generation above remains the command's
+	// immutable creation fence, even when a later Stop observes this closure.
+	ClosedGeneration uint64
 }
 
 // ExecutionRepository exposes only the persistence behaviors needed by the

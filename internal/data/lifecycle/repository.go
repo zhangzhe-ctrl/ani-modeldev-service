@@ -245,9 +245,13 @@ func readRuntime(ctx context.Context, tx pgx.Tx, tenantID, executionID pgtype.UU
 		if err != nil || !valid || closeGeneration != generation {
 			return nil, biz.ErrPersistence
 		}
-		state.CloseGeneration = generation
-		state.CloseReason = close.Reason
-		state.CloseRequestedAt = close.RequestedAt.Time.UTC()
+		// A newer command fence still blocks all creation, but cannot replace
+		// the generation/reason/time proved by an earlier terminal close.
+		if state.ClosedAt == nil {
+			state.CloseGeneration = generation
+			state.CloseReason = close.Reason
+			state.CloseRequestedAt = close.RequestedAt.Time.UTC()
+		}
 	}
 	state.OwnerRevision = revision
 	if recovered := state.CloseAuthority; recovered != nil {
@@ -259,7 +263,13 @@ func readRuntime(ctx context.Context, tx pgx.Tx, tenantID, executionID pgtype.UU
 	if !identity.DatabaseNow.Valid || identity.DatabaseNow.InfinityModifier != pgtype.Finite {
 		return nil, biz.ErrPersistence
 	}
-	return &runtimeTransaction{transaction: tx, queries: queries, tenantID: tenantID, executionID: executionID, execution: admitted, state: state, now: identity.DatabaseNow.Time.UTC()}, nil
+	current := &runtimeTransaction{transaction: tx, queries: queries, tenantID: tenantID, executionID: executionID, execution: admitted, state: state, now: identity.DatabaseNow.Time.UTC()}
+	if state.ClosedAt != nil {
+		if err := validateCommittedClose(ctx, current); err != nil {
+			return nil, err
+		}
+	}
+	return current, nil
 }
 
 func saveRuntime(ctx context.Context, current *runtimeTransaction) error {

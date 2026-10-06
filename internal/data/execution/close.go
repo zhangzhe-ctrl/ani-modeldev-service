@@ -11,6 +11,7 @@ import (
 
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 	executionsql "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/execution/sqlc"
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/lifecycle"
 )
 
 // ApplyCloseIntent reports whether this transaction observed the original
@@ -54,10 +55,14 @@ func (r *Repository) ApplyCloseIntent(ctx context.Context, intent biz.CloseInten
 		if err != nil {
 			return biz.CloseReceipt{}, err
 		}
+		receipt, err := closeReceipt(ctx, transaction, record, revision, true)
+		if err != nil {
+			return biz.CloseReceipt{}, err
+		}
 		if err := transaction.Commit(ctx); err != nil {
 			return biz.CloseReceipt{}, biz.ErrPersistence
 		}
-		return biz.CloseReceipt{CloseRecord: record, OwnerRevision: revision, Replayed: true}, nil
+		return receipt, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return biz.CloseReceipt{}, biz.ErrPersistence
@@ -88,10 +93,30 @@ func (r *Repository) ApplyCloseIntent(ctx context.Context, intent biz.CloseInten
 	if err != nil {
 		return biz.CloseReceipt{}, err
 	}
+	receipt, err := closeReceipt(ctx, transaction, record, revision, false)
+	if err != nil {
+		return biz.CloseReceipt{}, err
+	}
 	if err := transaction.Commit(ctx); err != nil {
 		return biz.CloseReceipt{}, biz.ErrPersistence
 	}
-	return biz.CloseReceipt{CloseRecord: record, OwnerRevision: revision}, nil
+	return receipt, nil
+}
+
+func closeReceipt(ctx context.Context, transaction pgx.Tx, record biz.CloseRecord, revision uint64, replayed bool) (biz.CloseReceipt, error) {
+	receipt := biz.CloseReceipt{CloseRecord: record, OwnerRevision: revision, Replayed: replayed}
+	state, err := lifecycle.ReadInTransaction(ctx, transaction, record.TenantID, record.ExecutionID)
+	if errors.Is(err, biz.ErrExecutionNotFound) {
+		// A stop tombstone may precede immutable admission or runtime schema.
+		return receipt, nil
+	}
+	if err != nil {
+		return biz.CloseReceipt{}, err
+	}
+	if state.ClosedAt != nil {
+		receipt.ClosedGeneration = state.CloseGeneration
+	}
+	return receipt, nil
 }
 
 func sameCloseIntent(stored, requested biz.CloseIntent) bool {

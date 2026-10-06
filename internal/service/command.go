@@ -79,9 +79,13 @@ func (command *Command) ApplyCloseIntent(ctx context.Context, request *modeldevv
 			return nil, commandError(codes.Unavailable, modeldevv1.ErrorReason_ERROR_REASON_UPSTREAM_UNAVAILABLE, "command persistence unavailable", delivery.RequestID)
 		}
 	}
+	generation, state := receipt.Generation, modeldevv1.CloseState_CLOSE_STATE_CLOSING
+	if receipt.ClosedGeneration > 0 {
+		generation, state = receipt.ClosedGeneration, modeldevv1.CloseState_CLOSE_STATE_CLOSED
+	}
 	return &modeldevv1.ApplyCloseIntentResponse{
 		Identity:        &trainingv1.ExecutionIdentity{OperationId: receipt.OperationID, ExecutionId: receipt.ExecutionID, ExecutionSpecHash: receipt.SpecHash},
-		CloseGeneration: receipt.Generation, CloseState: modeldevv1.CloseState_CLOSE_STATE_CLOSING,
+		CloseGeneration: generation, CloseState: state,
 		Replayed: receipt.Replayed, DurablyRecorded: true,
 	}, nil
 }
