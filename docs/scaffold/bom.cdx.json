@@ -44,11 +44,11 @@
       }
     ],
     "component": {
-      "bom-ref": "pkg:golang/github.com/zhangzhe-ctrl/ani-modeldev-service@v0.0.0-20000101000000-9ca67da16715?type=module",
+      "bom-ref": "pkg:golang/github.com/zhangzhe-ctrl/ani-modeldev-service@v0.0.0-20000101000000-12d9b0b0be7b?type=module",
       "type": "application",
       "name": "github.com/zhangzhe-ctrl/ani-modeldev-service",
-      "version": "v0.0.0-20000101000000-9ca67da16715",
-      "purl": "pkg:golang/github.com/zhangzhe-ctrl/ani-modeldev-service@v0.0.0-20000101000000-9ca67da16715?goarch=amd64\u0026goos=linux\u0026type=module",
+      "version": "v0.0.0-20000101000000-12d9b0b0be7b",
+      "purl": "pkg:golang/github.com/zhangzhe-ctrl/ani-modeldev-service@v0.0.0-20000101000000-12d9b0b0be7b?goarch=amd64\u0026goos=linux\u0026type=module",
       "externalReferences": [
         {
           "url": "https://github.com/zhangzhe-ctrl/ani-modeldev-service",
@@ -1228,35 +1228,6 @@
       }
     },
     {
-      "bom-ref": "pkg:golang/github.com/pkg/errors@v0.9.1?type=module",
-      "type": "library",
-      "name": "github.com/pkg/errors",
-      "version": "v0.9.1",
-      "scope": "required",
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "14404bc75cd2db5e28c298f2eeab017a2c5b51192e850030acae54c0b193c2de"
-        }
-      ],
-      "purl": "pkg:golang/github.com/pkg/errors@v0.9.1?goarch=amd64\u0026goos=linux\u0026type=module",
-      "externalReferences": [
-        {
-          "url": "https://github.com/pkg/errors",
-          "type": "vcs"
-        }
-      ],
-      "evidence": {
-        "licenses": [
-          {
-            "license": {
-              "id": "BSD-2-Clause"
-            }
-          }
-        ]
-      }
-    },
-    {
       "bom-ref": "pkg:golang/github.com/prometheus/client_golang@v1.24.1?type=module",
       "type": "library",
       "name": "github.com/prometheus/client_golang",
@@ -1914,35 +1885,6 @@
       }
     },
     {
-      "bom-ref": "pkg:golang/gopkg.in/evanphx/json-patch.v4@v4.12.0?type=module",
-      "type": "library",
-      "name": "gopkg.in/evanphx/json-patch.v4",
-      "version": "v4.12.0",
-      "scope": "required",
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "9fa8ed72cba52335cf25ac5e8116ef14d36b6438db8a3ee7cb782648f1bee95e"
-        }
-      ],
-      "purl": "pkg:golang/gopkg.in/evanphx/json-patch.v4@v4.12.0?goarch=amd64\u0026goos=linux\u0026type=module",
-      "externalReferences": [
-        {
-          "url": "https://github.com/evanphx/json-patch",
-          "type": "vcs"
-        }
-      ],
-      "evidence": {
-        "licenses": [
-          {
-            "license": {
-              "id": "BSD-3-Clause"
-            }
-          }
-        ]
-      }
-    },
-    {
       "bom-ref": "pkg:golang/gopkg.in/inf.v0@v0.9.1?type=module",
       "type": "library",
       "name": "gopkg.in/inf.v0",
@@ -2233,7 +2175,7 @@
   ],
   "dependencies": [
     {
-      "ref": "pkg:golang/github.com/zhangzhe-ctrl/ani-modeldev-service@v0.0.0-20000101000000-9ca67da16715?type=module",
+      "ref": "pkg:golang/github.com/zhangzhe-ctrl/ani-modeldev-service@v0.0.0-20000101000000-12d9b0b0be7b?type=module",
       "dependsOn": [
         "pkg:golang/github.com/aws/aws-sdk-go-v2@v1.47.1?type=module",
         "pkg:golang/github.com/aws/aws-sdk-go-v2/service/s3@v1.113.4?type=module",
@@ -2519,9 +2461,6 @@
       "ref": "pkg:golang/github.com/munnerz/goautoneg@v0.0.0-20191010083416-a7dc8b61c822?type=module"
     },
     {
-      "ref": "pkg:golang/github.com/pkg/errors@v0.9.1?type=module"
-    },
-    {
       "ref": "pkg:golang/github.com/prometheus/client_golang@v1.24.1?type=module",
       "dependsOn": [
         "pkg:golang/github.com/beorn7/perks@v1.0.1?type=module",
@@ -2775,9 +2714,6 @@
       "ref": "pkg:golang/google.golang.org/protobuf@v1.36.11?type=module"
     },
     {
-      "ref": "pkg:golang/gopkg.in/evanphx/json-patch.v4@v4.12.0?type=module"
-    },
-    {
       "ref": "pkg:golang/gopkg.in/inf.v0@v0.9.1?type=module"
     },
     {
@@ -2824,7 +2760,6 @@
         "pkg:golang/github.com/mailru/easyjson@v0.7.7?type=module",
         "pkg:golang/github.com/modern-go/concurrent@v0.0.0-20180306012644-bacd9c7ef1dd?type=module",
         "pkg:golang/github.com/modern-go/reflect2@v1.0.3-0.20250322232337-35a7c28c31ee?type=module",
-        "pkg:golang/github.com/pkg/errors@v0.9.1?type=module",
         "pkg:golang/github.com/x448/float16@v0.8.4?type=module",
         "pkg:golang/go.yaml.in/yaml/v2@v2.4.4?type=module",
         "pkg:golang/go.yaml.in/yaml/v3@v3.0.4?type=module",
@@ -2832,7 +2767,6 @@
         "pkg:golang/golang.org/x/text@v0.41.0?type=module",
         "pkg:golang/golang.org/x/time@v0.9.0?type=module",
         "pkg:golang/google.golang.org/protobuf@v1.36.11?type=module",
-        "pkg:golang/gopkg.in/evanphx/json-patch.v4@v4.12.0?type=module",
         "pkg:golang/gopkg.in/inf.v0@v0.9.1?type=module",
         "pkg:golang/gopkg.in/yaml.v3@v3.0.1?type=module",
         "pkg:golang/k8s.io/klog/v2@v2.130.1?type=module",
@@ -2864,7 +2798,6 @@
         "pkg:golang/github.com/modern-go/concurrent@v0.0.0-20180306012644-bacd9c7ef1dd?type=module",
         "pkg:golang/github.com/modern-go/reflect2@v1.0.3-0.20250322232337-35a7c28c31ee?type=module",
         "pkg:golang/github.com/munnerz/goautoneg@v0.0.0-20191010083416-a7dc8b61c822?type=module",
-        "pkg:golang/github.com/pkg/errors@v0.9.1?type=module",
         "pkg:golang/github.com/x448/float16@v0.8.4?type=module",
         "pkg:golang/go.yaml.in/yaml/v2@v2.4.4?type=module",
         "pkg:golang/go.yaml.in/yaml/v3@v3.0.4?type=module",
@@ -2875,7 +2808,6 @@
         "pkg:golang/golang.org/x/text@v0.41.0?type=module",
         "pkg:golang/golang.org/x/time@v0.9.0?type=module",
         "pkg:golang/google.golang.org/protobuf@v1.36.11?type=module",
-        "pkg:golang/gopkg.in/evanphx/json-patch.v4@v4.12.0?type=module",
         "pkg:golang/gopkg.in/inf.v0@v0.9.1?type=module",
         "pkg:golang/gopkg.in/yaml.v3@v3.0.1?type=module",
         "pkg:golang/k8s.io/api@v0.34.1?type=module",
