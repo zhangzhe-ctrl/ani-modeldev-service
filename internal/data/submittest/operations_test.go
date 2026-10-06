@@ -237,8 +237,35 @@ func TestOperationsCleanupDurablyAuditsAndBlocksUnresolvedReplay(t *testing.T) {
 		t.Fatalf("CLEANUP_AUDIT_NOT_IMPLEMENTED: pre-effect reservation unavailable: %+v %v", reserved, err)
 	}
 	pool.Close()
-	reader := execution.New(open())
-	restarted, err := biz.NewManagedExecutionOperations(reader, &biz.ExecutionCloser{}, cleanup.New(kube, nil))
+	reopened := open()
+	reader := execution.New(reopened)
+	roots := x509.NewCertPool()
+	roots.AddCert(server.Certificate())
+	runs, err := kfp.New(kfp.Config{ConnectionRef: request.Admission.Snapshot.Environment.KFPConnectionRef, Endpoint: server.URL, RootCAs: roots, Timeout: time.Second}, tokenProviderFunc(func(context.Context, string, cpup01.EnvironmentBindingSnapshot) (string, error) {
+		return "unused-no-dispatch", nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dispatch := submission.New(reopened)
+	identity, err := stepidentity.New(kube, "ani-modeldev-managed-step")
+	if err != nil {
+		t.Fatal(err)
+	}
+	steps, err := biz.NewManagedSteps(dispatch, reader, identity, runs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof := runtimeproof.New(kube, runs, nil, dispatch)
+	runtime, err := biz.NewManagedRuntime(steps, lifecycle.New(reopened), trainer.New(kube), proof, proof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closer, err := biz.NewExecutionCloser(runtime, runs, proof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := biz.NewManagedExecutionOperations(reader, closer, cleanup.New(kube, proof))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,5 +275,13 @@ func TestOperationsCleanupDurablyAuditsAndBlocksUnresolvedReplay(t *testing.T) {
 	view, err := restarted.Inspect(ctx, intent.TenantID, intent.ExecutionID)
 	if err != nil || view.CleanupPhase != "STARTED" || view.CleanupPlanHash != plan.PlanHash {
 		t.Fatal("durable uncertain cleanup audit not inspectable", err)
+	}
+	resolved, err := restarted.Reconcile(ctx, intent.TenantID, intent.ExecutionID)
+	if err != nil || resolved.CleanupPhase != "RECONCILED" || resolved.CleanupPlanHash != plan.PlanHash {
+		t.Fatalf("CLEANUP_RECOVERY_NOT_IMPLEMENTED: read-only reconciliation did not resolve the original STARTED audit: %+v %v", resolved, err)
+	}
+	resolvedReplay, err := restarted.ApplyCleanup(ctx, intent.TenantID, intent.ExecutionID, plan.PlanHash, "governance:user:9002")
+	if err != nil || resolvedReplay.Phase != "RECONCILED" || resolvedReplay.Actor != reserved.Actor || !resolvedReplay.StartedAt.Equal(reserved.StartedAt) || !resolvedReplay.CompletedAt.IsZero() {
+		t.Fatal("resolved Apply replay resent cleanup or replaced its original audit", err)
 	}
 }

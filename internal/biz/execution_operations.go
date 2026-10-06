@@ -23,6 +23,7 @@ type ExecutionOperationsRepository interface {
 	GetOperationRecord(context.Context, string, string) (OperationRecord, error)
 	ReserveCleanup(context.Context, CleanupPlan, string) (CleanupReceipt, bool, error)
 	ExecuteCleanup(context.Context, string, string, string, func(OperationRecord) (CleanupReceipt, error)) (CleanupReceipt, error)
+	ReconcileCleanup(context.Context, string, string, string, func(OperationRecord) (CleanupReceipt, error)) (CleanupReceipt, error)
 }
 
 type ExecutionInspect struct {
@@ -138,6 +139,31 @@ func (operations *ExecutionOperations) Reconcile(ctx context.Context, tenant, ex
 	if _, err := operations.closer.Reconcile(ctx, tenant, execution); err != nil {
 		return ExecutionInspect{}, err
 	}
+	record, err := operations.repository.GetOperationRecord(ctx, tenant, execution)
+	if err != nil {
+		return ExecutionInspect{}, err
+	}
+	if record.Cleanup != nil && (record.Cleanup.Phase == "STARTED" || record.Cleanup.Phase == "NEEDS_REVIEW") {
+		if operations.cleanup == nil {
+			return ExecutionInspect{}, ErrRuntimeNotReady
+		}
+		// Resolve the original audit by observation only. An interrupted apply
+		// never grants another DELETE; exact-UID maintenance is a separate act.
+		_, err = operations.repository.ReconcileCleanup(ctx, tenant, execution, record.Cleanup.PlanHash, func(current OperationRecord) (CleanupReceipt, error) {
+			receipt := *current.Cleanup
+			absent, err := operations.cleanup.VerifyCleanupResolved(ctx, current)
+			if err != nil {
+				return receipt, err
+			}
+			receipt.ReconciledFromPhase = receipt.Phase
+			receipt.Phase = "RECONCILED"
+			receipt.ResolvedAbsent = absent
+			return receipt, nil
+		})
+		if err != nil {
+			return ExecutionInspect{}, err
+		}
+	}
 	return operations.Inspect(ctx, tenant, execution)
 }
 
@@ -174,11 +200,17 @@ type CleanupReceipt struct {
 	Actor           string            `json:"actor"`
 	StartedAt       time.Time         `json:"started_at"`
 	CompletedAt     time.Time         `json:"completed_at"`
+	// Reconciliation preserves the first apply's request/result and timestamps.
+	// These fields record a later observation, never a replayed DELETE.
+	ResolvedAbsent      []RuntimeResource `json:"resolved_absent,omitempty"`
+	ReconciledAt        time.Time         `json:"reconciled_at,omitempty"`
+	ReconciledFromPhase string            `json:"reconciled_from_phase,omitempty"`
 }
 
 type ExecutionCleanupBoundary interface {
 	VerifyCleanupWritersAbsent(context.Context, OperationRecord) error
 	DeleteExecutionResource(context.Context, OperationRecord, RuntimeResource) error
+	VerifyCleanupResolved(context.Context, OperationRecord) ([]RuntimeResource, error)
 }
 
 func CleanupPlanFor(record OperationRecord) (CleanupPlan, error) {
@@ -272,7 +304,7 @@ func (operations *ExecutionOperations) ApplyCleanup(ctx context.Context, tenant,
 		if prior.Cleanup.PlanHash != expectedHash {
 			return *prior.Cleanup, ErrCleanupConflict
 		}
-		if prior.Cleanup.Phase == "APPLIED" {
+		if prior.Cleanup.Phase == "APPLIED" || prior.Cleanup.Phase == "RECONCILED" {
 			return *prior.Cleanup, nil
 		}
 		return *prior.Cleanup, ErrCleanupUncertain
@@ -289,7 +321,7 @@ func (operations *ExecutionOperations) ApplyCleanup(ctx context.Context, tenant,
 		return CleanupReceipt{}, err
 	}
 	if replay {
-		if reserved.Phase == "APPLIED" {
+		if reserved.Phase == "APPLIED" || reserved.Phase == "RECONCILED" {
 			return reserved, nil
 		}
 		return reserved, ErrCleanupUncertain

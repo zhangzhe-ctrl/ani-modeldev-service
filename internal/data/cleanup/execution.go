@@ -26,6 +26,181 @@ func New(kube dynamic.Interface, writers biz.OwnerWriterVerifier) *Adapter {
 	return &Adapter{kube: kube, writers: writers}
 }
 
+// VerifyCleanupResolved reconciles an existing cleanup audit through reads only.
+// A prior DELETE outcome is never inferred from that audit or retried here.
+func (adapter *Adapter) VerifyCleanupResolved(ctx context.Context, record biz.OperationRecord) ([]biz.RuntimeResource, error) {
+	if ctx == nil || ctx.Err() != nil || adapter == nil || adapter.kube == nil {
+		return nil, biz.ErrRuntimeNotReady
+	}
+	plan, err := biz.CleanupPlanFor(record)
+	if err != nil {
+		return nil, err
+	}
+	namespace := record.Execution.Snapshot.Environment.NamespaceName
+	ns, err := adapter.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}).Get(ctx, namespace, metav1.GetOptions{})
+	if err != nil || ns == nil || namespace == "" || plan.NamespaceUID == "" || ns.GetAPIVersion() != "v1" || ns.GetKind() != "Namespace" || ns.GetNamespace() != "" || ns.GetName() != namespace || string(ns.GetUID()) != plan.NamespaceUID || ns.GetDeletionTimestamp() != nil {
+		return nil, biz.ErrCleanupBlocked
+	}
+	if record.Runtime.CloseEvidence.NoDispatch {
+		if record.Dispatch != nil || record.Authority != nil || record.Runtime.Training != nil || record.Runtime.TrainingHandle != nil || record.Runtime.Workspace != nil || record.Runtime.Observation != nil || record.Runtime.Publication != nil || len(plan.Targets) != 0 || len(record.Runtime.CloseEvidence.Resources) != 0 || record.Runtime.CloseEvidence.RunID != "" || record.Runtime.CloseEvidence.WorkflowUID != "" {
+			return nil, biz.ErrCleanupBlocked
+		}
+		return []biz.RuntimeResource{}, nil
+	}
+	if record.Authority == nil || adapter.writers == nil || record.Runtime.CloseEvidence.RunID != record.Authority.RunID || record.Runtime.CloseEvidence.WorkflowUID != record.Authority.WorkflowUID || len(record.Runtime.CloseEvidence.Resources) == 0 {
+		return nil, biz.ErrCleanupBlocked
+	}
+	// Unlike the pre-delete check, this proof does not require disposed training
+	// controllers to remain present. The frozen original Run/Workflow and every
+	// current PVC writer are still independently checked by the owner verifier.
+	proof, err := adapter.writers.VerifyOwnerWritersAbsent(ctx, record.Execution, *record.Authority, record.Runtime.Workspace)
+	if err != nil {
+		return nil, err
+	}
+	for _, expected := range record.Runtime.CloseEvidence.Resources {
+		matched := false
+		for _, current := range proof.Resources {
+			matched = matched || expected.APIVersion == current.APIVersion && expected.Kind == current.Kind && expected.Namespace == current.Namespace && expected.Name == current.Name && expected.UID == current.UID && expected.OwnerUID == current.OwnerUID && expected.OwnerUID == record.Authority.WorkflowUID && expected.ExitCode != nil && current.ExitCode != nil && *expected.ExitCode == *current.ExitCode
+		}
+		if !matched {
+			return nil, biz.ErrCleanupBlocked
+		}
+	}
+	absent := make(map[string]biz.RuntimeResource, len(plan.Targets))
+	for _, target := range plan.Targets {
+		resource, valid := targetResource(target)
+		if !valid || target.Namespace != namespace {
+			return nil, biz.ErrCleanupConflict
+		}
+		current, err := adapter.kube.Resource(resource).Namespace(namespace).Get(ctx, target.Name, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			absent[target.UID] = target
+			continue
+		}
+		if err != nil || current == nil {
+			return nil, biz.ErrCleanupUncertain
+		}
+		if !exactObject(current, target) {
+			return nil, biz.ErrCleanupConflict
+		}
+		return nil, biz.ErrCleanupUncertain
+	}
+	if workspace := record.Runtime.Workspace; workspace != nil {
+		pvc, err := adapter.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "persistentvolumeclaims"}).Namespace(namespace).Get(ctx, workspace.PVCName, metav1.GetOptions{})
+		if err != nil || pvc == nil || workspace.NamespaceName != namespace || workspace.NamespaceUID != plan.NamespaceUID || pvc.GetAPIVersion() != "v1" || pvc.GetKind() != "PersistentVolumeClaim" || pvc.GetNamespace() != namespace || pvc.GetName() != workspace.PVCName || workspace.PVCUID == "" || string(pvc.GetUID()) != workspace.PVCUID || pvc.GetDeletionTimestamp() != nil {
+			return nil, biz.ErrCleanupBlocked
+		}
+		phase, _, err := unstructured.NestedString(pvc.Object, "status", "phase")
+		if err != nil || phase != "Bound" {
+			return nil, biz.ErrCleanupBlocked
+		}
+	}
+	retained := append([]biz.RuntimeResource(nil), record.Runtime.CloseEvidence.Resources...)
+	if record.Runtime.Observation != nil {
+		trainingPods := 0
+		for _, resource := range record.Runtime.Observation.Resources {
+			if resource.Kind == "Pod" {
+				if !retainedTrainingChain(resource, absent, record.Runtime.TrainingHandle) {
+					return nil, biz.ErrCleanupBlocked
+				}
+				retained = append(retained, resource)
+				trainingPods++
+			}
+		}
+		if record.Runtime.Training != nil && trainingPods == 0 {
+			return nil, biz.ErrCleanupBlocked
+		}
+	}
+	for _, expected := range retained {
+		if expected.APIVersion != "v1" || expected.Kind != "Pod" || expected.Namespace != namespace || expected.Name == "" || expected.UID == "" || expected.OwnerUID == "" || !expected.APIObjectPresent || !expected.Terminal || expected.ExitCode == nil || expected.InitializationAbort != nil {
+			return nil, biz.ErrCleanupBlocked
+		}
+		pod, err := adapter.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "pods"}).Namespace(namespace).Get(ctx, expected.Name, metav1.GetOptions{})
+		if err != nil || pod == nil || pod.GetAPIVersion() != "v1" || pod.GetKind() != "Pod" || pod.GetNamespace() != namespace || pod.GetName() != expected.Name || string(pod.GetUID()) != expected.UID || pod.GetDeletionTimestamp() != nil || !retainedPodTerminated(pod, *expected.ExitCode) {
+			return nil, biz.ErrCleanupBlocked
+		}
+		if exactObject(pod, expected) {
+			continue
+		}
+		// Orphan deletion removes the deleted Job's controller reference from
+		// its surviving Pod. Only that complete persisted training chain may
+		// lose an owner; the retained Workflow's Pods cannot use this exception.
+		if !orphanedTrainingPod(pod, expected, absent, record.Runtime.TrainingHandle) {
+			return nil, biz.ErrCleanupConflict
+		}
+	}
+	return append([]biz.RuntimeResource{}, plan.Targets...), nil
+}
+
+func orphanedTrainingPod(pod *unstructured.Unstructured, expected biz.RuntimeResource, absent map[string]biz.RuntimeResource, handle *biz.TrainingHandle) bool {
+	for _, owner := range pod.GetOwnerReferences() {
+		if owner.Controller != nil && *owner.Controller {
+			return false
+		}
+	}
+	return retainedTrainingChain(expected, absent, handle)
+}
+
+func retainedTrainingChain(expected biz.RuntimeResource, absent map[string]biz.RuntimeResource, handle *biz.TrainingHandle) bool {
+	job, jobAbsent := absent[expected.OwnerUID]
+	set, setAbsent := absent[job.OwnerUID]
+	train, trainAbsent := absent[set.OwnerUID]
+	return handle != nil && jobAbsent && setAbsent && trainAbsent && job.Kind == "Job" && set.Kind == "JobSet" && train.Kind == "TrainJob" && train.UID == handle.TrainJobUID && train.OwnerUID == ""
+}
+
+func retainedPodTerminated(pod *unstructured.Unstructured, expectedExit int32) bool {
+	phase, _, err := unstructured.NestedString(pod.Object, "status", "phase")
+	if err != nil || (phase != "Succeeded" && phase != "Failed") {
+		return false
+	}
+	main := false
+	now := time.Now().UTC()
+	for _, kind := range []struct{ spec, status string }{{"containers", "containerStatuses"}, {"initContainers", "initContainerStatuses"}, {"ephemeralContainers", "ephemeralContainerStatuses"}} {
+		containers, _, err := unstructured.NestedSlice(pod.Object, "spec", kind.spec)
+		if err != nil || (kind.spec == "containers" && len(containers) == 0) {
+			return false
+		}
+		statuses, _, err := unstructured.NestedSlice(pod.Object, "status", kind.status)
+		if err != nil || len(statuses) != len(containers) {
+			return false
+		}
+		declared := make(map[string]bool, len(containers))
+		for _, raw := range containers {
+			container, ok := raw.(map[string]any)
+			name, valid := container["name"].(string)
+			if !ok || !valid || name == "" || declared[name] {
+				return false
+			}
+			declared[name] = true
+		}
+		for _, raw := range statuses {
+			status, ok := raw.(map[string]any)
+			name, valid := status["name"].(string)
+			if !ok || !valid || !declared[name] {
+				return false
+			}
+			delete(declared, name)
+			state, found, err := unstructured.NestedMap(status, "state")
+			if err != nil || !found || len(state) != 1 {
+				return false
+			}
+			code, found, err := unstructured.NestedInt64(state, "terminated", "exitCode")
+			finished, _, timeErr := unstructured.NestedString(state, "terminated", "finishedAt")
+			at, parseErr := time.Parse(time.RFC3339Nano, finished)
+			if err != nil || !found || code < -2147483648 || code > 2147483647 || timeErr != nil || parseErr != nil || at.IsZero() || at.After(now) {
+				return false
+			}
+			if kind.spec == "containers" && (name == "main" || name == "node") {
+				if int32(code) != expectedExit || main {
+					return false
+				}
+				main = true
+			}
+		}
+	}
+	return main
+}
+
 func (adapter *Adapter) VerifyCleanupWritersAbsent(ctx context.Context, record biz.OperationRecord) error {
 	if ctx == nil || adapter == nil || adapter.kube == nil {
 		return biz.ErrRuntimeNotReady
