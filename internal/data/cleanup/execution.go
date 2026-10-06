@@ -223,6 +223,35 @@ func (adapter *Adapter) VerifyCleanupWritersAbsent(ctx context.Context, record b
 	if record.Authority == nil || adapter.writers == nil {
 		return biz.ErrCleanupBlocked
 	}
+	if record.Runtime.Training != nil {
+		trains := 0
+		for _, target := range plan.Targets {
+			if target.Kind != "TrainJob" {
+				continue
+			}
+			resource, valid := targetResource(target)
+			if !valid {
+				return biz.ErrCleanupConflict
+			}
+			train, err := adapter.kube.Resource(resource).Namespace(namespace).Get(ctx, target.Name, metav1.GetOptions{})
+			if err != nil || train == nil {
+				return biz.ErrCleanupUncertain
+			}
+			if !exactObject(train, target) || train.GetDeletionTimestamp() != nil || !creationStopped(train) {
+				return biz.ErrCleanupConflict
+			}
+			if err := adapter.verifyOriginalParentsAbsent(ctx, record, plan, target); err != nil {
+				return err
+			}
+			if err := adapter.verifyOriginalUnsuspendedSets(ctx, plan, target, train); err != nil {
+				return err
+			}
+			trains++
+		}
+		if trains != 1 {
+			return biz.ErrCleanupConflict
+		}
+	}
 	if _, err := adapter.writers.VerifyOwnerWritersAbsent(ctx, record.Execution, *record.Authority, record.Runtime.Workspace); err != nil {
 		return err
 	}
@@ -268,8 +297,22 @@ func (adapter *Adapter) DeleteExecutionResource(ctx context.Context, record biz.
 	object, err := client.Get(ctx, target.Name, metav1.GetOptions{})
 	// A missing object before our first exact delete is unresolved rather than
 	// an inferred success. STARTED audit prevents retrying an unknown result.
-	if err != nil || !exactObject(object, target) || object.GetDeletionTimestamp() != nil || object.GetResourceVersion() == "" || !creationStopped(object) {
+	if err != nil || object == nil || object.GetDeletionTimestamp() != nil || object.GetResourceVersion() == "" || !creationStopped(object) {
 		return biz.ErrCleanupConflict
+	}
+	if !originalOrOrphanObject(object, target) {
+		return biz.ErrCleanupConflict
+	}
+	// A terminal parent can recreate a missing child. Prove the complete
+	// original parent chain absent before deleting any child, including one
+	// whose owner reference has already been removed by Orphan propagation.
+	if err := adapter.verifyOriginalParentsAbsent(ctx, record, plan, target); err != nil {
+		return err
+	}
+	if target.Kind == "TrainJob" {
+		if err := adapter.verifyOriginalUnsuspendedSets(ctx, plan, target, object); err != nil {
+			return err
+		}
 	}
 	uid, version := types.UID(target.UID), object.GetResourceVersion()
 	orphan := metav1.DeletePropagationOrphan
@@ -285,7 +328,7 @@ func (adapter *Adapter) DeleteExecutionResource(ctx context.Context, record biz.
 		}
 		// A UID replacement or unreadable read cannot confirm removal of the
 		// original target. DeletionTimestamp still needs a confirmed absence.
-		if err != nil || !exactObject(current, target) {
+		if err != nil || !originalOrOrphanObject(current, target) {
 			return biz.ErrCleanupUncertain
 		}
 		timer := time.NewTimer(100 * time.Millisecond)
@@ -296,6 +339,101 @@ func (adapter *Adapter) DeleteExecutionResource(ctx context.Context, record biz.
 		case <-timer.C:
 		}
 	}
+}
+
+func originalOrOrphanObject(object *unstructured.Unstructured, target biz.RuntimeResource) bool {
+	if exactObject(object, target) {
+		return true
+	}
+	if object == nil || target.OwnerUID == "" || len(object.GetOwnerReferences()) != 0 {
+		return false
+	}
+	orphaned := target
+	orphaned.OwnerUID = ""
+	return exactObject(object, orphaned)
+}
+
+// Kubeflow Trainer v2.1.0 skips JobSet SSA only while both existing parents
+// remain unsuspended. A previously modified spec may have left a cached SSA
+// which reattaches an owner during Orphan GC; that case requires maintenance.
+func (adapter *Adapter) verifyOriginalUnsuspendedSets(ctx context.Context, plan biz.CleanupPlan, target biz.RuntimeResource, train *unstructured.Unstructured) error {
+	if !originalUnsuspendedGeneration(train) {
+		return biz.ErrCleanupBlocked
+	}
+	sets := 0
+	for _, expected := range plan.Targets {
+		if expected.Kind != "JobSet" {
+			continue
+		}
+		resource, valid := targetResource(expected)
+		if !valid || expected.OwnerUID != target.UID || expected.Namespace != target.Namespace {
+			return biz.ErrCleanupConflict
+		}
+		set, err := adapter.kube.Resource(resource).Namespace(expected.Namespace).Get(ctx, expected.Name, metav1.GetOptions{})
+		if err != nil || set == nil {
+			return biz.ErrCleanupUncertain
+		}
+		if !exactObject(set, expected) || set.GetDeletionTimestamp() != nil || !creationStopped(set) {
+			return biz.ErrCleanupConflict
+		}
+		if !originalUnsuspendedGeneration(set) {
+			return biz.ErrCleanupBlocked
+		}
+		sets++
+	}
+	if sets == 0 {
+		return biz.ErrCleanupBlocked
+	}
+	return nil
+}
+
+func originalUnsuspendedGeneration(object *unstructured.Unstructured) bool {
+	suspend, found, err := unstructured.NestedBool(object.Object, "spec", "suspend")
+	return err == nil && found && !suspend && object.GetGeneration() == 1
+}
+
+func (adapter *Adapter) verifyOriginalParentsAbsent(ctx context.Context, record biz.OperationRecord, plan biz.CleanupPlan, target biz.RuntimeResource) error {
+	parents := []biz.RuntimeResource{}
+	current := target
+	for current.Kind != "TrainJob" {
+		kind := "TrainJob"
+		if current.Kind == "Job" {
+			kind = "JobSet"
+		} else if current.Kind != "JobSet" {
+			return biz.ErrCleanupConflict
+		}
+		matches := 0
+		var parent biz.RuntimeResource
+		for _, candidate := range plan.Targets {
+			if candidate.UID == current.OwnerUID && candidate.Kind == kind && candidate.Namespace == target.Namespace {
+				parent = candidate
+				matches++
+			}
+		}
+		if matches != 1 {
+			return biz.ErrCleanupConflict
+		}
+		current = parent
+		parents = append(parents, current)
+	}
+	if record.Runtime.TrainingHandle == nil || current.OwnerUID != "" || current.UID != record.Runtime.TrainingHandle.TrainJobUID || plan.NamespaceUID != record.Runtime.TrainingHandle.NamespaceUID {
+		return biz.ErrCleanupConflict
+	}
+	for _, parent := range parents {
+		resource, valid := targetResource(parent)
+		if !valid {
+			return biz.ErrCleanupConflict
+		}
+		object, err := adapter.kube.Resource(resource).Namespace(parent.Namespace).Get(ctx, parent.Name, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			continue
+		}
+		if err != nil || object == nil {
+			return biz.ErrCleanupUncertain
+		}
+		return biz.ErrCleanupConflict
+	}
+	return nil
 }
 
 func targetResource(target biz.RuntimeResource) (schema.GroupVersionResource, bool) {

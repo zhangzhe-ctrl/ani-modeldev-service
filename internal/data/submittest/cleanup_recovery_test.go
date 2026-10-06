@@ -218,6 +218,99 @@ func TestCleanupRecoveryResolvesAuditWrittenBeforeResolutionFields(t *testing.T)
 	}
 }
 
+func TestCleanupApplyRemovesParentsBeforeDependentsWithoutChangingReviewedPlan(t *testing.T) {
+	for _, scenario := range []struct {
+		name, failedKind  string
+		requested, absent []string
+	}{
+		{name: "all original controllers removed", requested: []string{"TrainJob", "JobSet", "Job"}, absent: []string{"TrainJob", "JobSet", "Job"}},
+		{name: "unconfirmed TrainJob stops all child deletes", failedKind: "TrainJob", requested: []string{"TrainJob"}, absent: []string{}},
+		{name: "unconfirmed JobSet stops Job delete", failedKind: "JobSet", requested: []string{"TrainJob", "JobSet"}, absent: []string{"TrainJob"}},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			pool, repository, reviewed := closedCleanupRecoveryFixture(t)
+			ctx := context.Background()
+			before, err := repository.GetOperationRecord(ctx, reviewed.TenantID, reviewed.ExecutionID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			originalPlan, err := json.Marshal(reviewed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Reviewed plans retain their original child-first canonical order.
+			// Dispatch order must not invalidate that existing plan/hash contract.
+			if !reflect.DeepEqual(cleanupResourceKinds(reviewed.Targets), []string{"Job", "JobSet", "TrainJob"}) {
+				t.Fatal("reviewed plan canonical order changed")
+			}
+			boundary := &cleanupControllerBoundary{present: map[string]bool{}, failedKind: scenario.failedKind}
+			for _, target := range reviewed.Targets {
+				boundary.present[target.UID] = true
+			}
+			operations, err := biz.NewManagedExecutionOperations(repository, &biz.ExecutionCloser{}, boundary)
+			if err != nil {
+				t.Fatal(err)
+			}
+			receipt, err := operations.ApplyCleanup(ctx, reviewed.TenantID, reviewed.ExecutionID, reviewed.PlanHash, "governance:user:9001")
+			if scenario.failedKind == "" {
+				if err != nil || receipt.Phase != "APPLIED" || len(boundary.present) != 0 {
+					t.Fatalf("PARENT_FIRST_CLEANUP: parent could recreate a deleted dependent: receipt=%+v error=%v remaining=%d", receipt, err, len(boundary.present))
+				}
+			} else if !errors.Is(err, biz.ErrCleanupUncertain) || receipt.Phase != "NEEDS_REVIEW" {
+				t.Fatalf("unconfirmed parent deletion did not retain uncertain audit: %+v %v", receipt, err)
+			}
+			if !reflect.DeepEqual(cleanupResourceKinds(boundary.attempted), scenario.requested) || !reflect.DeepEqual(cleanupResourceKinds(receipt.Requested), scenario.requested) || !reflect.DeepEqual(cleanupResourceKinds(receipt.ConfirmedAbsent), scenario.absent) {
+				t.Fatalf("PARENT_FIRST_CLEANUP: child delete escaped parent confirmation or audit order: attempts=%v requested=%v absent=%v", cleanupResourceKinds(boundary.attempted), cleanupResourceKinds(receipt.Requested), cleanupResourceKinds(receipt.ConfirmedAbsent))
+			}
+			after, err := execution.New(pool).GetOperationRecord(ctx, reviewed.TenantID, reviewed.ExecutionID)
+			if err != nil || after.Cleanup == nil || !reflect.DeepEqual(*after.Cleanup, receipt) {
+				t.Fatal("parent-first cleanup receipt was not durably readable", err)
+			}
+			if !reflect.DeepEqual(before.Execution, after.Execution) || !reflect.DeepEqual(before.Runtime, after.Runtime) || !reflect.DeepEqual(before.Dispatch, after.Dispatch) || !reflect.DeepEqual(before.Authority, after.Authority) {
+				t.Fatal("controller cleanup changed original execution, publication, close or run facts")
+			}
+			recomputed, err := biz.CleanupPlanFor(after)
+			encoded, marshalErr := json.Marshal(recomputed)
+			if err != nil || marshalErr != nil || string(encoded) != string(originalPlan) {
+				t.Fatal("dispatch mutated the reviewed target order or stable plan/hash", err, marshalErr)
+			}
+		})
+	}
+}
+
+// Only the Kubernetes delete boundary is supplied by this fixture. A still
+// present parent can recreate its dependent, even after that dependent ended.
+type cleanupControllerBoundary struct {
+	present    map[string]bool
+	attempted  []biz.RuntimeResource
+	failedKind string
+}
+
+func (boundary *cleanupControllerBoundary) VerifyCleanupWritersAbsent(context.Context, biz.OperationRecord) error {
+	return nil
+}
+
+func (boundary *cleanupControllerBoundary) DeleteExecutionResource(_ context.Context, _ biz.OperationRecord, resource biz.RuntimeResource) error {
+	boundary.attempted = append(boundary.attempted, resource)
+	if boundary.present[resource.OwnerUID] || resource.Kind == boundary.failedKind {
+		return biz.ErrCleanupUncertain
+	}
+	delete(boundary.present, resource.UID)
+	return nil
+}
+
+func (boundary *cleanupControllerBoundary) VerifyCleanupResolved(context.Context, biz.OperationRecord) ([]biz.RuntimeResource, error) {
+	return nil, biz.ErrCleanupBlocked
+}
+
+func cleanupResourceKinds(resources []biz.RuntimeResource) []string {
+	kinds := []string{}
+	for _, resource := range resources {
+		kinds = append(kinds, resource.Kind)
+	}
+	return kinds
+}
+
 func cleanupResolution(record biz.OperationRecord, plan biz.CleanupPlan) biz.CleanupReceipt {
 	receipt := *record.Cleanup
 	receipt.Phase, receipt.ReconciledFromPhase = "RECONCILED", record.Cleanup.Phase

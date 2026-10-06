@@ -22,10 +22,19 @@ func TestCleanupDeleteUsesExactUIDVersionAndOrphansEvidence(t *testing.T) {
 		t.Run(map[bool]string{false: "original", true: "replacement"}[changed], func(t *testing.T) {
 			closed := time.Date(2026, 10, 5, 2, 0, 0, 0, time.UTC)
 			target := biz.RuntimeResource{APIVersion: "batch/v1", Kind: "Job", Namespace: "test-ns", Name: "training-node", UID: "original-job", OwnerUID: "original-set", Terminal: true, APIObjectPresent: true}
-			record := biz.OperationRecord{QueryRecord: biz.QueryRecord{Execution: biz.Execution{Admission: biz.Admission{TenantID: "11111111-1111-4111-8111-111111111111", ExecutionID: "22222222-2222-4222-8222-222222222222", OperationID: "33333333-3333-4333-8333-333333333333", SpecHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Snapshot: cpup01.Snapshot{Environment: cpup01.EnvironmentBindingSnapshot{NamespaceName: "test-ns", NamespaceUID: "namespace-1"}}}, OwnerRevision: 9, States: biz.ExecutionStates{Close: biz.CloseStateClosed, Delivery: biz.DeliveryStatePublished}}, Runtime: biz.ExecutionRuntime{OwnerRevision: 9, ClosedAt: &closed, CloseGeneration: 1, CloseEvidence: &biz.ManagedCloseEvidence{ObservedAt: closed}, Training: &biz.TrainingPlan{}, TrainingHandle: &biz.TrainingHandle{}, Publication: &biz.RuntimePublication{ID: "published-1"}, Observation: &biz.TrainingRuntimeObservation{WritersAbsent: true, Resources: []biz.RuntimeResource{target}}}}}
+			parents := []biz.RuntimeResource{
+				{APIVersion: "trainer.kubeflow.org/v1alpha1", Kind: "TrainJob", Namespace: "test-ns", Name: "training", UID: "original-train", Terminal: true, APIObjectPresent: true},
+				{APIVersion: "jobset.x-k8s.io/v1alpha2", Kind: "JobSet", Namespace: "test-ns", Name: "training", UID: "original-set", OwnerUID: "original-train", Terminal: true, APIObjectPresent: true},
+			}
+			record := biz.OperationRecord{QueryRecord: biz.QueryRecord{Execution: biz.Execution{Admission: biz.Admission{TenantID: "11111111-1111-4111-8111-111111111111", ExecutionID: "22222222-2222-4222-8222-222222222222", OperationID: "33333333-3333-4333-8333-333333333333", SpecHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Snapshot: cpup01.Snapshot{Environment: cpup01.EnvironmentBindingSnapshot{NamespaceName: "test-ns", NamespaceUID: "namespace-1"}}}, OwnerRevision: 9, States: biz.ExecutionStates{Close: biz.CloseStateClosed, Delivery: biz.DeliveryStatePublished}}, Runtime: biz.ExecutionRuntime{OwnerRevision: 9, ClosedAt: &closed, CloseGeneration: 1, CloseEvidence: &biz.ManagedCloseEvidence{ObservedAt: closed}, Training: &biz.TrainingPlan{}, TrainingHandle: &biz.TrainingHandle{NamespaceUID: "namespace-1", TrainJobUID: "original-train"}, Publication: &biz.RuntimePublication{ID: "published-1"}, Observation: &biz.TrainingRuntimeObservation{WritersAbsent: true, Resources: append(parents, target)}}}}
 			deleted, calls := false, 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
+				if r.Method == http.MethodGet && (r.URL.Path == "/apis/jobset.x-k8s.io/v1alpha2/namespaces/test-ns/jobsets/training" || r.URL.Path == "/apis/trainer.kubeflow.org/v1alpha1/namespaces/test-ns/trainjobs/training") {
+					w.WriteHeader(404)
+					_ = json.NewEncoder(w).Encode(map[string]any{"apiVersion": "v1", "kind": "Status", "status": "Failure", "reason": "NotFound", "code": 404})
+					return
+				}
 				if r.URL.Path != "/apis/batch/v1/namespaces/test-ns/jobs/training-node" {
 					t.Error("delete escaped exact execution target")
 					w.WriteHeader(403)

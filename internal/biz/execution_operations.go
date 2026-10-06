@@ -249,8 +249,9 @@ func CleanupPlanFor(record OperationRecord) (CleanupPlan, error) {
 	if len(plan.Targets) > 64 {
 		return CleanupPlan{}, ErrCleanupBlocked
 	}
-	// Delete children before parents. Orphan deletion cannot cascade-delete the
-	// Pod/Workflow evidence or the retained workspace.
+	// Preserve the existing canonical target order for reviewed plan hashes.
+	// ApplyCleanup dispatches parent-first; Orphan retains Pod/Workflow evidence
+	// and the workspace.
 	rank := map[string]int{"Job": 0, "JobSet": 1, "TrainJob": 2}
 	sort.Slice(plan.Targets, func(i, j int) bool {
 		if rank[plan.Targets[i].Kind] != rank[plan.Targets[j].Kind] {
@@ -337,7 +338,18 @@ func (operations *ExecutionOperations) ApplyCleanup(ctx context.Context, tenant,
 			receipt.Phase = "NEEDS_REVIEW"
 			return receipt, err
 		}
-		for _, resource := range current.Targets {
+		// Remove reconciling parents before their dependents so a completed
+		// TrainJob cannot recreate a deleted JobSet or Job. Keep the reviewed
+		// plan's canonical target order and hash unchanged.
+		deleteTargets := append([]RuntimeResource{}, current.Targets...)
+		rank := map[string]int{"TrainJob": 0, "JobSet": 1, "Job": 2}
+		sort.Slice(deleteTargets, func(i, j int) bool {
+			if rank[deleteTargets[i].Kind] != rank[deleteTargets[j].Kind] {
+				return rank[deleteTargets[i].Kind] < rank[deleteTargets[j].Kind]
+			}
+			return deleteTargets[i].UID < deleteTargets[j].UID
+		})
+		for _, resource := range deleteTargets {
 			receipt.Requested = append(receipt.Requested, resource)
 			if err := operations.cleanup.DeleteExecutionResource(ctx, record, resource); err != nil {
 				receipt.Phase = "NEEDS_REVIEW"
