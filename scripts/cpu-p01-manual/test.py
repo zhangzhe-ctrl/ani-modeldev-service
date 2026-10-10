@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Human-invoked real BFF tests for the retained CPU-P01 lab."""
-import argparse,base64,copy,json,pathlib,re,sys,time,urllib.request,uuid
+import argparse,base64,copy,json,pathlib,re,sys,time,urllib.error,urllib.request,uuid
 import manual as m
 from acceptance import API,stop_training
 
@@ -95,7 +95,6 @@ def negatives(name):
  artifacts=call('GET','/executions/'+target+'/artifacts')['artifacts'];artifact=artifacts[0]['artifact_id']
  checks.append({'test':'b-artifact',**call('GET','/artifacts/'+artifact+'/content',expected=(404,),who='b')})
  request=urllib.request.Request(BASE+ROOT+'/executions/'+target)
- import urllib.error
  try:urllib.request.urlopen(request,timeout=10);raise RuntimeError('Unauthenticated request unexpectedly accepted')
  except urllib.error.HTTPError as e:assert e.code==401;checks.append({'test':'no-token','http_status':e.code});e.close()
  m.save(name+'.negative-checks.json',checks);print(json.dumps({'result':'PASS','checks':checks}))
