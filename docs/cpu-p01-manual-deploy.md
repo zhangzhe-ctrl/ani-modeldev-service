@@ -1,6 +1,6 @@
 # CPU-P01 手动部署与当前状态
 
-更新日期：2026-10-09。面向环境交付、运维与验收人员。
+更新日期：2026-10-10。面向环境交付、运维与验收人员。
 
 对应指南：[CPU-P01 功能、实现、扩展、部署与使用指南](cpu-p01-guide.md) 与 [手动复部署与测试手册](cpu-p01-manual-test.md)。本文记录本次手动部署（`manual-ani-system-20261008`）的实际落地结果与当前边界，供验收接续使用。
 
@@ -63,25 +63,21 @@ render 重新产出后，`application.json` 与 `release-imports.json` 中 `rbac
 | `timeoutSeconds` | **10**（原为 2，见下） |
 | 后端 Endpoint | Running，Pod `1/1` |
 
-> ⚠️ `timeoutSeconds` 已从 2 调到 **10**：2s 对"每次冷建 TLS、握手串行化"的 Python 后端太紧，会导致 KFP 关闭阶段 Pod 被拒、执行卡在 `close_state=OPEN`。修复命令见 [验证记录 §4.3](cpu-p01-manual-verify.md)。**`manual.py render` 不覆盖该字段，重新 render/deploy 会把 2s 打回**，需固化此 patch。
+> ⚠️ `timeoutSeconds` 已从 2 调到 **10**：2s 对"每次冷建 TLS、握手串行化"的 Python 后端太紧，会导致 KFP 关闭阶段 Pod 被拒、执行卡在 `close_state=OPEN`。修复命令见 [验证记录 §5.3](cpu-p01-manual-verify.md)。**`manual.py render` 不覆盖该字段，重新 render/deploy 会把 2s 打回**，需固化此 patch。
 
 ## 5. 当前边界 / 待办
 
-部署与 watchdog 链路已落地；**核心正向业务验证已于 2026-10-09 跑通**（`enable → import-csv → run → wait → verify`，`L4_PASS`），详见 [验证记录](cpu-p01-manual-verify.md)。
+部署与 watchdog 链路已落地；**核心正向业务验证已于 2026-10-09 跑通**（`enable → import-csv → run → wait → verify`，`L4_PASS`），并于 2026-10-10 **复演一次**（`bprime-03`）；**反例矩阵 `t negatives` 亦已通过**（7 项断言）。详见 [验证记录](cpu-p01-manual-verify.md)。
 
 仍未执行：
 
-1. **第二次真实成功训练**（手册 §6），可直接用新测试名继续。
-2. **反例 `t negatives`**（幂等改意图、跨租户隔离、未授权、无 token）：需租户 B 与「无 ModelDev 授权用户」的 BFF token，当前无对应凭据材料。
-3. **正式清理** `t cleanup-plan/apply`：需先选定目标执行。
-4. **webhook `timeoutSeconds` 固化**：见 §4，`render` 会打回 2s。
-5. **`modeldev-mtls` 客户端证书换发**：2026-10-12 到期。
-
-历史遗留说明（已不适用）：早期 `t login` 依赖的 `.private/live-governance-20261005/` 私有材料在本次以「直接用租户 admin 凭据换取 BFF token 写入 `.private/a.token`」替代，无需该目录亦可执行 `enable/run/wait/verify`。
+1. **非成功路径复演**（手册 §8，fail / stop / deadline）：可直接用对应预设继续。
+2. **正式清理** `t cleanup-plan/apply`：需先选定目标执行。
+3. **webhook `timeoutSeconds` 固化**：见 §4，`render` 会打回 2s。
+4. **`modeldev-mtls` 客户端证书换发**：2026-10-12 到期。
 
 ## 6. 相关文件
 
 - 部署入口与命令：`scripts/cpu-p01-manual/manual.py`（`prepare|pipeline|render|forward|kubectl`）
 - 业务测试：`scripts/cpu-p01-manual/test.py`（`login|catalogue|enable|run|wait|verify|negatives`）
 - 验收实现：`scripts/cpu-p01-manual/acceptance.py`
-- 远端执行 shim：`local-remote/ttyd-exec.py`、`local-remote/ttyd-run.py`、部署包内 `cluster-ssh.py`
