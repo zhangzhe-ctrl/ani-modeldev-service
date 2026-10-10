@@ -146,7 +146,7 @@ def render():
   release['release_id']=str(uuid.uuid4());release['pipeline_id']=receipt['pipeline_id'];release['pipeline_version_id']=receipt['pipeline_version_id'];raw=encoded(release);digest=sha(raw)
   facts['release_id']=release['release_id'];facts['release_digest']=digest;catalogue[release['release_id']+'.json']=base64.b64encode(raw).decode();fresh[mode]={'preset_id':release['preset_id'],'release_id':release['release_id'],'release_digest':digest,'canonical_release':base64.b64encode(raw).decode()}
   env=facts['environment'];env.update(bind['environment'])
-  facts['environment_evidence']={'reference':str(D/'environment-receipt.json'),'sha256':proofsha};facts['application_evidence']={'reference':str(D/'environment-receipt.json')+'#rbac_checks','sha256':proofsha}
+  facts['environment_evidence']={'reference':str(D/'environment-receipt.json'),'sha256':proofsha};facts['application_evidence']={'reference':str(D/'environment-receipt.json'),'sha256':proofsha}
   name='manual-'+mode+'.facts.json';cm['data'][name]=encoded(facts).decode();factpaths.append({'path':'/etc/modeldev/facts/'+name,'sha256':sha(cm['data'][name].encode())})
  config['command']['admission_resolution']['facts_files']=factpaths;save('release-imports.json',fresh)
  seedsecret={'apiVersion':'v1','kind':'Secret','metadata':{'name':'modeldev-manual-releases','namespace':SYSTEM},'type':'Opaque','data':{'files.json':base64.b64encode(encoded(catalogue)).decode()}}

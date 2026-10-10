@@ -28,3 +28,5 @@ bin/
 *.swp
 Thumbs.db
 .DS_Store
+
+.private/
