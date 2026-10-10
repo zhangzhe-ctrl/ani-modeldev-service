@@ -18,9 +18,12 @@
 | 独立加载验证 | `t verify bprime-02` | ✅ **L4_PASS** |
 | 第二次成功训练 | `t run/wait/verify bprime-03` | ✅ SUCCEEDED / PUBLISHED / CLOSED + **L4_PASS** |
 | 反例（隔离/幂等/未授权） | `t negatives bprime-03` | ✅ **PASS**（7 项断言全绿） |
-| 正式清理 | `t cleanup-plan/apply` | ⬜ 未执行 |
+| 失败路径复演 | `t run/wait/inspect failure-01 fail` | ✅ FAILED / CLOSED / `close_reason=STEP_FAILED` |
+| 停止路径复演 | `t run/inspect stop-01 stop` | ✅ CLOSED / `close_reason=USER_STOP` |
+| 截止时间路径复演 | `t run/wait/inspect deadline-01 deadline` | ⏭️ **跳过**（根因已定位为产品侧，本次不修；见 §5.5） |
+| 正式清理 | `t cleanup-plan/apply bprime-03` | ✅ **APPLIED**（targets 已删除、PVC/发布保留、清理后重验 **L4_PASS**） |
 
-> 结论：**真实训练、四文件发布、普通 BFF 下载、独立 CPU 加载的正向链已完整跑通并复演一次；手册 §7 反例矩阵（幂等改意图、跨租户隔离、未授权、无 token）亦全部通过**。仅剩手册的正式清理尚未执行。
+> 结论：**真实训练、四文件发布、普通 BFF 下载、独立 CPU 加载的正向链已完整跑通并复演一次；手册 §7 反例矩阵（幂等改意图、跨租户隔离、未授权、无 token）亦全部通过；手册 §8 的失败（fail）与停止（stop）路径已通过**。手册 §8 的**截止时间（deadline）路径经研判为产品侧关闭驱动的健壮性缺口**（执行卡在 `CLOSING`，详见 §5.5），**本次决定不做修复、按跳过处理**，留待产品侧立项处理；§9 的正式清理已在 `bprime-03` 上执行并 **APPLIED**（见 §3.9），清理后 S3 发布仍可独立下载加载（**L4_PASS**）。
 
 ## 2. 关键事实
 
@@ -129,6 +132,74 @@ executions/46936e6b-3a3b-4868-8d88-6833665abb70/f8aa5902-7c77-4b59-8b3a-3dcd1df8
 
 > 该矩阵证明：执行与产物按租户强隔离（跨租户返回 404 而非泄露），权限按用户模型判定（无授权返回 403），幂等与参数边界按合同拒绝。至此手册 §7 反例矩阵在真实环境通过。
 
+### 3.6 失败路径（`fail`）
+
+在 `fail` 预设上提交 `failure-01`（执行 `d35e12cf-464b-4a8e-ba14-297f2c97c575`），训练程序按失败配方运行至非零退出：
+
+| 项 | 实测 |
+| --- | --- |
+| `compute_state` | `FAILED` |
+| `compute_outcome` | `FAILED` |
+| `delivery_state` | `PENDING`（**未发布任何产物**） |
+| `close_state` | `CLOSED` |
+| `close_reason` | `STEP_FAILED` |
+| 训练容器 | `exit_code=1` |
+| 控制器对象 | TrainJob/JobSet/Job `terminal=true` |
+
+结论：失败由训练程序真实非零退出驱动，关闭原因与退出证据一致，且未产出发布物。
+
+### 3.7 停止路径（`stop`）
+
+在 `stop` 预设上提交 `stop-01`（执行 `d1eeccb0-6221-4f35-93fb-542ca305e79d`）。客户端在**观察到真实 optimizer 输出（step 1、2…）后**立即发送 Stop 并重放：
+
+| 项 | 实测 |
+| --- | --- |
+| `close_state` | `CLOSED` |
+| `close_reason` | `USER_STOP` |
+| `stop_requested` | `true` |
+| `close_generation` | `1` |
+| Stop 回执 | `intent_generation=1`，重放返回同 generation 且 `replayed=true` |
+| 步证据 | 真实 `ani.metric.v1` / `train.loss`，step ≥ 3 且 < 48 |
+| 训练容器 | `exit_code=143`（SIGTERM） |
+| 控制器对象 | TrainJob/JobSet/Job `creation_disabled=true`（已取消，无运行中写者） |
+
+结论：Stop 由客户端主动意图驱动，同一 Operation、同一 intent generation 保持，关闭原因 `USER_STOP`，且停止后未发布完整模型。
+
+### 3.8 截止时间路径（`deadline`）— ⏭️ 跳过（产品侧待立项）
+
+在 `deadline` 预设上提交 `deadline-01`（执行 `72155ea2-fa77-43da-a87e-79ee8877c794`，Release 原始 `execution_timeout_seconds=60`）。执行在截止时间后进入 `close_state=CLOSING`，但**持续 15 分钟以上未能收敛到 `CLOSED`**：
+
+| 项 | 实测 |
+| --- | --- |
+| `compute_state` | `SUBMISSION_CONFIRMED`（未推进） |
+| `close_state` | `CLOSING`（长时间不收敛） |
+| `close_generation` | `1` |
+| KFP Workflow | `general-cpu-jr9b5` → `Failed`（`deletionTimestamp` 为**空**，未被删除） |
+| 关闭步骤 | `finalize-close` 调 `RequestExecutionClose` 返回 **401 `managed workload authentication failed`** |
+| Governance 日志 | 反复 `WARN modeldev close claim unavailable` |
+
+**根因（已定位，经集群复核）**：见 §5.5。要点是该 workflow 带 **workflow 级 `activeDeadlineSeconds=0`**（截止时刻＝创建时刻 `07:07:12`）。正文组件 `workspace-name` 的 executor 节点 `...-663707367` 在创建 Pod 前就已超时，于 `07:08:17` 直接 `Pending -> Failed`（消息 `Step exceeded its deadline`，无任何 `Created pod:` 记录）。此后该 Workflow 的**历史节点图里保留了这个 Pod 类型节点，但从未存在对应 Pod 对象**。ModelDev 的关闭/身份校验（`resolvedManagedTasks` / `VerifyClosingRun` / `VerifyOwnerWritersAbsent`）要求 Run 的每个受管任务都能在**实际 Pod 列表**中解析出唯一 Pod，缺失即判 `ErrRuntimeNotReady`，因此 `finalize-close` 无法完成关闭（401），独立 CloseWorker 也长期不收敛（执行停在 `CLOSING`）。
+
+> 纠正早期记录：先前把原因写成「Argo 删除 workflow 使对象带 `deletionTimestamp`」。实测 workflow `deletionTimestamp` 为空、`finalize-close` Pod 仍存在，故该解释不成立，已按上述证据改写。
+
+**归属与处置**：研判为 **(a) 产品侧关闭驱动的健壮性缺口**（见 §5.5）。修复需放宽关闭证据对「Argo 已记录但从未落地的 executor 节点」的容忍规则，涉及写者缺失这一安全不变量，**本次决定不改代码**，将该路径记为**跳过**，交产品侧另行立项；`execute_timeout_seconds=60` 是手册 §8 明确的 Release 契约属性，故**不做 (b) 放宽超时**。
+
+### 3.9 正式清理（`cleanup-plan` / `cleanup-apply`）— ✅ APPLIED
+
+对已关闭的 `bprime-03`（执行 `7af805a8-5370-4dff-92b1-24a8568d16ac`，`compute=SUCCEEDED / delivery=PUBLISHED / close=CLOSED`）执行手册 §9 的清理：
+
+| 步骤 | 命令 | 实测 |
+| --- | --- | --- |
+| 生成计划 | `t cleanup-plan bprime-03` | 返回 `plan_sha256=cd0d232b…66da6`，3 个 `terminal=true` 目标：TrainJob / JobSet / Job `md-7af805a8-…` |
+| 保留范围 | （plan `retained`） | `PVC`、`Workflow`、`Pod`、`S3 publication`、`execution and audit records` |
+| 执行清理 | `t cleanup-apply bprime-03` | `phase=APPLIED`；3 个目标全部 `confirmed_absent` |
+| 清理后核对 | kubectl 复查 | 3 个目标对象 **UID 均不存在**；workspace PVC `ani-kfp-workspace-7af805a8-…` **仍在**；Workflow `general-cpu-6dmjv` 保留 |
+| 清理后重验 | `cp receipt → t verify bprime-03-after-cleanup` | **L4_PASS**（四文件下载校验通过、`epochs=3`、`optimizer_steps=48`） |
+
+结论：清理**只删已关闭执行的计算资源**（TrainJob/JobSet/Job），**保留** workspace PVC、Workflow、Pod 与 S3 发布；清理后 S3 发布产物仍可脱离训练卷独立下载并加载，证明「发布与计算解耦」的保留语义成立。
+
+> 说明：清理目标必须**已 `CLOSED`**。`deadline-01`（`72155ea2`，卡在 `CLOSING`）会被 `ErrCleanupBlocked` 拒绝（[execution_operations.go](file:///c:/ProgramProject/ChangQinYun/kuberai/ani-modeldev-service/internal/biz/execution_operations.go) 要求 `Close=CLOSED`、`ClosedAt!=nil`、`CloseEvidence!=nil`、`CloseReviewReason==""`），故本次未纳入清理，待产品侧修复其关闭路径后另行处置。
+
 ## 4. 验证流程与验收标准
 
 本节说明本次实际执行的步骤、每步的入口与通过判据，便于复现与核对。
@@ -165,16 +236,16 @@ executions/46936e6b-3a3b-4868-8d88-6833665abb70/f8aa5902-7c77-4b59-8b3a-3dcd1df8
 
 ### 4.4 覆盖与未覆盖
 
-- **本次覆盖**：单租户（tenant-a）的完整正向链（授权受理 → 冻结 → KFP 训练 → 四文件发布 → BFF 授权下载 → 脱离训练卷的独立 CPU 加载），正向链**复演一次**（`bprime-03`）；反例矩阵全部 7 项（幂等改意图、非法参数、跨租户隔离、未授权、无 token）。
-- **本次未覆盖**：训练失败（fail）与 Stop/deadline 三种非成功路径在真实环境的重演、正式清理。详见 [§6 待办](#6-尚未执行--待办)。
+- **本次覆盖**：单租户（tenant-a）的完整正向链（授权受理 → 冻结 → KFP 训练 → 四文件发布 → BFF 授权下载 → 脱离训练卷的独立 CPU 加载），正向链**复演一次**（`bprime-03`）；反例矩阵全部 7 项（幂等改意图、非法参数、跨租户隔离、未授权、无 token）；非成功路径中的**失败（fail）**与**停止（stop）**两项。
+- **本次未覆盖 / 未通过**：**截止时间（deadline）路径在真实环境未能收敛**（卡在 `CLOSING`，见 §3.8、§5.5），经研判为**产品侧缺口，本次跳过、不改代码**。正式清理已在 `bprime-03` 上完成（§3.9）。详见 [§6 待办](#6-尚未执行--待办)。
 
 ### 4.5 与手册的对应
 
 本流程对应 [手动复部署与测试手册](cpu-p01-manual-test.md) §5（`login → catalogue → enable`）与 §6（`run → wait → logs → inspect → verify`）。本次以**全新合成的 CSV** 执行，替代手册中复用既有 READY 输入的做法，其余步骤与判据与手册一致。
 
-## 5. 走通本流程所做的四处修复
+## 5. 走通本流程所做的修复与发现
 
-这些修复位于部署包的测试脚手架/集群配置中，非 modeldev 业务代码。
+这些修复位于部署包的测试脚手架/集群配置中，非 modeldev 业务代码；其中 §5.5 为已定位的产品侧缺口（本次跳过，留待产品侧立项）。
 
 ### 5.1 `test.py` 的 admin 镜像与配置源
 
@@ -233,14 +304,52 @@ kubectl patch mutatingwebhookconfiguration ani-modeldev-exit-retention --type=js
 
 修复：把 `urllib.error` 提到模块级 `import`，删除函数内的局部 import。修复后 `t negatives` 通过（见 §3.5）。
 
+### 5.4b `test.py stop` 的调用契约与 `acceptance.py` 的响应形状
+
+现象一：`t run stop-01 stop` 在提交后立即报错（先是 `KeyError`，先前为 `AttributeError`）。
+
+根因一：`test.py` 的 stop 分支调用 `stop_training(api(), {'execution_id':…, 'operation_id':…})`，而 `acceptance.stop_training` 需要 `config['request']`（它自行重放请求、跟踪训练日志、再发送 Stop）。该分支此前从未被执行，契约不匹配未被暴露。
+
+修复一：调用改为传 `{'request': body, 'execution_id':…, 'operation_id':…}`。
+
+现象二：修复一后 `acceptance.stop_training` 报 `KeyError: 'execution'`。
+
+根因二：BFF 的 `GET /executions/{id}` 返回**扁平** execution 对象（无 `execution` 包裹），而 `acceptance.py` 的 stop/follow/checks 路径仍按 `response['execution']` 读取。远端 `test.py wait` 已兼容两种形状，`acceptance.py` 未同步。
+
+修复二：在 `acceptance.py` 增加 `execution_view()` 归一化（优先取 `response['execution']`，否则返回扁平响应本身），并替换三处读取。修复后 `t run stop-01 stop` 通过（见 §3.7）。
+
+### 5.5 deadline 路径：Argo 未落地的 executor 节点使写者证据无法闭合（产品侧缺口，本次跳过）
+
+现象：`t run deadline-01 deadline` 后执行卡在 `close_state=CLOSING` 超过 15 分钟，永不 `CLOSED`；KFP workflow `general-cpu-jr9b5` 最终 `Failed`，但 `deletionTimestamp` 为空。`finalize-close` 步骤调 `RequestExecutionClose` 返回 **401 `managed workload authentication failed`**；governance 侧同时反复 `WARN modeldev close claim unavailable`。ModelDev 独立 CloseWorker 虽持续扫描到该执行（DB `close_reason=DEADLINE`、`CloseGeneration=1`、`CloseRequestedAt=07:08:14`、`ClosedAt=null`），但同样无法收敛。
+
+已定位的因果链（均以集群对象/日志复核）：
+
+1. **该 workflow 带 `spec.activeDeadlineSeconds=0`**（截止时刻＝创建时刻 `07:07:12`）。正向成功的 workflow（如 `general-cpu-6dmjv`、`general-cpu-wkfq4`）**没有该字段**；失败路径的 `general-cpu-s9s6p` 也没有。该字段只出现在**被运行期终止的两个 workflow**：`general-cpu-8mppx`（stop）与 `general-cpu-jr9b5`（deadline）。workflow-controller 日志佐证：`retry exceeded workflow deadline 2026-10-10 07:07:12 +0000 UTC`。
+2. **组件 Pod 因「节点截止」未获创建**：该 pipeline 的正文组件（`workspace-name`、`prepare`、…）运行在 `root.exit-handler-1` 的 DAG 内。controller 日志显示 `workspace-name` 的 executor 节点 `...-663707367` 于 `07:08:14` `initialized Pending`，`07:08:17` 直接 `phase Pending -> Failed`，消息 `Step exceeded its deadline`，全程**没有任何 `Created pod:` 记录**——即该节点在创建 Pod 前就已超时失败。（业务截止 `07:08:12`、workflow 截止 `07:07:12` 此时均已过；对照组 `stop` 的各组件 Pod 均在截止传导前已创建，故其历史节点无缺失。）
+3. **历史节点图留下一个无 Pod 的 Pod 节点**：`...-663707367` 在 workflow 的 `status.nodes` 中保留为 `type=Pod, phase=Failed`（displayName `executor(0)`，属 `...workspace-name.executor`），且在节点字段上与「真正跑过」的节点可区分——**它没有 `hostNodeName`、没有 `outputs`、没有 `resourcesDuration`**，而所有实际落地的 Pod 节点都带 `hostNodeName=ani-0x`（Pod 由 `modeldev.ani.io/step-exit-evidence` finalizer 保留，节点与 Pod 一一对应）。**实际 Pod 列表里没有它的对象**（复核：6 个 `type=Pod` 节点中仅 5 个有 Pod，缺的正是 `663707367`）。对照 `stop` 的 `general-cpu-8mppx`：其节点无缺失，因关闭在截止回收之前完成。
+4. **关闭证据要求每个受管任务可解析出唯一现存 Pod**：`resolvedManagedTasks`（[tasks.go](file:///c:/ProgramProject/ChangQinYun/kuberai/ani-modeldev-service/internal/data/runtimeproof/tasks.go#L102-L108)）在 executor 节点数 ≠ 1 时返回 `ErrRuntimeNotReady`；`VerifyOwnerWritersAbsent`（[owner_close.go](file:///c:/ProgramProject/ChangQinYun/kuberai/ani-modeldev-service/internal/data/runtimeproof/owner_close.go#L136-L139)）在 `len(seenNodes) != len(nodes)` 时同样返回 `ErrRuntimeNotReady`。缺失的 Pod 让「写者已停止」证据**永远无法重建**，于是 `finalize-close` 身份校验失败（401），执行停在 `CLOSING`。
+5. **关闭意图本应由 ModelDev 独立驱动，但共用同一证据要求**：[execution_closer.go](file:///c:/ProgramProject/ChangQinYun/kuberai/ani-modeldev-service/internal/biz/execution_closer.go#L56-L209) 的 `Reconcile` 与 [close_worker.go](file:///c:/ProgramProject/ChangQinYun/kuberai/ani-modeldev-service/internal/biz/close_worker.go#L39-L74) 的 `ReconcileOnce` 本应在截止后独立关闭；[runtime.go](file:///c:/ProgramProject/ChangQinYun/kuberai/ani-modeldev-service/cmd/ani-modeldev-service/runtime.go#L139-L140) 确认该 worker 在生产运行，[deadline_flow_test.go](file:///c:/ProgramProject/ChangQinYun/kuberai/ani-modeldev-service/internal/data/submittest/deadline_flow_test.go) 亦断言 deadline 应自动关闭（`CloseReason=DEADLINE`、`ClosedAt!=nil`）。DB 实测该执行已被 worker 纳入：`close_reason=DEADLINE`、`CloseGeneration=1`、`CloseRequestedAt=07:08:14`、`ClosedAt=null`、`CloseReviewReason` 为空。但独立 worker 走的 `VerifyOwnerWritersAbsent` 与 workflow 内步骤**共用同一证据要求**，因此在节点无 Pod 时一起失效，长期停在 `CLOSING`。
+
+> 纠正早期记录：先前写的「Argo 删除 workflow 使其带 `deletionTimestamp` → `stepidentity` 校验失败」**不成立**——实测 `general-cpu-jr9b5.deletionTimestamp` 为空、`finalize-close` Pod 仍在。真正的问题不在 workflow/Pod 被删除，而在 Argo 因 workflow 截止**从未创建** `workspace-name` 组件 Pod，留下一个无法解析的历史节点。
+
+> 待确认：`activeDeadlineSeconds=0` 的**写入方**尚未定位。pipeline IR 只有**执行器级** `activeDeadlineSeconds`（600/1800），没有 workflow 级字段，故 `0` 不是 IR 直接产物；且 CreateRun 请求体只含 `runtime_config.parameters` 与 `pipeline_root`，未见 `max_run_duration`。已确认该字段**只伴随 workflow `:terminate`/截止终止出现**（stop 与 deadline 两个被终止的 workflow 都有，success/fail 都没有），倾向是 KFP 对「运行期被终止的 Run」的回写，而非本仓库部署/测试脚本的补丁。
+
+**归属与处置**：研判为 **(a) 产品侧关闭驱动的健壮性缺口**——「历史 Pod 必须全部存在」的强证据要求，无法容纳 Argo 已记录但从未落地的 executor 节点（无写者存在）。正确修复是让关闭证据把「无 `hostNodeName` 的 Pod 类型节点」判为**从未落地＝无写者**，而不是缺失证据；但这直接触及「写者缺失」这一安全不变量（[owner_close.go](file:///c:/ProgramProject/ChangQinYun/kuberai/ani-modeldev-service/internal/data/runtimeproof/owner_close.go#L14-L16) 注释明确要求独立观察写者缺席），**影响面与风险较高**。经决策：**本次不改代码**，将该路径记为**跳过**并留待产品侧立项；候选 **(b)** 放宽 deadline 预设的 `execution_timeout_seconds` 会违反手册 §8 明确的 Release 契约（60s），故**不采纳**。
+
+本记录如实标注该路径**本次跳过、未通过**。
+
+
 ## 6. 尚未执行 / 待办
 
 | # | 项 | 前置条件 |
 | --- | --- | --- |
-| 1 | 非成功路径复演（fail / stop / deadline） | 无，可直接用对应预设 `t run/wait` |
-| 2 | 正式清理 `t cleanup-plan/apply` | 需先选定目标执行 |
+| 1 | **deadline 路径产品侧修复** | §5.5 已定位为产品侧关闭驱动缺口（容忍未落地的 executor 节点）。**本次不改代码**，留待产品侧立项；修复后需重跑 `deadline-01` |
+| 2 | 正式清理 `t cleanup-plan/apply` | ✅ 已在 `bprime-03` 上 **APPLIED**（见 §3.9）；`72155ea2`（deadline-01）仍卡在 `CLOSING`，被 `ErrCleanupBlocked` 拒绝，待其关闭路径修复后另行处置 |
 | 3 | `modeldev-mtls` 客户端证书换发 | **2026-10-12 到期**，到期后 governance→modeldev mTLS 失效 |
 | 4 | webhook `timeoutSeconds` 固化 | 见 5.3 |
+| 5 | `activeDeadlineSeconds=0` 写入方确认 | §5.5，倾向 KFP 对运行期被终止 Run 的回写，未最终定位 |
+
+> 已完成的非成功路径：失败（fail，§3.6）、停止（stop，§3.7）。截止时间（deadline）路径经研判为产品侧缺口，本次**跳过**。
 
 ## 7. 复用命令（本次实际使用）
 
@@ -265,6 +374,23 @@ python3 test.py verify bprime-03
 
 # 5) 反例矩阵（幂等改意图 / 非法参数 / 跨租户 / 越权 / 无 token）
 python3 test.py negatives bprime-03
+
+# 6) 非成功路径（逐个启用对应预设后提交）
+python3 test.py enable fail
+python3 test.py run    failure-01 fail
+python3 test.py wait   failure-01 CLOSED
+python3 test.py inspect failure-01        # 期望 close_reason=STEP_FAILED
+
+python3 test.py enable stop
+python3 test.py run    stop-01 stop       # 观察真实训练步后自动 Stop 并重放
+python3 test.py inspect stop-01           # 期望 close_reason=USER_STOP
+
+python3 test.py enable deadline
+python3 test.py run    deadline-01 deadline
+# ⚠️ deadline 路径本次跳过：72155ea2 卡在 CLOSING（见 §5.5），
+#    产品侧修复后再执行下述 wait/inspect。
+python3 test.py wait   deadline-01 CLOSED
+python3 test.py inspect deadline-01       # 期望 close_reason=DEADLINE
 ```
 
 ## 8. 相关文件
