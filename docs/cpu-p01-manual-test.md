@@ -35,16 +35,16 @@ test -s "$CPU_P01_KIT/general-cpu.yaml"
 
 脚本子命令的副作用：
 
-| 命令                   | 做什么                                                                 |
-| -------------------- | ------------------------------------------------------------------- |
-| `manual.py prepare`  | 本地生成私有 foundation、恢复 Job、写权探针文件；不写集群                                |
+| 命令 | 做什么 |
+| --- | --- |
+| `manual.py prepare` | 本地生成私有 foundation、恢复 Job、写权探针文件；不写集群 |
 | `manual.py pipeline` | 使用新控制 SA 的 KFP token，创建新 namespace 下的 Pipeline、Version 和 Experiment |
-| `manual.py render`   | 只读实际 UID、探针、RBAC 和 Runtime；生成新绑定、四种 Release、应用及 webhook 文件          |
-| `k ...`              | 在固定 lab 执行你明确输入的 kubectl 命令，先检查 kube-system UID                     |
-| `manual.py forward`  | 开启最长约 10 分钟的前台临时连接；Ctrl-C 关闭                                        |
-| `test.py ...`        | 普通密码登录、真实 BFF 调用，或创建明确命名的管理/验证 Job                                  |
+| `manual.py render` | 只读实际 UID、探针、RBAC 和 Runtime；生成新绑定、四种 Release、应用及 webhook 文件 |
+| `k ...` | 在固定 lab 执行你明确输入的 kubectl 命令，先检查 kube-system UID |
+| `manual.py forward` | 开启最长约 10 分钟的前台临时连接；Ctrl-C 关闭 |
+| `test.py ...` | 普通密码登录、真实 BFF 调用，或创建明确命名的管理/验证 Job |
 
-本次尚未替你执行新部署和业务测试，以下测试初始状态均为 **NOT\_RUN**。`Ready` 只证明服务可启动，业务成功必须走到第 6 节的独立加载。
+本次尚未替你执行新部署和业务测试，以下测试初始状态均为 **NOT_RUN**。`Ready` 只证明服务可启动，业务成功必须走到第 6 节的独立加载。
 
 ## 2. 检查保留的基础环境
 
@@ -227,7 +227,7 @@ fail：真实训练程序使用失败配方，检查原训练容器非零退出�
 
 stop：慢训练镜像实际输出第 3 步及以后、尚未到第 48 步时，客户端立即发送 Stop 并重放 Stop；必须同 Operation、同 intent generation，最终 CLOSED、Stop intent 保留。客户端输出只代表观察到该状态；还需 `inspect` 验证 `close_reason=USER_STOP`，KFP 原 Run 取消、相关训练和步骤 Pod 没有运行中的写者，停止之后不发布完整模型。
 
-deadline：Release 的原始 execution timeout 为 60 秒；应在原截止时间后关闭，inspect 的 `close_reason=DEADLINE`。60 秒是触发截止意图的时间，不保证资源在第 60 秒已经清理完。BFF 的 compute\_state 可能保留最后一次计算观察，关闭原因以 inspect 和原资源退出证据为准，不能强改成 FAILED/CANCELED 或启动替代 Run 来宣称恢复。
+deadline：Release 的原始 execution timeout 为 60 秒；应在原截止时间后关闭，inspect 的 `close_reason=DEADLINE`。60 秒是触发截止意图的时间，不保证资源在第 60 秒已经清理完。BFF 的 compute_state 可能保留最后一次计算观察，关闭原因以 inspect 和原资源退出证据为准，不能强改成 FAILED/CANCELED 或启动替代 Run 来宣称恢复。
 
 ```bash
 k get trainjobs,jobsets,jobs,pods -n ani-kfp-manual-a
