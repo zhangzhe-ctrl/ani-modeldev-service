@@ -15,9 +15,21 @@ import (
 
 const trainingExitEvidenceFinalizer = "modeldev.ani.io/training-exit-evidence"
 
-// Runtime Pod templates retain exit evidence until a previous observation has
-// persisted it. A newly observed exit must be recorded before closure or GC.
-func (a *Adapter) releaseRecordedPodExits(ctx context.Context, plan biz.TrainingPlan, handle biz.TrainingHandle, resources map[string]biz.RuntimeResource, objects map[string]*unstructured.Unstructured, history []biz.RuntimeResource) (bool, error) {
+// ReleaseRecordedTrainingExits rechecks the production observation boundary and
+// releases only original terminal Pods whose bounded logs are already durable.
+func (a *Adapter) ReleaseRecordedTrainingExits(ctx context.Context, plan biz.TrainingPlan, handle biz.TrainingHandle, recorded biz.TrainingRuntimeObservation) error {
+	state := biz.ExecutionRuntime{Training: &plan, TrainingHandle: &handle, Observation: &recorded}
+	record := biz.QueryRecord{Execution: biz.Execution{Admission: biz.Admission{ExecutionID: plan.ExecutionID, Snapshot: plan.Snapshot}}, Runtime: state}
+	if recorded.Handle != handle || recorded.ObservedAt.IsZero() || biz.ValidateTerminalTrainingLogs(record, recorded.RecordedLogs) != nil {
+		return biz.ErrRuntimeConflict
+	}
+	_, err := a.observeTraining(ctx, plan, handle, recorded.Resources, &recorded)
+	return err
+}
+
+// Observation offers exit facts without releasing the source of their logs.
+// Only the explicit post-commit call above may remove our finalizer.
+func (a *Adapter) releaseRecordedPodExits(ctx context.Context, plan biz.TrainingPlan, handle biz.TrainingHandle, resources map[string]biz.RuntimeResource, objects map[string]*unstructured.Unstructured, history []biz.RuntimeResource, recorded *biz.TrainingRuntimeObservation) (bool, error) {
 	pending := false
 	for uid, fact := range resources {
 		pod := objects[uid]
@@ -41,8 +53,28 @@ func (a *Adapter) releaseRecordedPodExits(ctx context.Context, plan biz.Training
 			continue
 		}
 		if !fact.Terminal || fact.ExitCode == nil || !recordedPodExit(fact, history) {
+			if recorded != nil {
+				return false, biz.ErrRuntimeConflict
+			}
 			pending = true
 			continue
+		}
+		logged := false
+		if recorded != nil {
+			for _, log := range recorded.RecordedLogs {
+				logged = logged || log.Source.PodUID == fact.UID && log.Source.PodName == fact.Name && log.Source.Namespace == fact.Namespace && log.Source.OwnerUID == fact.OwnerUID
+			}
+			if !logged {
+				return false, biz.ErrTrainingLogsUnavailable
+			}
+		}
+		if recorded != nil && plan.Snapshot.ComputeOrigin.DeviceMode == "gpu" {
+			if a.ownerSigner == nil {
+				return false, biz.ErrRuntimeNotReady
+			}
+			if err := a.ownerSigner.signPod(ctx, plan, handle, pod, false); err != nil {
+				return false, err
+			}
 		}
 		job := objects[fact.OwnerUID]
 		jobFact, ok := resources[fact.OwnerUID]
@@ -53,6 +85,9 @@ func (a *Adapter) releaseRecordedPodExits(ctx context.Context, plan biz.Training
 		setFact, ok := resources[jobFact.OwnerUID]
 		if !ok || set == nil || setFact.Kind != "JobSet" || setFact.APIVersion != "jobset.x-k8s.io/v1alpha2" || setFact.Namespace != plan.Workspace.NamespaceName || !controllerIs(job, setFact.APIVersion, setFact.Kind, setFact.Name, setFact.UID) || !controllerIs(set, "trainer.kubeflow.org/v1alpha1", "TrainJob", plan.Name, handle.TrainJobUID) {
 			return false, biz.ErrRuntimeConflict
+		}
+		if recorded == nil {
+			continue
 		}
 		if pod.GetResourceVersion() == "" {
 			return false, biz.ErrRuntimeConflict

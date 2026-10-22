@@ -17,8 +17,8 @@ import (
 )
 
 // The real observer must first offer the original process exit for durable
-// storage, and only a subsequent observation may remove its evidence finalizer.
-// This is the actual deadline path: suspension makes Kubernetes delete the Pod.
+// storage. Observation alone cannot remove the retention finalizer: a suspended
+// controller may already be deleting this Pod before its log tail is durable.
 func TestGPUObservationRetainsDeletingSignedOriginalExitUntilRecorded(t *testing.T) {
 	plan, handle, pod, client, keyFile, _ := ownerSigningFixture(t)
 	signer, err := trainer.NewOwnerAssertionSigner(client, keyFile)
@@ -116,11 +116,56 @@ func TestGPUObservationRetainsDeletingSignedOriginalExitUntilRecorded(t *testing
 		t.Fatalf("recorded original exit did not unblock close: %+v %v", confirmed, err)
 	}
 	after, err := resource.Get(ctx, pod.GetName(), metav1.GetOptions{})
-	if err != nil || len(after.GetFinalizers()) != 0 || after.GetAnnotations()["accelerator.ani.io/owner-signature"] != assertion {
-		t.Fatalf("recording rewrote the assertion or retained its own exit finalizer: %v", err)
+	if err != nil || !reflect.DeepEqual(after.GetFinalizers(), []string{exitEvidenceFinalizer}) || after.GetAnnotations()["accelerator.ani.io/owner-signature"] != assertion {
+		t.Fatalf("EXIT_FINALIZER_RELEASED_BEFORE_LOG_CAPTURE: observation changed the original retention or signature: %v", err)
 	}
 	if !reflect.DeepEqual(after.GetOwnerReferences(), original.GetOwnerReferences()) {
 		t.Fatal("original controller association changed")
+	}
+	if err := observer.ReleaseRecordedTrainingExits(ctx, plan, handle, confirmed); !errors.Is(err, biz.ErrTrainingLogsUnavailable) {
+		t.Fatalf("missing final tail allowed release: %v", err)
+	}
+	durable := terminalLogEvidence(t, plan, handle, confirmed)
+	for _, attack := range []string{"unsigned", "replacement-uid", "running", "foreign-controller"} {
+		t.Run("release rejects "+attack, func(t *testing.T) {
+			changed := after.DeepCopy()
+			switch attack {
+			case "unsigned":
+				annotations := changed.GetAnnotations()
+				delete(annotations, "accelerator.ani.io/owner-signature")
+				changed.SetAnnotations(annotations)
+			case "replacement-uid":
+				changed.SetUID(types.UID("replacement-pod-uid"))
+			case "running":
+				changed.Object["status"] = pod.Object["status"]
+			case "foreign-controller":
+				refs := changed.GetOwnerReferences()
+				refs[0].UID = types.UID("foreign-job-uid")
+				changed.SetOwnerReferences(refs)
+			}
+			if _, err := resource.Update(ctx, changed, metav1.UpdateOptions{}); err != nil {
+				t.Fatal(err)
+			}
+			client.ClearActions()
+			if err := observer.ReleaseRecordedTrainingExits(ctx, plan, handle, durable); err == nil {
+				t.Fatal("untrusted original exit accepted for release")
+			}
+			for _, action := range client.Actions() {
+				if action.GetVerb() != "get" && action.GetVerb() != "list" {
+					t.Fatalf("rejected release changed API: %s", action.GetVerb())
+				}
+			}
+			if _, err := resource.Update(ctx, after.DeepCopy(), metav1.UpdateOptions{}); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	if err := observer.ReleaseRecordedTrainingExits(ctx, plan, handle, durable); err != nil {
+		t.Fatal("durable original log/exit did not release", err)
+	}
+	released, err := resource.Get(ctx, pod.GetName(), metav1.GetOptions{})
+	if err != nil || len(released.GetFinalizers()) != 0 || released.GetAnnotations()["accelerator.ani.io/owner-signature"] != assertion {
+		t.Fatal("release changed identity or left protection", err)
 	}
 }
 

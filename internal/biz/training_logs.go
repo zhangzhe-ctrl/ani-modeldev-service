@@ -56,6 +56,31 @@ func ValidateRecordedTrainingLogs(record QueryRecord, logs []RecordedTrainingLog
 	return nil
 }
 
+// ValidateTerminalTrainingLogs additionally binds final tails to a recorded
+// process exit. Live running-Pod query results are not final exit evidence.
+func ValidateTerminalTrainingLogs(record QueryRecord, logs []RecordedTrainingLog) error {
+	// The cleanup graph already caps original runtime resources at 64. Each
+	// retained Pod contributes at most one 1000-line / 65536-byte final tail.
+	if len(logs) > 64 {
+		return ErrTrainingLogsUnavailable
+	}
+	if err := ValidateRecordedTrainingLogs(record, logs); err != nil {
+		return err
+	}
+	for _, log := range logs {
+		terminal := false
+		if record.Runtime.Observation != nil {
+			for _, pod := range record.Runtime.Observation.Resources {
+				terminal = terminal || pod.Kind == "Pod" && pod.UID == log.Source.PodUID && pod.Terminal && pod.ExitCode != nil
+			}
+		}
+		if !terminal {
+			return ErrTrainingLogsUnavailable
+		}
+	}
+	return nil
+}
+
 func validRecordedTrainingLogResult(result TrainingLogResult) bool {
 	validTime := func(value time.Time) bool { return !value.IsZero() && value.Year() >= 1 && value.Year() <= 9999 }
 	if !validTime(result.ObservedAt) || len(result.Lines) == 0 || len(result.Lines) > 1000 {
@@ -96,14 +121,23 @@ func RecordedTrainingLogsFor(record QueryRecord, source TrainingLogSource, optio
 	if err != nil || expected != source {
 		return TrainingLogResult{}, false, ErrTrainingLogsUnavailable
 	}
-	receipt := record.Runtime.ComputeCleanup
-	if receipt == nil || !receipt.LogsReady {
+	logs := []RecordedTrainingLog(nil)
+	if record.Runtime.Observation != nil {
+		logs = record.Runtime.Observation.RecordedLogs
+		if err := ValidateTerminalTrainingLogs(record, logs); err != nil {
+			return TrainingLogResult{}, false, err
+		}
+	}
+	if receipt := record.Runtime.ComputeCleanup; receipt != nil && receipt.LogsReady {
+		logs = receipt.Logs
+	}
+	if len(logs) == 0 {
 		return TrainingLogResult{}, false, nil
 	}
-	if err := ValidateRecordedTrainingLogs(record, receipt.Logs); err != nil {
+	if err := ValidateRecordedTrainingLogs(record, logs); err != nil {
 		return TrainingLogResult{}, false, err
 	}
-	for _, log := range receipt.Logs {
+	for _, log := range logs {
 		if log.Source != source {
 			continue
 		}
@@ -173,7 +207,7 @@ func TrainingLogSourceFor(record QueryRecord, logID string) (TrainingLogSource, 
 		if logID != "" && logID != id {
 			continue
 		}
-		if selected != nil || pod.APIVersion != "v1" || pod.Namespace != namespace || !pod.APIObjectPresent {
+		if selected != nil || pod.APIVersion != "v1" || pod.Namespace != namespace || !pod.APIObjectPresent && (!pod.Terminal || pod.ExitCode == nil) {
 			return TrainingLogSource{}, ErrTrainingLogsUnavailable
 		}
 		owner, found := resources[pod.OwnerUID]

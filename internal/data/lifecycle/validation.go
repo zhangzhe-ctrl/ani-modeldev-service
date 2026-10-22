@@ -131,6 +131,36 @@ func mergeObservation(state biz.ExecutionRuntime, observation biz.TrainingRuntim
 		merged.Resources = append(merged.Resources, resource)
 	}
 	sort.Slice(merged.Resources, func(i, j int) bool { return merged.Resources[i].UID < merged.Resources[j].UID })
+	// The same transaction retains the first final tail and its original exit.
+	// Later observations may add tails, but cannot replace or erase evidence.
+	logs := make(map[string]biz.RecordedTrainingLog)
+	if state.Observation != nil {
+		for _, log := range state.Observation.RecordedLogs {
+			logs[log.Source.LogID] = log
+		}
+	}
+	seenLogs := make(map[string]bool)
+	for _, log := range observation.RecordedLogs {
+		if seenLogs[log.Source.LogID] {
+			return biz.TrainingRuntimeObservation{}, biz.ErrRuntimeConflict
+		}
+		seenLogs[log.Source.LogID] = true
+		if previous, ok := logs[log.Source.LogID]; ok && !reflect.DeepEqual(previous, log) {
+			return biz.TrainingRuntimeObservation{}, biz.ErrRuntimeConflict
+		}
+		logs[log.Source.LogID] = log
+	}
+	merged.RecordedLogs = nil
+	for _, log := range logs {
+		merged.RecordedLogs = append(merged.RecordedLogs, log)
+	}
+	sort.Slice(merged.RecordedLogs, func(i, j int) bool { return merged.RecordedLogs[i].Source.LogID < merged.RecordedLogs[j].Source.LogID })
+	logState := state
+	logState.Observation = &merged
+	record := biz.QueryRecord{Execution: biz.Execution{Admission: biz.Admission{ExecutionID: state.Training.ExecutionID, Snapshot: state.Training.Snapshot}}, Runtime: logState}
+	if biz.ValidateTerminalTrainingLogs(record, merged.RecordedLogs) != nil {
+		return biz.TrainingRuntimeObservation{}, biz.ErrRuntimeConflict
+	}
 	if !hasTrainJob {
 		return biz.TrainingRuntimeObservation{}, biz.ErrRuntimeConflict
 	}

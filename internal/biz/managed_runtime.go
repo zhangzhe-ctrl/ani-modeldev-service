@@ -17,6 +17,12 @@ type ManagedRuntime struct {
 	workspaces    PreparedWorkspaceVerifier
 	publications  PublicationVerifier
 	registrations *FinetuningRegistrationOrchestrator
+	logs          TrainingLogReader
+}
+
+func (runtime *ManagedRuntime) WithTrainingLogs(reader TrainingLogReader) *ManagedRuntime {
+	runtime.logs = reader
+	return runtime
 }
 
 func (runtime *ManagedRuntime) WithModelRegistration(registry TrainedArtifactRegistry, copier TrainedArtifactCopier) (*ManagedRuntime, error) {
@@ -354,9 +360,30 @@ func (runtime *ManagedRuntime) observe(ctx context.Context, result ManagedRuntim
 	if err != nil {
 		return state, err
 	}
+	releaser, retainsExits := runtime.trainer.(TrainingExitEvidenceReleaser)
+	var captureErr error
+	if retainsExits && !observation.SpecificationMismatch {
+		observation, captureErr = runtime.captureTrainingExitLogs(ctx, result.Execution, state, observation)
+		if captureErr != nil {
+			// Exit facts survive a failed read, while closure and source release
+			// remain blocked until their real final tails have been committed.
+			observation.WritersAbsent = false
+			if observation.Outcome == "SUCCEEDED" || observation.Outcome == "FAILED" {
+				observation.Outcome = "UNKNOWN"
+			}
+		}
+	}
 	state, err = runtime.repository.RecordTrainingObservation(ctx, result.Authority.RunAuthorityCandidate, observation)
 	if err != nil {
 		return state, err
+	}
+	if captureErr != nil {
+		return state, captureErr
+	}
+	if retainsExits && !observation.SpecificationMismatch && state.Observation != nil && len(state.Observation.RecordedLogs) > 0 {
+		if err := releaser.ReleaseRecordedTrainingExits(ctx, *state.Training, *state.TrainingHandle, *state.Observation); err != nil {
+			return state, err
+		}
 	}
 	if observation.SpecificationMismatch {
 		state, _, err = runtime.repository.RequestRuntimeClose(ctx, result.Authority.RunAuthorityCandidate, "STEP_FAILED")

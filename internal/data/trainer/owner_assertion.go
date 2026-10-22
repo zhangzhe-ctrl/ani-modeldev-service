@@ -52,6 +52,10 @@ func NewOwnerAssertionSigner(client dynamic.Interface, keyFile string) (*OwnerAs
 // signing. The caller invokes this only for a Pod observed under its accepted
 // training plan; a replacement UID or uncertain API result remains unresolved.
 func (signer *OwnerAssertionSigner) SignPod(ctx context.Context, plan biz.TrainingPlan, handle biz.TrainingHandle, observed *unstructured.Unstructured) error {
+	return signer.signPod(ctx, plan, handle, observed, true)
+}
+
+func (signer *OwnerAssertionSigner) signPod(ctx context.Context, plan biz.TrainingPlan, handle biz.TrainingHandle, observed *unstructured.Unstructured, allowSign bool) error {
 	if signer == nil || signer.client == nil || len(signer.key) != ed25519.PrivateKeySize || ctx == nil || !validTrainingPlan(plan) || plan.Snapshot.ComputeOrigin.DeviceMode != "gpu" || plan.Snapshot.GPU == nil || plan.Snapshot.GPU.ValidateFor(plan.Snapshot.ComputeOrigin) != nil || observed == nil || observed.GetUID() == "" || observed.GetNamespace() != plan.Workspace.NamespaceName || handle.TrainJobUID == "" || handle.NamespaceUID != plan.Workspace.NamespaceUID || handle.PVCUID != plan.Workspace.PVCUID {
 		return biz.ErrRuntimeConflict
 	}
@@ -149,7 +153,7 @@ func (signer *OwnerAssertionSigner) SignPod(ctx context.Context, plan biz.Traini
 	// Suspension can delete an already-signed worker while its exit finalizer
 	// retains the original UID for durable observation. Only the verified
 	// existing assertion above may be reused; never sign or repair a deleting Pod.
-	if pod.GetDeletionTimestamp() != nil {
+	if !allowSign || pod.GetDeletionTimestamp() != nil {
 		return biz.ErrRuntimeConflict
 	}
 	annotations["accelerator.ani.io/execution-digest"] = gpu.ExecutionDigest

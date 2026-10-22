@@ -41,6 +41,11 @@ func (verifier *Verifier) CaptureComputeCleanupLogs(ctx context.Context, executi
 	if state.Training == nil || state.TrainingRejection != nil {
 		return logs, nil
 	}
+	if state.Observation != nil && len(state.Observation.RecordedLogs) > 0 && biz.ComputeCleanupLogsComplete(execution, state, state.Observation.RecordedLogs) {
+		// These exact tails were committed before releasing their original Pod.
+		// The graph above still independently excludes live/foreign writers.
+		return append(logs, state.Observation.RecordedLogs...), nil
+	}
 	// Reuse the real training observer before disposing any parent. Its full
 	// original owner chain, historical exits and creation stop remain required.
 	if verifier.training == nil {
@@ -87,6 +92,33 @@ func (verifier *Verifier) ReconcileComputeCleanup(ctx context.Context, execution
 		bounded, cancel := context.WithDeadline(ctx, retry.DeadlineAt)
 		defer cancel()
 		ctx = bounded
+	}
+	if releaser, ok := verifier.training.(biz.TrainingExitEvidenceReleaser); ok && state.Training != nil && state.TrainingHandle != nil && state.Observation != nil && len(receipt.Logs) > 0 {
+		// Legacy retained Pods may have been captured by the post-close path.
+		// RecordComputeCleanupLogs already committed these exact tails.
+		retained := false
+		for _, pod := range state.Observation.Resources {
+			if pod.Kind != "Pod" {
+				continue
+			}
+			actual, err := verifier.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "pods"}).Namespace(pod.Namespace).Get(ctx, pod.Name, metav1.GetOptions{})
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			if err != nil || !sameObject(actual, pod.APIVersion, pod.Kind, pod.Namespace, pod.Name, pod.UID) {
+				return removed, biz.ErrCleanupConflict
+			}
+			for _, finalizer := range actual.GetFinalizers() {
+				retained = retained || finalizer == "modeldev.ani.io/training-exit-evidence"
+			}
+		}
+		if retained {
+			recorded := *state.Observation
+			recorded.RecordedLogs = receipt.Logs
+			if err := releaser.ReleaseRecordedTrainingExits(ctx, *state.Training, *state.TrainingHandle, recorded); err != nil {
+				return removed, err
+			}
+		}
 	}
 	targets, hash, err := biz.ComputeCleanupTargets(execution, owner, state)
 	if err != nil || hash != receipt.PlanHash || !reflect.DeepEqual(targets, receipt.Targets) || !reflect.DeepEqual(targets, receipt.Requested) {
@@ -202,23 +234,26 @@ func (verifier *Verifier) verifyComputeCleanupGraph(ctx context.Context, executi
 			return biz.ErrCleanupConflict
 		}
 		object, err := verifier.kube.Resource(resource).Namespace(target.Namespace).Get(ctx, target.Name, metav1.GetOptions{})
-		if apierrors.IsNotFound(err) && (removalIntent || target.Kind == "TrainingRuntime") {
+		if apierrors.IsNotFound(err) && (removalIntent || target.Kind == "TrainingRuntime" || savedComputePodLog(execution, state, target)) {
 			continue
 		}
 		if err != nil || !sameObject(object, target.APIVersion, target.Kind, target.Namespace, target.Name, target.UID) || object.GetResourceVersion() == "" {
 			return biz.ErrCleanupConflict
 		}
 		if object.GetDeletionTimestamp() != nil {
-			if !removalIntent {
+			protectedExit := !removalIntent && target.Kind == "Pod" && target.Terminal && target.ExitCode != nil && onlyTrainingExitFinalizer(object.GetFinalizers())
+			if !removalIntent && !protectedExit {
 				return biz.ErrCleanupBlocked
 			}
-			if len(object.GetFinalizers()) != 0 {
+			if !protectedExit && len(object.GetFinalizers()) != 0 {
 				return biz.ErrCleanupBlocked
 			}
-			if err := verifier.waitComputeRemoval(ctx, target); err != nil {
-				return err
+			if !protectedExit {
+				if err := verifier.waitComputeRemoval(ctx, target); err != nil {
+					return err
+				}
+				continue
 			}
-			continue
 		}
 		if target.Kind == "Workflow" {
 			continue // Complete node hash/state/UID checked independently above.
@@ -248,7 +283,7 @@ func (verifier *Verifier) verifyComputeCleanupGraph(ctx context.Context, executi
 				return biz.ErrCleanupBlocked
 			}
 			account, _ := textAt(object, "spec", "serviceAccountName")
-			if account != execution.Snapshot.Environment.Identities.TrainerServiceAccount || len(object.GetFinalizers()) != 0 {
+			if account != execution.Snapshot.Environment.Identities.TrainerServiceAccount || len(object.GetFinalizers()) != 0 && (removalIntent || !onlyTrainingExitFinalizer(object.GetFinalizers())) {
 				return biz.ErrCleanupBlocked
 			}
 		} else if target.Kind != "PodGroup" && !computeControllerStopped(object) {
@@ -280,6 +315,24 @@ func (verifier *Verifier) verifyComputeCleanupGraph(ctx context.Context, executi
 		}
 	}
 	return nil
+}
+
+func onlyTrainingExitFinalizer(finalizers []string) bool {
+	return len(finalizers) == 1 && finalizers[0] == "modeldev.ani.io/training-exit-evidence"
+}
+
+func savedComputePodLog(execution biz.Execution, state biz.ExecutionRuntime, pod biz.RuntimeResource) bool {
+	if pod.Kind != "Pod" || !pod.Terminal || pod.ExitCode == nil {
+		return false
+	}
+	record := biz.QueryRecord{Execution: execution, Runtime: state}
+	id := uuid.NewSHA1(uuid.NameSpaceOID, []byte(execution.ExecutionID+":"+pod.UID+":node")).String()
+	source, err := biz.TrainingLogSourceFor(record, id)
+	if err != nil {
+		return false
+	}
+	_, found, err := biz.RecordedTrainingLogsFor(record, source, biz.TrainingLogOptions{TailLines: 1000, MaxBytes: 65536})
+	return found && err == nil
 }
 
 // A committed original deletion may still be undergoing ordinary API/GC work.

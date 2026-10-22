@@ -13,6 +13,10 @@ import (
 )
 
 func (a *Adapter) ObserveTraining(ctx context.Context, plan biz.TrainingPlan, handle biz.TrainingHandle, history []biz.RuntimeResource) (biz.TrainingRuntimeObservation, error) {
+	return a.observeTraining(ctx, plan, handle, history, nil)
+}
+
+func (a *Adapter) observeTraining(ctx context.Context, plan biz.TrainingPlan, handle biz.TrainingHandle, history []biz.RuntimeResource, recorded *biz.TrainingRuntimeObservation) (biz.TrainingRuntimeObservation, error) {
 	observation := biz.TrainingRuntimeObservation{Handle: handle, Outcome: "UNKNOWN", ObservedAt: time.Now().UTC()}
 	train, current, err := a.readBoundTrainingForClose(ctx, plan, handle)
 	if err != nil {
@@ -144,7 +148,7 @@ func (a *Adapter) ObserveTraining(ctx context.Context, plan biz.TrainingPlan, ha
 			if a.ownerSigner == nil {
 				return observation, biz.ErrRuntimeNotReady
 			}
-			if err := a.ownerSigner.SignPod(ctx, plan, handle, pod); err != nil {
+			if err := a.ownerSigner.signPod(ctx, plan, handle, pod, recorded == nil); err != nil {
 				return observation, err
 			}
 		}
@@ -222,7 +226,10 @@ func (a *Adapter) ObserveTraining(ctx context.Context, plan biz.TrainingPlan, ha
 	trainSuspended, _, _ := unstructured.NestedBool(train.Object, "spec", "suspend")
 	setSuspended, _, _ := unstructured.NestedBool(jobset.Object, "spec", "suspend")
 	creationStopped := (trainTerminal && setTerminal) || (trainSuspended && setSuspended && jobsStopped)
-	exitPending, err := a.releaseRecordedPodExits(ctx, plan, handle, resources, objects, history)
+	if recorded != nil && observation.SpecificationMismatch {
+		return observation, biz.ErrRuntimeConflict
+	}
+	exitPending, err := a.releaseRecordedPodExits(ctx, plan, handle, resources, objects, history, recorded)
 	if err != nil {
 		return observation, err
 	}

@@ -82,6 +82,7 @@ func buildRuntimeApp(config *conf.Bootstrap, logger *slog.Logger) (*application,
 	if err != nil {
 		return failed("managed runtime configuration invalid")
 	}
+	runtime.WithTrainingLogs(clients.logs)
 	if modelClient != nil {
 		storageHTTP, ok := clients.store.Options().HTTPClient.(*http.Client)
 		if !ok {

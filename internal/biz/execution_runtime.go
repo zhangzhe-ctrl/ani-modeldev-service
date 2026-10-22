@@ -166,6 +166,15 @@ type TrainingRuntimeObservation struct {
 	SpecificationMismatch          bool   `json:",omitempty"`
 	NoWorkerPodListResourceVersion string `json:",omitempty"`
 	ObservedAt                     time.Time
+	// RecordedLogs contains bounded tails captured while the original terminal
+	// Pod is retained. It is runtime evidence, never part of the frozen snapshot.
+	RecordedLogs []RecordedTrainingLog `json:",omitempty"`
+}
+
+// TrainingExitEvidenceReleaser accepts only an observation returned by durable
+// storage. Observation itself must not discard the original Pod's log source.
+type TrainingExitEvidenceReleaser interface {
+	ReleaseRecordedTrainingExits(context.Context, TrainingPlan, TrainingHandle, TrainingRuntimeObservation) error
 }
 
 type TrainingReservation struct {

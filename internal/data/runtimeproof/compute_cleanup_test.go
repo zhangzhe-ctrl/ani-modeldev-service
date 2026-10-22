@@ -45,6 +45,7 @@ type computeCleanupFixture struct {
 	deferDelete               bool
 	deferDeleteKind           string
 	pendingReads              map[string]int
+	captureBeforeClose        bool
 }
 
 // These are Kubernetes/KFP boundary substitutes, never a training load. Every
@@ -119,8 +120,41 @@ func newComputeCleanupClosingFixture(t *testing.T, fine bool, closeReason string
 		if err != nil || first.WritersAbsent {
 			t.Fatal("first exit must persist before finalizer release", err)
 		}
+		if f.captureBeforeClose {
+			candidate := reserved.State
+			candidate.TrainingHandle, candidate.Observation = &handle, &first
+			source, err := biz.TrainingLogSourceFor(biz.QueryRecord{Execution: step.f.execution, Runtime: candidate}, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			core, err := coreclient.NewForConfig(step.clientConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := traininglogs.New(core).ReadTrainingLogs(ctx, source, biz.TrainingLogOptions{TailLines: 1000, MaxBytes: 65536})
+			if err != nil {
+				t.Fatal(err)
+			}
+			first.RecordedLogs = []biz.RecordedTrainingLog{{Source: source, Result: result}}
+		}
 		if _, err := repository.RecordTrainingObservation(ctx, step.f.authority(), first); err != nil {
 			t.Fatal(err)
+		}
+		if f.captureBeforeClose {
+			stored, err := lifecycle.New(step.open()).GetRuntime(ctx, step.f.execution.TenantID, step.f.execution.ExecutionID)
+			if err != nil || stored.Observation == nil {
+				t.Fatal("independent final log commit", err)
+			}
+			if err := training.ReleaseRecordedTrainingExits(ctx, *stored.Training, handle, *stored.Observation); err != nil {
+				t.Fatal(err)
+			}
+			// API/GC may remove the now-unprotected exact Pod before closure.
+			for key, object := range f.objects {
+				if object.GetKind() == "Pod" {
+					delete(f.objects, key)
+					delete(f.step.pods, object.GetName())
+				}
+			}
 		}
 		second, err := training.ObserveTraining(ctx, *reserved.State.Training, handle, first.Resources)
 		if err != nil || !second.WritersAbsent {
@@ -200,8 +234,8 @@ func (f *computeCleanupFixture) serve(t *testing.T, w http.ResponseWriter, r *ht
 				status(500, "InternalError")
 				return true
 			}
-		} else if state.Observation == nil || len(state.Observation.Resources) == 0 {
-			t.Error("training finalizer release preceded original DB exit observation")
+		} else if state.Observation == nil || len(state.Observation.Resources) == 0 || len(state.Observation.RecordedLogs) == 0 && (state.ComputeCleanup == nil || !state.ComputeCleanup.LogsReady) {
+			t.Error("training finalizer release preceded original DB exit and log commit")
 			status(500, "InternalError")
 			return true
 		}

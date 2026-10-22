@@ -26,6 +26,17 @@ func (o *configuredCleanupObserver) ObserveTraining(ctx context.Context, plan bi
 	return o.TrainingRuntime.ObserveTraining(ctx, plan, handle, history)
 }
 
+func (o *configuredCleanupObserver) ReleaseRecordedTrainingExits(ctx context.Context, plan biz.TrainingPlan, handle biz.TrainingHandle, observation biz.TrainingRuntimeObservation) error {
+	if o.err != nil {
+		return o.err
+	}
+	releaser, ok := o.TrainingRuntime.(biz.TrainingExitEvidenceReleaser)
+	if !ok {
+		return biz.ErrRuntimeNotReady
+	}
+	return releaser.ReleaseRecordedTrainingExits(ctx, plan, handle, observation)
+}
+
 func TestComputeCleanupPreservesConfiguredTrainingObserver(t *testing.T) {
 	for _, denied := range []bool{false, true} {
 		t.Run(map[bool]string{false: "configured owner capability", true: "configured owner refuses observation"}[denied], func(t *testing.T) {

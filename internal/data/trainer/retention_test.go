@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -72,8 +73,12 @@ func TestTrainingRetainsStoppedPodUntilExitEvidenceIsDurable(t *testing.T) {
 		t.Fatalf("real owned Pod exit was not offered for durable persistence: %+v", exitFact)
 	}
 	confirmed, err := a.ObserveTraining(ctx, f.plan, handle, observed.Resources)
-	if err != nil || !confirmed.WritersAbsent || f.podPatches != 1 {
-		t.Fatalf("durably recorded exit did not release the stopped writer: %+v patches=%d err=%v", confirmed, f.podPatches, err)
+	if err != nil || !confirmed.WritersAbsent || f.podPatches != 0 {
+		t.Fatalf("observation released the stopped Pod before log persistence: %+v patches=%d err=%v", confirmed, f.podPatches, err)
+	}
+	confirmed = terminalLogEvidence(t, f.plan, handle, confirmed)
+	if err := a.ReleaseRecordedTrainingExits(ctx, f.plan, handle, confirmed); err != nil || f.podPatches != 1 {
+		t.Fatalf("durable exit and log evidence did not release the stopped Pod: patches=%d err=%v", f.podPatches, err)
 	}
 	finalizers, _, _ := unstructured.NestedStringSlice(f.pod, "metadata", "finalizers")
 	if !reflect.DeepEqual(finalizers, []string{"batch.kubernetes.io/job-tracking"}) || f.deletes != 0 {
@@ -104,8 +109,12 @@ func TestTrainingReleasesDurableNaturalExitBeforeControllerCompletion(t *testing
 		t.Fatalf("natural exit escaped retention before durable observation: %+v err=%v", observed, err)
 	}
 	confirmed, err := a.ObserveTraining(ctx, f.plan, handle, observed.Resources)
-	if err != nil || confirmed.WritersAbsent || f.podPatches != 1 {
-		t.Fatalf("parent completion must not hold a durably proved natural Pod exit: %+v patches=%d err=%v", confirmed, f.podPatches, err)
+	if err != nil || confirmed.WritersAbsent || f.podPatches != 0 {
+		t.Fatalf("natural observation released a Pod before its log persistence: %+v patches=%d err=%v", confirmed, f.podPatches, err)
+	}
+	confirmed = terminalLogEvidence(t, f.plan, handle, confirmed)
+	if err := a.ReleaseRecordedTrainingExits(ctx, f.plan, handle, confirmed); err != nil || f.podPatches != 1 {
+		t.Fatalf("parent completion must not hold a durably proved natural Pod exit: patches=%d err=%v", f.podPatches, err)
 	}
 	if finalizers, _, _ := unstructured.NestedStringSlice(f.pod, "metadata", "finalizers"); len(finalizers) != 0 {
 		t.Fatalf("own finalizer leaked on natural completion: %v", finalizers)
@@ -181,10 +190,11 @@ func TestTrainingDoesNotReleaseExitWhenConditionalPodPatchIsRejected(t *testing.
 			if err != nil {
 				t.Fatal(err)
 			}
+			observed = terminalLogEvidence(t, f.plan, handle, observed)
 			test.change(f)
-			failed, err := a.ObserveTraining(ctx, f.plan, handle, observed.Resources)
-			if !errors.Is(err, biz.ErrTrainingUnavailable) || failed.WritersAbsent || f.podPatches != 1 || f.deletes != 0 {
-				t.Fatalf("rejected conditional release produced closure proof: %+v patches=%d err=%v", failed, f.podPatches, err)
+			err = a.ReleaseRecordedTrainingExits(ctx, f.plan, handle, observed)
+			if !errors.Is(err, biz.ErrTrainingUnavailable) || f.podPatches != 1 || f.deletes != 0 {
+				t.Fatalf("rejected conditional release lost evidence protection: patches=%d err=%v", f.podPatches, err)
 			}
 			finalizers, _, _ := unstructured.NestedStringSlice(f.pod, "metadata", "finalizers")
 			if len(finalizers) == 0 || finalizers[0] != exitEvidenceFinalizer {
@@ -253,4 +263,15 @@ func TestTrainingDoesNotReleaseHistoricalPodWithoutItsExactParentChain(t *testin
 	if !errors.Is(err, biz.ErrRuntimeConflict) || failed.WritersAbsent || f.podPatches != 0 {
 		t.Fatalf("unproved historical parent chain released a retained exit: %+v err=%v", failed, err)
 	}
+}
+
+func terminalLogEvidence(t *testing.T, plan biz.TrainingPlan, handle biz.TrainingHandle, observation biz.TrainingRuntimeObservation) biz.TrainingRuntimeObservation {
+	t.Helper()
+	record := biz.QueryRecord{Execution: biz.Execution{Admission: biz.Admission{ExecutionID: plan.ExecutionID, Snapshot: plan.Snapshot}}, Runtime: biz.ExecutionRuntime{Training: &plan, TrainingHandle: &handle, Observation: &observation}}
+	source, err := biz.TrainingLogSourceFor(record, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	observation.RecordedLogs = []biz.RecordedTrainingLog{{Source: source, Result: biz.TrainingLogResult{ObservedAt: observation.ObservedAt, Lines: []biz.TrainingLogLine{{Timestamp: observation.ObservedAt.Add(-time.Second), Text: "original terminal training log"}}}}}
+	return observation
 }
