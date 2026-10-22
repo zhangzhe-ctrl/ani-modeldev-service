@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
 
 	modeldevv1 "github.com/zhangzhe-ctrl/ani-modeldev-service/api/ani/modeldev/v1"
@@ -121,11 +123,15 @@ func (operations *Operations) PlanExecutionCleanup(ctx context.Context, request 
 	if operations == nil || operations.executions == nil {
 		return nil, status.Error(codes.Unavailable, "operations unavailable")
 	}
-	plan, err := operations.executions.PlanCleanup(ctx, access.TenantID, request.ExecutionId)
+	review, err := missingTrainingLogsReview(request.MissingTrainingLogsReview)
+	if err != nil {
+		return nil, err
+	}
+	plan, err := operations.executions.PlanCleanupWithMissingLogsReview(ctx, access.TenantID, request.ExecutionId, review)
 	if err != nil {
 		return nil, operationsError(err, access.RequestID)
 	}
-	return &modeldevv1.PlanExecutionCleanupResponse{ExecutionId: plan.ExecutionID, OperationId: plan.OperationID, ExecutionSpecHash: plan.SpecHash, OwnerRevision: plan.OwnerRevision, CloseGeneration: plan.CloseGeneration, NamespaceUid: plan.NamespaceUID, PublicationId: plan.PublicationID, Targets: operationResources(plan.Targets), PlanSha256: plan.PlanHash, Retained: plan.Retained, ObservedAt: operationTimestamp(plan.ObservedAt)}, nil
+	return &modeldevv1.PlanExecutionCleanupResponse{ExecutionId: plan.ExecutionID, OperationId: plan.OperationID, ExecutionSpecHash: plan.SpecHash, OwnerRevision: plan.OwnerRevision, CloseGeneration: plan.CloseGeneration, NamespaceUid: plan.NamespaceUID, PublicationId: plan.PublicationID, Targets: operationResources(plan.Targets), PlanSha256: plan.PlanHash, Retained: plan.Retained, ObservedAt: operationTimestamp(plan.ObservedAt), MissingTrainingLogsReview: missingTrainingLogsReviewProto(plan.MissingTrainingLogsReview)}, nil
 }
 
 func (operations *Operations) ApplyExecutionCleanup(ctx context.Context, request *modeldevv1.ApplyExecutionCleanupRequest) (*modeldevv1.ApplyExecutionCleanupResponse, error) {
@@ -139,11 +145,15 @@ func (operations *Operations) ApplyExecutionCleanup(ctx context.Context, request
 	if operations == nil || operations.executions == nil {
 		return nil, status.Error(codes.Unavailable, "operations unavailable")
 	}
-	receipt, err := operations.executions.ApplyCleanup(ctx, access.TenantID, request.ExecutionId, request.PlanSha256, access.Actor)
+	review, err := missingTrainingLogsReview(request.MissingTrainingLogsReview)
+	if err != nil {
+		return nil, err
+	}
+	receipt, err := operations.executions.ApplyCleanupWithMissingLogsReview(ctx, access.TenantID, request.ExecutionId, request.PlanSha256, access.Actor, review)
 	if err != nil {
 		return nil, operationsError(err, access.RequestID)
 	}
-	return &modeldevv1.ApplyExecutionCleanupResponse{ExecutionId: receipt.ExecutionID, PlanSha256: receipt.PlanHash, Phase: receipt.Phase, Requested: operationResources(receipt.Requested), ConfirmedAbsent: operationResources(receipt.ConfirmedAbsent), Actor: receipt.Actor, StartedAt: operationTimestamp(receipt.StartedAt), CompletedAt: operationTimestamp(receipt.CompletedAt)}, nil
+	return &modeldevv1.ApplyExecutionCleanupResponse{ExecutionId: receipt.ExecutionID, PlanSha256: receipt.PlanHash, Phase: receipt.Phase, Requested: operationResources(receipt.Requested), ConfirmedAbsent: operationResources(receipt.ConfirmedAbsent), Actor: receipt.Actor, StartedAt: operationTimestamp(receipt.StartedAt), CompletedAt: operationTimestamp(receipt.CompletedAt), MissingTrainingLogsReview: missingTrainingLogsReviewProto(receipt.MissingTrainingLogsReview)}, nil
 }
 
 func operationsError(err error, requestID string) error {
@@ -178,6 +188,41 @@ func operationResources(resources []biz.RuntimeResource) []*modeldevv1.Operation
 	result := make([]*modeldevv1.OperationResource, 0, len(resources))
 	for _, resource := range resources {
 		result = append(result, &modeldevv1.OperationResource{ApiVersion: resource.APIVersion, Kind: resource.Kind, Namespace: resource.Namespace, Name: resource.Name, Uid: resource.UID, OwnerUid: resource.OwnerUID, ApiObjectPresent: resource.APIObjectPresent, CreationDisabled: resource.CreationDisabled, Terminal: resource.Terminal, ExitCode: resource.ExitCode})
+	}
+	return result
+}
+
+func missingTrainingLogsReview(input *modeldevv1.MissingTrainingLogsReview) (*biz.CleanupMissingTrainingLogsReview, error) {
+	if input == nil {
+		return nil, nil
+	}
+	invalid := func() (*biz.CleanupMissingTrainingLogsReview, error) {
+		return nil, status.Error(codes.InvalidArgument, "invalid missing training logs review")
+	}
+	digest, err := hex.DecodeString(input.AutomaticCleanupPlanSha256)
+	if len(input.ProtoReflect().GetUnknown()) != 0 || !queryID(input.ExecutionId) || !queryID(input.CreateOperationId) || !queryID(input.CloseOperationId) || input.CreateOperationId == input.CloseOperationId || err != nil || len(digest) != 32 || strings.ToLower(input.AutomaticCleanupPlanSha256) != input.AutomaticCleanupPlanSha256 || len(input.MissingPods) == 0 || len(input.MissingPods) > 64 {
+		return invalid()
+	}
+	result := &biz.CleanupMissingTrainingLogsReview{ExecutionID: input.ExecutionId, CreateOperationID: input.CreateOperationId, CloseOperationID: input.CloseOperationId, AutomaticCleanupPlanSHA256: input.AutomaticCleanupPlanSha256}
+	last := ""
+	for _, pod := range input.MissingPods {
+		if pod == nil || len(pod.ProtoReflect().GetUnknown()) != 0 || !queryID(pod.PodUid) || pod.PersistedExitCode == nil || pod.PodUid <= last {
+			return invalid()
+		}
+		result.MissingPods = append(result.MissingPods, biz.MissingTrainingLogPod{PodUID: pod.PodUid, PersistedExitCode: *pod.PersistedExitCode})
+		last = pod.PodUid
+	}
+	return result, nil
+}
+
+func missingTrainingLogsReviewProto(input *biz.CleanupMissingTrainingLogsReview) *modeldevv1.MissingTrainingLogsReview {
+	if input == nil {
+		return nil
+	}
+	result := &modeldevv1.MissingTrainingLogsReview{ExecutionId: input.ExecutionID, CreateOperationId: input.CreateOperationID, CloseOperationId: input.CloseOperationID, AutomaticCleanupPlanSha256: input.AutomaticCleanupPlanSHA256}
+	for _, pod := range input.MissingPods {
+		code := pod.PersistedExitCode
+		result.MissingPods = append(result.MissingPods, &modeldevv1.MissingTrainingLogPod{PodUid: pod.PodUID, PersistedExitCode: &code})
 	}
 	return result
 }

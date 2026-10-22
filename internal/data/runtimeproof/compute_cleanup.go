@@ -19,10 +19,11 @@ var _ biz.ComputeCleanupBoundary = (*Verifier)(nil)
 var _ biz.RecordedComputeWriterVerifier = (*Verifier)(nil)
 
 func (verifier *Verifier) VerifyRecordedComputeWritersAbsent(ctx context.Context, execution biz.Execution, owner biz.RunAuthorityCandidate, state biz.ExecutionRuntime) error {
-	if !biz.ComputeCleanupApplied(biz.OperationRecord{QueryRecord: biz.QueryRecord{Execution: execution, Runtime: state}, Authority: &owner}) {
+	record := biz.OperationRecord{QueryRecord: biz.QueryRecord{Execution: execution, Runtime: state}, Authority: &owner, Cleanup: state.ReviewedComputeCleanup}
+	if !biz.ComputeCleanupApplied(record) && !biz.ReviewedComputeCleanupApplied(record) {
 		return biz.ErrCleanupBlocked
 	}
-	return verifier.verifyComputeCleanupGraph(ctx, execution, owner, state, true)
+	return verifier.verifyComputeCleanupGraph(ctx, execution, owner, state, true, biz.MissingTrainingLogsReviewFor(record))
 }
 
 func (verifier *Verifier) WithTrainingLogs(reader biz.TrainingLogReader) *Verifier {
@@ -197,7 +198,7 @@ func (verifier *Verifier) deleteComputeTarget(ctx context.Context, record biz.Op
 	return nil
 }
 
-func (verifier *Verifier) verifyComputeCleanupGraph(ctx context.Context, execution biz.Execution, owner biz.RunAuthorityCandidate, state biz.ExecutionRuntime, removalIntent bool) error {
+func (verifier *Verifier) verifyComputeCleanupGraph(ctx context.Context, execution biz.Execution, owner biz.RunAuthorityCandidate, state biz.ExecutionRuntime, removalIntent bool, reviews ...*biz.CleanupMissingTrainingLogsReview) error {
 	if verifier == nil || verifier.kube == nil || verifier.plans == nil || ctx == nil || ctx.Err() != nil || state.ComputeCleanup == nil {
 		return biz.ErrRuntimeNotReady
 	}
@@ -205,7 +206,14 @@ func (verifier *Verifier) verifyComputeCleanupGraph(ctx context.Context, executi
 	if err != nil || state.ComputeCleanup.PlanHash != hash || !reflect.DeepEqual(state.ComputeCleanup.Targets, targets) {
 		return biz.ErrCleanupConflict
 	}
-	if removalIntent && (!state.ComputeCleanup.LogsReady || !reflect.DeepEqual(targets, state.ComputeCleanup.Requested)) {
+	reviewed := false
+	if len(reviews) > 1 {
+		return biz.ErrCleanupConflict
+	}
+	if len(reviews) == 1 && reviews[0] != nil {
+		reviewed = biz.MissingTrainingLogsMaintenanceEligible(biz.OperationRecord{QueryRecord: biz.QueryRecord{Execution: execution, Runtime: state}, Authority: &owner, CleanupReview: reviews[0]})
+	}
+	if removalIntent && !reviewed && (!state.ComputeCleanup.LogsReady || !reflect.DeepEqual(targets, state.ComputeCleanup.Requested)) {
 		return biz.ErrCleanupBlocked
 	}
 	if err := verifier.verifyRecordedOwnerWritersAbsent(ctx, execution, owner, state.Workspace, state.StepExitCleanup.Evidence, removalIntent); err != nil {

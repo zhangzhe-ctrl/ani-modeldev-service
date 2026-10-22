@@ -36,7 +36,7 @@ func (adapter *Adapter) VerifyCleanupResolved(ctx context.Context, record biz.Op
 	if err != nil {
 		return nil, err
 	}
-	if biz.ComputeCleanupMaintenanceEligible(record) {
+	if biz.ComputeCleanupMaintenanceEligible(record) || biz.MissingTrainingLogsMaintenanceEligible(record) {
 		boundary, ok := adapter.writers.(biz.ComputeCleanupMaintenanceBoundary)
 		if !ok {
 			return nil, biz.ErrRuntimeNotReady
@@ -235,7 +235,7 @@ func (adapter *Adapter) VerifyCleanupWritersAbsent(ctx context.Context, record b
 	if err != nil {
 		return err
 	}
-	if biz.ComputeCleanupMaintenanceEligible(record) {
+	if biz.ComputeCleanupMaintenanceEligible(record) || biz.MissingTrainingLogsMaintenanceEligible(record) {
 		boundary, ok := adapter.writers.(biz.ComputeCleanupMaintenanceBoundary)
 		if !ok {
 			return biz.ErrRuntimeNotReady
@@ -372,7 +372,7 @@ func (adapter *Adapter) DeleteExecutionResource(ctx context.Context, record biz.
 	if err != nil || adapter == nil || adapter.kube == nil || ctx == nil {
 		return biz.ErrCleanupBlocked
 	}
-	if biz.ComputeCleanupMaintenanceEligible(record) {
+	if biz.ComputeCleanupMaintenanceEligible(record) || biz.MissingTrainingLogsMaintenanceEligible(record) {
 		boundary, ok := adapter.writers.(biz.ComputeCleanupMaintenanceBoundary)
 		if !ok {
 			return biz.ErrRuntimeNotReady
@@ -386,12 +386,19 @@ func (adapter *Adapter) DeleteExecutionResource(ctx context.Context, record biz.
 // controller disposal after the automatic owner committed its complete exits,
 // original target intent and bounded logs. Work volume and publication remain.
 func (adapter *Adapter) DeleteRecordedComputeController(ctx context.Context, record biz.OperationRecord, target biz.RuntimeResource) error {
-	if record.Authority == nil || record.Runtime.ComputeCleanup == nil || !record.Runtime.ComputeCleanup.LogsReady || adapter == nil || adapter.kube == nil || ctx == nil {
+	reviewed := biz.MissingTrainingLogsMaintenanceEligible(record) && record.Cleanup != nil && record.Cleanup.Phase == "STARTED"
+	if reviewed {
+		plan, err := biz.CleanupPlanFor(record)
+		if err != nil || plan.PlanHash != record.Cleanup.PlanHash {
+			return biz.ErrCleanupBlocked
+		}
+	}
+	if record.Authority == nil || record.Runtime.ComputeCleanup == nil || !reviewed && !record.Runtime.ComputeCleanup.LogsReady || adapter == nil || adapter.kube == nil || ctx == nil {
 		return biz.ErrCleanupBlocked
 	}
 	targets, hash, err := biz.ComputeCleanupTargets(record.Execution, *record.Authority, record.Runtime)
 	receipt := record.Runtime.ComputeCleanup
-	if err != nil || hash != receipt.PlanHash || !reflect.DeepEqual(targets, receipt.Targets) || !reflect.DeepEqual(targets, receipt.Requested) || !biz.ComputeCleanupLogsComplete(record.Execution, record.Runtime, receipt.Logs) {
+	if err != nil || hash != receipt.PlanHash || !reflect.DeepEqual(targets, receipt.Targets) || !reviewed && (!reflect.DeepEqual(targets, receipt.Requested) || !biz.ComputeCleanupLogsComplete(record.Execution, record.Runtime, receipt.Logs)) {
 		return biz.ErrCleanupBlocked
 	}
 	plan := biz.CleanupPlan{NamespaceUID: record.Authority.NamespaceUID, Targets: []biz.RuntimeResource{}}

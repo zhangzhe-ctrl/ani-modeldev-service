@@ -39,6 +39,17 @@ func (closer *ExecutionCloser) reconcileComputeCleanup(ctx context.Context, resu
 		}
 	}
 	result.Runtime = state
+	if state.ReviewedComputeCleanup != nil {
+		record := OperationRecord{QueryRecord: QueryRecord{Execution: result.Execution, Runtime: state}, Authority: &owner, Cleanup: state.ReviewedComputeCleanup}
+		boundary, ok := closer.compute.(ComputeCleanupMaintenanceBoundary)
+		if !ok || !ReviewedComputeCleanupApplied(record) {
+			return result, ErrCleanupBlocked
+		}
+		if _, err := boundary.ObserveComputeMaintenanceAbsent(ctx, record); err != nil {
+			return result, err
+		}
+		return runtimeResult(result, state, replayed)
+	}
 	if state.ComputeCleanup.Phase == "APPLIED" || state.ComputeCleanup.Phase == "RECONCILED" {
 		return runtimeResult(result, state, replayed)
 	}

@@ -223,7 +223,18 @@ func (f *computeCleanupFixture) serve(t *testing.T, w http.ResponseWriter, r *ht
 				LogsReady bool                  `json:"logs_ready"`
 				Requested []biz.RuntimeResource `json:"requested"`
 			}
-			if json.Unmarshal(document["ComputeCleanup"], &receipt) != nil || !receipt.LogsReady || len(receipt.Requested) == 0 || state.ClosedAt == nil {
+			decodeErr := json.Unmarshal(document["ComputeCleanup"], &receipt)
+			reviewed := false
+			if decodeErr == nil && !receipt.LogsReady {
+				pool := f.step.open()
+				record, err := execution.New(pool).GetOperationRecord(r.Context(), f.step.f.execution.TenantID, f.step.f.execution.ExecutionID)
+				pool.Close()
+				if err == nil && biz.MissingTrainingLogsMaintenanceEligible(record) && record.Cleanup != nil && record.Cleanup.Phase == "STARTED" {
+					plan, err := biz.CleanupPlanFor(record)
+					reviewed = err == nil && plan.PlanHash == record.Cleanup.PlanHash
+				}
+			}
+			if decodeErr != nil || !reviewed && (!receipt.LogsReady || len(receipt.Requested) == 0) || state.ClosedAt == nil {
 				t.Error("compute DELETE preceded committed original exits/logs/intent")
 				status(500, "InternalError")
 				return true

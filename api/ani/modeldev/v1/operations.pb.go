@@ -156,10 +156,11 @@ func (x *ReconcileExecutionRequest) GetExecutionId() string {
 }
 
 type PlanExecutionCleanupRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ExecutionId   string                 `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                     protoimpl.MessageState     `protogen:"open.v1"`
+	ExecutionId               string                     `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	MissingTrainingLogsReview *MissingTrainingLogsReview `protobuf:"bytes,2,opt,name=missing_training_logs_review,json=missingTrainingLogsReview,proto3" json:"missing_training_logs_review,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
 }
 
 func (x *PlanExecutionCleanupRequest) Reset() {
@@ -199,14 +200,22 @@ func (x *PlanExecutionCleanupRequest) GetExecutionId() string {
 	return ""
 }
 
+func (x *PlanExecutionCleanupRequest) GetMissingTrainingLogsReview() *MissingTrainingLogsReview {
+	if x != nil {
+		return x.MissingTrainingLogsReview
+	}
+	return nil
+}
+
 // The server reconstructs the original exact-UID plan and revalidates it;
 // clients cannot choose a namespace, arbitrary resource, or desired state.
 type ApplyExecutionCleanupRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ExecutionId   string                 `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
-	PlanSha256    string                 `protobuf:"bytes,2,opt,name=plan_sha256,json=planSha256,proto3" json:"plan_sha256,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                     protoimpl.MessageState     `protogen:"open.v1"`
+	ExecutionId               string                     `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	PlanSha256                string                     `protobuf:"bytes,2,opt,name=plan_sha256,json=planSha256,proto3" json:"plan_sha256,omitempty"`
+	MissingTrainingLogsReview *MissingTrainingLogsReview `protobuf:"bytes,3,opt,name=missing_training_logs_review,json=missingTrainingLogsReview,proto3" json:"missing_training_logs_review,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
 }
 
 func (x *ApplyExecutionCleanupRequest) Reset() {
@@ -253,6 +262,143 @@ func (x *ApplyExecutionCleanupRequest) GetPlanSha256() string {
 	return ""
 }
 
+func (x *ApplyExecutionCleanupRequest) GetMissingTrainingLogsReview() *MissingTrainingLogsReview {
+	if x != nil {
+		return x.MissingTrainingLogsReview
+	}
+	return nil
+}
+
+// Explicit review of an original irrecoverable log source, never an override
+// of current compute absence, device release proof, or the failed log audit.
+type MissingTrainingLogsReview struct {
+	state                      protoimpl.MessageState   `protogen:"open.v1"`
+	ExecutionId                string                   `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	CreateOperationId          string                   `protobuf:"bytes,2,opt,name=create_operation_id,json=createOperationId,proto3" json:"create_operation_id,omitempty"`
+	CloseOperationId           string                   `protobuf:"bytes,3,opt,name=close_operation_id,json=closeOperationId,proto3" json:"close_operation_id,omitempty"`
+	AutomaticCleanupPlanSha256 string                   `protobuf:"bytes,4,opt,name=automatic_cleanup_plan_sha256,json=automaticCleanupPlanSha256,proto3" json:"automatic_cleanup_plan_sha256,omitempty"`
+	MissingPods                []*MissingTrainingLogPod `protobuf:"bytes,5,rep,name=missing_pods,json=missingPods,proto3" json:"missing_pods,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
+}
+
+func (x *MissingTrainingLogsReview) Reset() {
+	*x = MissingTrainingLogsReview{}
+	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MissingTrainingLogsReview) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MissingTrainingLogsReview) ProtoMessage() {}
+
+func (x *MissingTrainingLogsReview) ProtoReflect() protoreflect.Message {
+	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MissingTrainingLogsReview.ProtoReflect.Descriptor instead.
+func (*MissingTrainingLogsReview) Descriptor() ([]byte, []int) {
+	return file_ani_modeldev_v1_operations_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *MissingTrainingLogsReview) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
+	}
+	return ""
+}
+
+func (x *MissingTrainingLogsReview) GetCreateOperationId() string {
+	if x != nil {
+		return x.CreateOperationId
+	}
+	return ""
+}
+
+func (x *MissingTrainingLogsReview) GetCloseOperationId() string {
+	if x != nil {
+		return x.CloseOperationId
+	}
+	return ""
+}
+
+func (x *MissingTrainingLogsReview) GetAutomaticCleanupPlanSha256() string {
+	if x != nil {
+		return x.AutomaticCleanupPlanSha256
+	}
+	return ""
+}
+
+func (x *MissingTrainingLogsReview) GetMissingPods() []*MissingTrainingLogPod {
+	if x != nil {
+		return x.MissingPods
+	}
+	return nil
+}
+
+type MissingTrainingLogPod struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	PodUid            string                 `protobuf:"bytes,1,opt,name=pod_uid,json=podUid,proto3" json:"pod_uid,omitempty"`
+	PersistedExitCode *int32                 `protobuf:"varint,2,opt,name=persisted_exit_code,json=persistedExitCode,proto3,oneof" json:"persisted_exit_code,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *MissingTrainingLogPod) Reset() {
+	*x = MissingTrainingLogPod{}
+	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MissingTrainingLogPod) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MissingTrainingLogPod) ProtoMessage() {}
+
+func (x *MissingTrainingLogPod) ProtoReflect() protoreflect.Message {
+	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MissingTrainingLogPod.ProtoReflect.Descriptor instead.
+func (*MissingTrainingLogPod) Descriptor() ([]byte, []int) {
+	return file_ani_modeldev_v1_operations_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *MissingTrainingLogPod) GetPodUid() string {
+	if x != nil {
+		return x.PodUid
+	}
+	return ""
+}
+
+func (x *MissingTrainingLogPod) GetPersistedExitCode() int32 {
+	if x != nil && x.PersistedExitCode != nil {
+		return *x.PersistedExitCode
+	}
+	return 0
+}
+
 type OperationResource struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	ApiVersion       string                 `protobuf:"bytes,1,opt,name=api_version,json=apiVersion,proto3" json:"api_version,omitempty"`
@@ -271,7 +417,7 @@ type OperationResource struct {
 
 func (x *OperationResource) Reset() {
 	*x = OperationResource{}
-	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[5]
+	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -283,7 +429,7 @@ func (x *OperationResource) String() string {
 func (*OperationResource) ProtoMessage() {}
 
 func (x *OperationResource) ProtoReflect() protoreflect.Message {
-	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[5]
+	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -296,7 +442,7 @@ func (x *OperationResource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OperationResource.ProtoReflect.Descriptor instead.
 func (*OperationResource) Descriptor() ([]byte, []int) {
-	return file_ani_modeldev_v1_operations_proto_rawDescGZIP(), []int{5}
+	return file_ani_modeldev_v1_operations_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *OperationResource) GetApiVersion() string {
@@ -378,7 +524,7 @@ type InspectExecutionResponse struct {
 
 func (x *InspectExecutionResponse) Reset() {
 	*x = InspectExecutionResponse{}
-	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[6]
+	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -390,7 +536,7 @@ func (x *InspectExecutionResponse) String() string {
 func (*InspectExecutionResponse) ProtoMessage() {}
 
 func (x *InspectExecutionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[6]
+	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -403,7 +549,7 @@ func (x *InspectExecutionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectExecutionResponse.ProtoReflect.Descriptor instead.
 func (*InspectExecutionResponse) Descriptor() ([]byte, []int) {
-	return file_ani_modeldev_v1_operations_proto_rawDescGZIP(), []int{6}
+	return file_ani_modeldev_v1_operations_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *InspectExecutionResponse) GetInspection() *ExecutionInspection {
@@ -422,7 +568,7 @@ type ReconcileExecutionResponse struct {
 
 func (x *ReconcileExecutionResponse) Reset() {
 	*x = ReconcileExecutionResponse{}
-	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[7]
+	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -434,7 +580,7 @@ func (x *ReconcileExecutionResponse) String() string {
 func (*ReconcileExecutionResponse) ProtoMessage() {}
 
 func (x *ReconcileExecutionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[7]
+	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -447,7 +593,7 @@ func (x *ReconcileExecutionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReconcileExecutionResponse.ProtoReflect.Descriptor instead.
 func (*ReconcileExecutionResponse) Descriptor() ([]byte, []int) {
-	return file_ani_modeldev_v1_operations_proto_rawDescGZIP(), []int{7}
+	return file_ani_modeldev_v1_operations_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ReconcileExecutionResponse) GetInspection() *ExecutionInspection {
@@ -492,7 +638,7 @@ type ExecutionInspection struct {
 
 func (x *ExecutionInspection) Reset() {
 	*x = ExecutionInspection{}
-	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[8]
+	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -504,7 +650,7 @@ func (x *ExecutionInspection) String() string {
 func (*ExecutionInspection) ProtoMessage() {}
 
 func (x *ExecutionInspection) ProtoReflect() protoreflect.Message {
-	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[8]
+	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -517,7 +663,7 @@ func (x *ExecutionInspection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecutionInspection.ProtoReflect.Descriptor instead.
 func (*ExecutionInspection) Descriptor() ([]byte, []int) {
-	return file_ani_modeldev_v1_operations_proto_rawDescGZIP(), []int{8}
+	return file_ani_modeldev_v1_operations_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ExecutionInspection) GetExecutionId() string {
@@ -710,25 +856,26 @@ func (x *ExecutionInspection) GetCleanupPlanSha256() string {
 }
 
 type PlanExecutionCleanupResponse struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	ExecutionId       string                 `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
-	OperationId       string                 `protobuf:"bytes,2,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
-	ExecutionSpecHash string                 `protobuf:"bytes,3,opt,name=execution_spec_hash,json=executionSpecHash,proto3" json:"execution_spec_hash,omitempty"`
-	OwnerRevision     uint64                 `protobuf:"varint,4,opt,name=owner_revision,json=ownerRevision,proto3" json:"owner_revision,omitempty"`
-	CloseGeneration   uint64                 `protobuf:"varint,5,opt,name=close_generation,json=closeGeneration,proto3" json:"close_generation,omitempty"`
-	NamespaceUid      string                 `protobuf:"bytes,6,opt,name=namespace_uid,json=namespaceUid,proto3" json:"namespace_uid,omitempty"`
-	PublicationId     string                 `protobuf:"bytes,7,opt,name=publication_id,json=publicationId,proto3" json:"publication_id,omitempty"`
-	Targets           []*OperationResource   `protobuf:"bytes,8,rep,name=targets,proto3" json:"targets,omitempty"`
-	PlanSha256        string                 `protobuf:"bytes,9,opt,name=plan_sha256,json=planSha256,proto3" json:"plan_sha256,omitempty"`
-	Retained          []string               `protobuf:"bytes,10,rep,name=retained,proto3" json:"retained,omitempty"`
-	ObservedAt        *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                     protoimpl.MessageState     `protogen:"open.v1"`
+	ExecutionId               string                     `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	OperationId               string                     `protobuf:"bytes,2,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	ExecutionSpecHash         string                     `protobuf:"bytes,3,opt,name=execution_spec_hash,json=executionSpecHash,proto3" json:"execution_spec_hash,omitempty"`
+	OwnerRevision             uint64                     `protobuf:"varint,4,opt,name=owner_revision,json=ownerRevision,proto3" json:"owner_revision,omitempty"`
+	CloseGeneration           uint64                     `protobuf:"varint,5,opt,name=close_generation,json=closeGeneration,proto3" json:"close_generation,omitempty"`
+	NamespaceUid              string                     `protobuf:"bytes,6,opt,name=namespace_uid,json=namespaceUid,proto3" json:"namespace_uid,omitempty"`
+	PublicationId             string                     `protobuf:"bytes,7,opt,name=publication_id,json=publicationId,proto3" json:"publication_id,omitempty"`
+	Targets                   []*OperationResource       `protobuf:"bytes,8,rep,name=targets,proto3" json:"targets,omitempty"`
+	PlanSha256                string                     `protobuf:"bytes,9,opt,name=plan_sha256,json=planSha256,proto3" json:"plan_sha256,omitempty"`
+	Retained                  []string                   `protobuf:"bytes,10,rep,name=retained,proto3" json:"retained,omitempty"`
+	ObservedAt                *timestamppb.Timestamp     `protobuf:"bytes,11,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	MissingTrainingLogsReview *MissingTrainingLogsReview `protobuf:"bytes,12,opt,name=missing_training_logs_review,json=missingTrainingLogsReview,proto3" json:"missing_training_logs_review,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
 }
 
 func (x *PlanExecutionCleanupResponse) Reset() {
 	*x = PlanExecutionCleanupResponse{}
-	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[9]
+	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -740,7 +887,7 @@ func (x *PlanExecutionCleanupResponse) String() string {
 func (*PlanExecutionCleanupResponse) ProtoMessage() {}
 
 func (x *PlanExecutionCleanupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[9]
+	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -753,7 +900,7 @@ func (x *PlanExecutionCleanupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanExecutionCleanupResponse.ProtoReflect.Descriptor instead.
 func (*PlanExecutionCleanupResponse) Descriptor() ([]byte, []int) {
-	return file_ani_modeldev_v1_operations_proto_rawDescGZIP(), []int{9}
+	return file_ani_modeldev_v1_operations_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *PlanExecutionCleanupResponse) GetExecutionId() string {
@@ -833,23 +980,31 @@ func (x *PlanExecutionCleanupResponse) GetObservedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *PlanExecutionCleanupResponse) GetMissingTrainingLogsReview() *MissingTrainingLogsReview {
+	if x != nil {
+		return x.MissingTrainingLogsReview
+	}
+	return nil
+}
+
 type ApplyExecutionCleanupResponse struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	ExecutionId     string                 `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
-	PlanSha256      string                 `protobuf:"bytes,2,opt,name=plan_sha256,json=planSha256,proto3" json:"plan_sha256,omitempty"`
-	Phase           string                 `protobuf:"bytes,3,opt,name=phase,proto3" json:"phase,omitempty"`
-	Requested       []*OperationResource   `protobuf:"bytes,4,rep,name=requested,proto3" json:"requested,omitempty"`
-	ConfirmedAbsent []*OperationResource   `protobuf:"bytes,5,rep,name=confirmed_absent,json=confirmedAbsent,proto3" json:"confirmed_absent,omitempty"`
-	Actor           string                 `protobuf:"bytes,6,opt,name=actor,proto3" json:"actor,omitempty"`
-	StartedAt       *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
-	CompletedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state                     protoimpl.MessageState     `protogen:"open.v1"`
+	ExecutionId               string                     `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	PlanSha256                string                     `protobuf:"bytes,2,opt,name=plan_sha256,json=planSha256,proto3" json:"plan_sha256,omitempty"`
+	Phase                     string                     `protobuf:"bytes,3,opt,name=phase,proto3" json:"phase,omitempty"`
+	Requested                 []*OperationResource       `protobuf:"bytes,4,rep,name=requested,proto3" json:"requested,omitempty"`
+	ConfirmedAbsent           []*OperationResource       `protobuf:"bytes,5,rep,name=confirmed_absent,json=confirmedAbsent,proto3" json:"confirmed_absent,omitempty"`
+	Actor                     string                     `protobuf:"bytes,6,opt,name=actor,proto3" json:"actor,omitempty"`
+	StartedAt                 *timestamppb.Timestamp     `protobuf:"bytes,7,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	CompletedAt               *timestamppb.Timestamp     `protobuf:"bytes,8,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	MissingTrainingLogsReview *MissingTrainingLogsReview `protobuf:"bytes,9,opt,name=missing_training_logs_review,json=missingTrainingLogsReview,proto3" json:"missing_training_logs_review,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
 }
 
 func (x *ApplyExecutionCleanupResponse) Reset() {
 	*x = ApplyExecutionCleanupResponse{}
-	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[10]
+	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -861,7 +1016,7 @@ func (x *ApplyExecutionCleanupResponse) String() string {
 func (*ApplyExecutionCleanupResponse) ProtoMessage() {}
 
 func (x *ApplyExecutionCleanupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[10]
+	mi := &file_ani_modeldev_v1_operations_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -874,7 +1029,7 @@ func (x *ApplyExecutionCleanupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyExecutionCleanupResponse.ProtoReflect.Descriptor instead.
 func (*ApplyExecutionCleanupResponse) Descriptor() ([]byte, []int) {
-	return file_ani_modeldev_v1_operations_proto_rawDescGZIP(), []int{10}
+	return file_ani_modeldev_v1_operations_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ApplyExecutionCleanupResponse) GetExecutionId() string {
@@ -933,6 +1088,13 @@ func (x *ApplyExecutionCleanupResponse) GetCompletedAt() *timestamppb.Timestamp 
 	return nil
 }
 
+func (x *ApplyExecutionCleanupResponse) GetMissingTrainingLogsReview() *MissingTrainingLogsReview {
+	if x != nil {
+		return x.MissingTrainingLogsReview
+	}
+	return nil
+}
+
 var File_ani_modeldev_v1_operations_proto protoreflect.FileDescriptor
 
 const file_ani_modeldev_v1_operations_proto_rawDesc = "" +
@@ -943,13 +1105,25 @@ const file_ani_modeldev_v1_operations_proto_rawDesc = "" +
 	"\x17InspectExecutionRequest\x12!\n" +
 	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\">\n" +
 	"\x19ReconcileExecutionRequest\x12!\n" +
-	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\"@\n" +
+	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\"\xad\x01\n" +
 	"\x1bPlanExecutionCleanupRequest\x12!\n" +
-	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\"b\n" +
+	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\x12k\n" +
+	"\x1cmissing_training_logs_review\x18\x02 \x01(\v2*.ani.modeldev.v1.MissingTrainingLogsReviewR\x19missingTrainingLogsReview\"\xcf\x01\n" +
 	"\x1cApplyExecutionCleanupRequest\x12!\n" +
 	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\x12\x1f\n" +
 	"\vplan_sha256\x18\x02 \x01(\tR\n" +
-	"planSha256\"\xd0\x02\n" +
+	"planSha256\x12k\n" +
+	"\x1cmissing_training_logs_review\x18\x03 \x01(\v2*.ani.modeldev.v1.MissingTrainingLogsReviewR\x19missingTrainingLogsReview\"\xaa\x02\n" +
+	"\x19MissingTrainingLogsReview\x12!\n" +
+	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\x12.\n" +
+	"\x13create_operation_id\x18\x02 \x01(\tR\x11createOperationId\x12,\n" +
+	"\x12close_operation_id\x18\x03 \x01(\tR\x10closeOperationId\x12A\n" +
+	"\x1dautomatic_cleanup_plan_sha256\x18\x04 \x01(\tR\x1aautomaticCleanupPlanSha256\x12I\n" +
+	"\fmissing_pods\x18\x05 \x03(\v2&.ani.modeldev.v1.MissingTrainingLogPodR\vmissingPods\"}\n" +
+	"\x15MissingTrainingLogPod\x12\x17\n" +
+	"\apod_uid\x18\x01 \x01(\tR\x06podUid\x123\n" +
+	"\x13persisted_exit_code\x18\x02 \x01(\x05H\x00R\x11persistedExitCode\x88\x01\x01B\x16\n" +
+	"\x14_persisted_exit_code\"\xd0\x02\n" +
 	"\x11OperationResource\x12\x1f\n" +
 	"\vapi_version\x18\x01 \x01(\tR\n" +
 	"apiVersion\x12\x12\n" +
@@ -1003,7 +1177,7 @@ const file_ani_modeldev_v1_operations_proto_rawDesc = "" +
 	"\x11observation_stale\x18\x18 \x01(\bR\x10observationStale\x12'\n" +
 	"\x0fcompute_outcome\x18\x19 \x01(\tR\x0ecomputeOutcome\x12#\n" +
 	"\rcleanup_phase\x18\x1a \x01(\tR\fcleanupPhase\x12.\n" +
-	"\x13cleanup_plan_sha256\x18\x1b \x01(\tR\x11cleanupPlanSha256\"\xea\x03\n" +
+	"\x13cleanup_plan_sha256\x18\x1b \x01(\tR\x11cleanupPlanSha256\"\xd7\x04\n" +
 	"\x1cPlanExecutionCleanupResponse\x12!\n" +
 	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\x12!\n" +
 	"\foperation_id\x18\x02 \x01(\tR\voperationId\x12.\n" +
@@ -1018,7 +1192,8 @@ const file_ani_modeldev_v1_operations_proto_rawDesc = "" +
 	"\bretained\x18\n" +
 	" \x03(\tR\bretained\x12;\n" +
 	"\vobserved_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"observedAt\"\x9a\x03\n" +
+	"observedAt\x12k\n" +
+	"\x1cmissing_training_logs_review\x18\f \x01(\v2*.ani.modeldev.v1.MissingTrainingLogsReviewR\x19missingTrainingLogsReview\"\x87\x04\n" +
 	"\x1dApplyExecutionCleanupResponse\x12!\n" +
 	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\x12\x1f\n" +
 	"\vplan_sha256\x18\x02 \x01(\tR\n" +
@@ -1029,7 +1204,8 @@ const file_ani_modeldev_v1_operations_proto_rawDesc = "" +
 	"\x05actor\x18\x06 \x01(\tR\x05actor\x129\n" +
 	"\n" +
 	"started_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12=\n" +
-	"\fcompleted_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt2\xd3\x04\n" +
+	"\fcompleted_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\x12k\n" +
+	"\x1cmissing_training_logs_review\x18\t \x01(\v2*.ani.modeldev.v1.MissingTrainingLogsReviewR\x19missingTrainingLogsReview2\xd3\x04\n" +
 	"\x19ModelDevOperationsService\x12g\n" +
 	"\x10InspectExecution\x12(.ani.modeldev.v1.InspectExecutionRequest\x1a).ani.modeldev.v1.InspectExecutionResponse\x12m\n" +
 	"\x12ReconcileExecution\x12*.ani.modeldev.v1.ReconcileExecutionRequest\x1a+.ani.modeldev.v1.ReconcileExecutionResponse\x12s\n" +
@@ -1049,50 +1225,57 @@ func file_ani_modeldev_v1_operations_proto_rawDescGZIP() []byte {
 	return file_ani_modeldev_v1_operations_proto_rawDescData
 }
 
-var file_ani_modeldev_v1_operations_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_ani_modeldev_v1_operations_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_ani_modeldev_v1_operations_proto_goTypes = []any{
 	(*ResumeModelRegistrationRequest)(nil), // 0: ani.modeldev.v1.ResumeModelRegistrationRequest
 	(*InspectExecutionRequest)(nil),        // 1: ani.modeldev.v1.InspectExecutionRequest
 	(*ReconcileExecutionRequest)(nil),      // 2: ani.modeldev.v1.ReconcileExecutionRequest
 	(*PlanExecutionCleanupRequest)(nil),    // 3: ani.modeldev.v1.PlanExecutionCleanupRequest
 	(*ApplyExecutionCleanupRequest)(nil),   // 4: ani.modeldev.v1.ApplyExecutionCleanupRequest
-	(*OperationResource)(nil),              // 5: ani.modeldev.v1.OperationResource
-	(*InspectExecutionResponse)(nil),       // 6: ani.modeldev.v1.InspectExecutionResponse
-	(*ReconcileExecutionResponse)(nil),     // 7: ani.modeldev.v1.ReconcileExecutionResponse
-	(*ExecutionInspection)(nil),            // 8: ani.modeldev.v1.ExecutionInspection
-	(*PlanExecutionCleanupResponse)(nil),   // 9: ani.modeldev.v1.PlanExecutionCleanupResponse
-	(*ApplyExecutionCleanupResponse)(nil),  // 10: ani.modeldev.v1.ApplyExecutionCleanupResponse
-	(*timestamppb.Timestamp)(nil),          // 11: google.protobuf.Timestamp
-	(*GetExecutionResponse)(nil),           // 12: ani.modeldev.v1.GetExecutionResponse
+	(*MissingTrainingLogsReview)(nil),      // 5: ani.modeldev.v1.MissingTrainingLogsReview
+	(*MissingTrainingLogPod)(nil),          // 6: ani.modeldev.v1.MissingTrainingLogPod
+	(*OperationResource)(nil),              // 7: ani.modeldev.v1.OperationResource
+	(*InspectExecutionResponse)(nil),       // 8: ani.modeldev.v1.InspectExecutionResponse
+	(*ReconcileExecutionResponse)(nil),     // 9: ani.modeldev.v1.ReconcileExecutionResponse
+	(*ExecutionInspection)(nil),            // 10: ani.modeldev.v1.ExecutionInspection
+	(*PlanExecutionCleanupResponse)(nil),   // 11: ani.modeldev.v1.PlanExecutionCleanupResponse
+	(*ApplyExecutionCleanupResponse)(nil),  // 12: ani.modeldev.v1.ApplyExecutionCleanupResponse
+	(*timestamppb.Timestamp)(nil),          // 13: google.protobuf.Timestamp
+	(*GetExecutionResponse)(nil),           // 14: ani.modeldev.v1.GetExecutionResponse
 }
 var file_ani_modeldev_v1_operations_proto_depIdxs = []int32{
-	8,  // 0: ani.modeldev.v1.InspectExecutionResponse.inspection:type_name -> ani.modeldev.v1.ExecutionInspection
-	8,  // 1: ani.modeldev.v1.ReconcileExecutionResponse.inspection:type_name -> ani.modeldev.v1.ExecutionInspection
-	5,  // 2: ani.modeldev.v1.ExecutionInspection.resources:type_name -> ani.modeldev.v1.OperationResource
-	11, // 3: ani.modeldev.v1.ExecutionInspection.closed_at:type_name -> google.protobuf.Timestamp
-	11, // 4: ani.modeldev.v1.ExecutionInspection.observed_at:type_name -> google.protobuf.Timestamp
-	11, // 5: ani.modeldev.v1.ExecutionInspection.retrieved_at:type_name -> google.protobuf.Timestamp
-	5,  // 6: ani.modeldev.v1.PlanExecutionCleanupResponse.targets:type_name -> ani.modeldev.v1.OperationResource
-	11, // 7: ani.modeldev.v1.PlanExecutionCleanupResponse.observed_at:type_name -> google.protobuf.Timestamp
-	5,  // 8: ani.modeldev.v1.ApplyExecutionCleanupResponse.requested:type_name -> ani.modeldev.v1.OperationResource
-	5,  // 9: ani.modeldev.v1.ApplyExecutionCleanupResponse.confirmed_absent:type_name -> ani.modeldev.v1.OperationResource
-	11, // 10: ani.modeldev.v1.ApplyExecutionCleanupResponse.started_at:type_name -> google.protobuf.Timestamp
-	11, // 11: ani.modeldev.v1.ApplyExecutionCleanupResponse.completed_at:type_name -> google.protobuf.Timestamp
-	1,  // 12: ani.modeldev.v1.ModelDevOperationsService.InspectExecution:input_type -> ani.modeldev.v1.InspectExecutionRequest
-	2,  // 13: ani.modeldev.v1.ModelDevOperationsService.ReconcileExecution:input_type -> ani.modeldev.v1.ReconcileExecutionRequest
-	3,  // 14: ani.modeldev.v1.ModelDevOperationsService.PlanExecutionCleanup:input_type -> ani.modeldev.v1.PlanExecutionCleanupRequest
-	4,  // 15: ani.modeldev.v1.ModelDevOperationsService.ApplyExecutionCleanup:input_type -> ani.modeldev.v1.ApplyExecutionCleanupRequest
-	0,  // 16: ani.modeldev.v1.ModelDevOperationsService.ResumeModelRegistration:input_type -> ani.modeldev.v1.ResumeModelRegistrationRequest
-	6,  // 17: ani.modeldev.v1.ModelDevOperationsService.InspectExecution:output_type -> ani.modeldev.v1.InspectExecutionResponse
-	7,  // 18: ani.modeldev.v1.ModelDevOperationsService.ReconcileExecution:output_type -> ani.modeldev.v1.ReconcileExecutionResponse
-	9,  // 19: ani.modeldev.v1.ModelDevOperationsService.PlanExecutionCleanup:output_type -> ani.modeldev.v1.PlanExecutionCleanupResponse
-	10, // 20: ani.modeldev.v1.ModelDevOperationsService.ApplyExecutionCleanup:output_type -> ani.modeldev.v1.ApplyExecutionCleanupResponse
-	12, // 21: ani.modeldev.v1.ModelDevOperationsService.ResumeModelRegistration:output_type -> ani.modeldev.v1.GetExecutionResponse
-	17, // [17:22] is the sub-list for method output_type
-	12, // [12:17] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	5,  // 0: ani.modeldev.v1.PlanExecutionCleanupRequest.missing_training_logs_review:type_name -> ani.modeldev.v1.MissingTrainingLogsReview
+	5,  // 1: ani.modeldev.v1.ApplyExecutionCleanupRequest.missing_training_logs_review:type_name -> ani.modeldev.v1.MissingTrainingLogsReview
+	6,  // 2: ani.modeldev.v1.MissingTrainingLogsReview.missing_pods:type_name -> ani.modeldev.v1.MissingTrainingLogPod
+	10, // 3: ani.modeldev.v1.InspectExecutionResponse.inspection:type_name -> ani.modeldev.v1.ExecutionInspection
+	10, // 4: ani.modeldev.v1.ReconcileExecutionResponse.inspection:type_name -> ani.modeldev.v1.ExecutionInspection
+	7,  // 5: ani.modeldev.v1.ExecutionInspection.resources:type_name -> ani.modeldev.v1.OperationResource
+	13, // 6: ani.modeldev.v1.ExecutionInspection.closed_at:type_name -> google.protobuf.Timestamp
+	13, // 7: ani.modeldev.v1.ExecutionInspection.observed_at:type_name -> google.protobuf.Timestamp
+	13, // 8: ani.modeldev.v1.ExecutionInspection.retrieved_at:type_name -> google.protobuf.Timestamp
+	7,  // 9: ani.modeldev.v1.PlanExecutionCleanupResponse.targets:type_name -> ani.modeldev.v1.OperationResource
+	13, // 10: ani.modeldev.v1.PlanExecutionCleanupResponse.observed_at:type_name -> google.protobuf.Timestamp
+	5,  // 11: ani.modeldev.v1.PlanExecutionCleanupResponse.missing_training_logs_review:type_name -> ani.modeldev.v1.MissingTrainingLogsReview
+	7,  // 12: ani.modeldev.v1.ApplyExecutionCleanupResponse.requested:type_name -> ani.modeldev.v1.OperationResource
+	7,  // 13: ani.modeldev.v1.ApplyExecutionCleanupResponse.confirmed_absent:type_name -> ani.modeldev.v1.OperationResource
+	13, // 14: ani.modeldev.v1.ApplyExecutionCleanupResponse.started_at:type_name -> google.protobuf.Timestamp
+	13, // 15: ani.modeldev.v1.ApplyExecutionCleanupResponse.completed_at:type_name -> google.protobuf.Timestamp
+	5,  // 16: ani.modeldev.v1.ApplyExecutionCleanupResponse.missing_training_logs_review:type_name -> ani.modeldev.v1.MissingTrainingLogsReview
+	1,  // 17: ani.modeldev.v1.ModelDevOperationsService.InspectExecution:input_type -> ani.modeldev.v1.InspectExecutionRequest
+	2,  // 18: ani.modeldev.v1.ModelDevOperationsService.ReconcileExecution:input_type -> ani.modeldev.v1.ReconcileExecutionRequest
+	3,  // 19: ani.modeldev.v1.ModelDevOperationsService.PlanExecutionCleanup:input_type -> ani.modeldev.v1.PlanExecutionCleanupRequest
+	4,  // 20: ani.modeldev.v1.ModelDevOperationsService.ApplyExecutionCleanup:input_type -> ani.modeldev.v1.ApplyExecutionCleanupRequest
+	0,  // 21: ani.modeldev.v1.ModelDevOperationsService.ResumeModelRegistration:input_type -> ani.modeldev.v1.ResumeModelRegistrationRequest
+	8,  // 22: ani.modeldev.v1.ModelDevOperationsService.InspectExecution:output_type -> ani.modeldev.v1.InspectExecutionResponse
+	9,  // 23: ani.modeldev.v1.ModelDevOperationsService.ReconcileExecution:output_type -> ani.modeldev.v1.ReconcileExecutionResponse
+	11, // 24: ani.modeldev.v1.ModelDevOperationsService.PlanExecutionCleanup:output_type -> ani.modeldev.v1.PlanExecutionCleanupResponse
+	12, // 25: ani.modeldev.v1.ModelDevOperationsService.ApplyExecutionCleanup:output_type -> ani.modeldev.v1.ApplyExecutionCleanupResponse
+	14, // 26: ani.modeldev.v1.ModelDevOperationsService.ResumeModelRegistration:output_type -> ani.modeldev.v1.GetExecutionResponse
+	22, // [22:27] is the sub-list for method output_type
+	17, // [17:22] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_ani_modeldev_v1_operations_proto_init() }
@@ -1101,14 +1284,15 @@ func file_ani_modeldev_v1_operations_proto_init() {
 		return
 	}
 	file_ani_modeldev_v1_modeldev_proto_init()
-	file_ani_modeldev_v1_operations_proto_msgTypes[5].OneofWrappers = []any{}
+	file_ani_modeldev_v1_operations_proto_msgTypes[6].OneofWrappers = []any{}
+	file_ani_modeldev_v1_operations_proto_msgTypes[7].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ani_modeldev_v1_operations_proto_rawDesc), len(file_ani_modeldev_v1_operations_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

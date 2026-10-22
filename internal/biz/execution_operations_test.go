@@ -1,6 +1,9 @@
 package biz_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -23,6 +26,10 @@ func TestCleanupPlanRetainsOutputsAndEvidenceAndBindsExactIdentity(t *testing.T)
 	if err != nil || len(plan.Targets) != 3 || plan.Targets[0].UID != "job-1" || plan.Targets[2].UID != "train-1" || len(plan.Retained) != 5 || len(plan.PlanHash) != 64 {
 		t.Fatalf("CLEANUP_PLAN_NOT_IMPLEMENTED: exact closed controller plan unavailable: %+v %v", plan, err)
 	}
+	// Captured from the qualified cfd157f pre-review writer.
+	if plan.PlanHash != "95111b76acb6de0bce1f1e7efebd2b5ee09c2f84588cb5b52c865bb5e81a237c" {
+		t.Fatal("nil review changed the original canonical cleanup plan", plan.PlanHash)
+	}
 	replaced := fixture()
 	replaced.Runtime.Observation.Resources[0].UID = "replacement-train"
 	other, err := biz.CleanupPlanFor(replaced)
@@ -40,5 +47,13 @@ func TestCleanupPlanRetainsOutputsAndEvidenceAndBindsExactIdentity(t *testing.T)
 		if _, err := biz.CleanupPlanFor(unsafe); !errors.Is(err, biz.ErrCleanupBlocked) {
 			t.Fatal("unsafe cleanup was planned", err)
 		}
+	}
+}
+
+func TestNoReviewCleanupReceiptPreservesQualifiedCanonicalBytes(t *testing.T) {
+	data, err := json.Marshal(biz.CleanupReceipt{})
+	digest := sha256.Sum256(data)
+	if err != nil || hex.EncodeToString(digest[:]) != "80ecddd27ebfb4d54fdf00a97ec6dafddf98f92bab7ee1f33c812b12b1467995" {
+		t.Fatal("nil review changed the cfd157f cleanup receipt bytes", err)
 	}
 }

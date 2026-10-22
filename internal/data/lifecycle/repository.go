@@ -341,6 +341,9 @@ func readRuntime(ctx context.Context, tx pgx.Tx, tenantID, executionID pgtype.UU
 			return nil, err
 		}
 	}
+	if err := loadReviewedComputeCleanup(ctx, current); err != nil {
+		return nil, err
+	}
 	if ValidGPUReleaseFacts(current.execution, current.state, current.now) != nil || validateGPUReleaseAnchor(ctx, current) != nil {
 		return nil, biz.ErrPersistence
 	}

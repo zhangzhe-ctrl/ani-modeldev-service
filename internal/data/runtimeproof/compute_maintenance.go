@@ -13,10 +13,35 @@ import (
 var _ biz.ComputeCleanupMaintenanceBoundary = (*Verifier)(nil)
 
 func (verifier *Verifier) VerifyComputeMaintenanceWriters(ctx context.Context, record biz.OperationRecord) error {
-	if !biz.ComputeCleanupMaintenanceEligible(record) {
+	if !biz.ComputeCleanupMaintenanceEligible(record) && !biz.MissingTrainingLogsMaintenanceEligible(record) {
 		return biz.ErrCleanupBlocked
 	}
-	return verifier.verifyComputeCleanupGraph(ctx, record.Execution, *record.Authority, record.Runtime, true)
+	if review := biz.MissingTrainingLogsReviewFor(record); review != nil {
+		for _, missing := range review.MissingPods {
+			found := false
+			for _, pod := range record.Runtime.Observation.Resources {
+				if pod.Kind != "Pod" || pod.UID != missing.PodUID {
+					continue
+				}
+				found = true
+				resource, _ := computeResource(pod)
+				current, err := verifier.kube.Resource(resource).Namespace(pod.Namespace).Get(ctx, pod.Name, metav1.GetOptions{})
+				if !apierrors.IsNotFound(err) {
+					if err != nil {
+						return biz.ErrCleanupUncertain
+					}
+					if !sameObject(current, pod.APIVersion, pod.Kind, pod.Namespace, pod.Name, pod.UID) {
+						return biz.ErrCleanupConflict
+					}
+					return biz.ErrCleanupBlocked
+				}
+			}
+			if !found {
+				return biz.ErrCleanupConflict
+			}
+		}
+	}
+	return verifier.verifyComputeCleanupGraph(ctx, record.Execution, *record.Authority, record.Runtime, true, biz.MissingTrainingLogsReviewFor(record))
 }
 
 // This is the separately reserved normal operator plan, never another automatic

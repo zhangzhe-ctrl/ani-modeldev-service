@@ -26,12 +26,31 @@ message ResumeModelRegistrationRequest { string execution_id = 1; }
 
 message InspectExecutionRequest { string execution_id = 1; }
 message ReconcileExecutionRequest { string execution_id = 1; }
-message PlanExecutionCleanupRequest { string execution_id = 1; }
+message PlanExecutionCleanupRequest {
+  string execution_id = 1;
+  MissingTrainingLogsReview missing_training_logs_review = 2;
+}
 // The server reconstructs the original exact-UID plan and revalidates it;
 // clients cannot choose a namespace, arbitrary resource, or desired state.
 message ApplyExecutionCleanupRequest {
   string execution_id = 1;
   string plan_sha256 = 2;
+  MissingTrainingLogsReview missing_training_logs_review = 3;
+}
+
+// Explicit review of an original irrecoverable log source, never an override
+// of current compute absence, device release proof, or the failed log audit.
+message MissingTrainingLogsReview {
+  string execution_id = 1;
+  string create_operation_id = 2;
+  string close_operation_id = 3;
+  string automatic_cleanup_plan_sha256 = 4;
+  repeated MissingTrainingLogPod missing_pods = 5;
+}
+
+message MissingTrainingLogPod {
+  string pod_uid = 1;
+  optional int32 persisted_exit_code = 2;
 }
 
 message OperationResource {
@@ -92,6 +111,7 @@ message PlanExecutionCleanupResponse {
   string plan_sha256 = 9;
   repeated string retained = 10;
   google.protobuf.Timestamp observed_at = 11;
+  MissingTrainingLogsReview missing_training_logs_review = 12;
 }
 
 message ApplyExecutionCleanupResponse {
@@ -103,4 +123,5 @@ message ApplyExecutionCleanupResponse {
   string actor = 6;
   google.protobuf.Timestamp started_at = 7;
   google.protobuf.Timestamp completed_at = 8;
+  MissingTrainingLogsReview missing_training_logs_review = 9;
 }

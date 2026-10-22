@@ -91,6 +91,7 @@ func (repository *Repository) ReserveCleanup(ctx context.Context, plan biz.Clean
 	if err != nil {
 		return biz.CleanupReceipt{}, false, err
 	}
+	record.CleanupReview = plan.MissingTrainingLogsReview
 	current, err := biz.CleanupPlanFor(record)
 	if err != nil || current.PlanHash != plan.PlanHash {
 		return biz.CleanupReceipt{}, false, biz.ErrCleanupConflict
@@ -111,7 +112,10 @@ func (repository *Repository) ReserveCleanup(ctx context.Context, plan biz.Clean
 	if err := transaction.QueryRow(ctx, "SELECT clock_timestamp()").Scan(&now); err != nil {
 		return biz.CleanupReceipt{}, false, biz.ErrPersistence
 	}
-	receipt := biz.CleanupReceipt{ExecutionID: plan.ExecutionID, PlanHash: plan.PlanHash, Phase: "STARTED", Actor: actor, StartedAt: now.UTC(), Requested: []biz.RuntimeResource{}, ConfirmedAbsent: []biz.RuntimeResource{}}
+	receipt := biz.CleanupReceipt{ExecutionID: plan.ExecutionID, PlanHash: plan.PlanHash, Phase: "STARTED", Actor: actor, MissingTrainingLogsReview: plan.MissingTrainingLogsReview, StartedAt: now.UTC(), Requested: []biz.RuntimeResource{}, ConfirmedAbsent: []biz.RuntimeResource{}}
+	if plan.MissingTrainingLogsReview != nil {
+		receipt.ReviewedOwnerRevision = plan.OwnerRevision
+	}
 	planBytes, err := json.Marshal(plan)
 	if err != nil {
 		return biz.CleanupReceipt{}, false, biz.ErrPersistence

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -14,9 +15,10 @@ import (
 // OperationRecord is one consistent durable view of the execution aggregate.
 type OperationRecord struct {
 	QueryRecord
-	Dispatch  *PipelineDispatch
-	Authority *RunAuthorityCandidate
-	Cleanup   *CleanupReceipt
+	Dispatch      *PipelineDispatch
+	Authority     *RunAuthorityCandidate
+	Cleanup       *CleanupReceipt
+	CleanupReview *CleanupMissingTrainingLogsReview
 }
 
 type ExecutionOperationsRepository interface {
@@ -166,7 +168,7 @@ func (operations *ExecutionOperations) reconcile(ctx context.Context, tenant, ex
 		if err != nil {
 			return ExecutionInspect{}, err
 		}
-		if record.Authority != nil && ComputeCleanupRetryEligible(record.Execution, *record.Authority, record.Runtime) {
+		if record.Authority != nil && MissingTrainingLogsReviewFor(record) == nil && ComputeCleanupRetryEligible(record.Execution, *record.Authority, record.Runtime) {
 			repository, ok := operations.closer.runtime.repository.(ComputeCleanupOperatorRepository)
 			if !ok || operations.closer.compute == nil {
 				return ExecutionInspect{}, ErrRuntimeNotReady
@@ -181,7 +183,7 @@ func (operations *ExecutionOperations) reconcile(ctx context.Context, tenant, ex
 				return ExecutionInspect{}, err
 			}
 		}
-		if ComputeCleanupMaintenanceEligible(record) {
+		if ComputeCleanupMaintenanceEligible(record) || MissingTrainingLogsMaintenanceEligible(record) {
 			if err := operations.resolveComputeMaintenance(ctx, record); err != nil {
 				return ExecutionInspect{}, err
 			}
@@ -257,6 +259,12 @@ func (operations *ExecutionOperations) resolveComputeMaintenance(ctx context.Con
 	if err != nil {
 		return err
 	}
+	if MissingTrainingLogsMaintenanceEligible(record) {
+		if !ReviewedComputeCleanupApplied(record) || !ComputeCleanupRemovedValid(record.Runtime.ComputeCleanup.Targets, absent, true) {
+			return ErrCleanupUncertain
+		}
+		return nil
+	}
 	_, err = repository.RecordComputeCleanupResolved(bounded, *record.Authority, record.Runtime.CloseGeneration, record.Cleanup.PlanHash, absent)
 	return err
 }
@@ -271,18 +279,19 @@ var (
 // bytes, and durable execution facts. Only completed controller objects are
 // targets; Kubernetes Orphan propagation preserves their dependent evidence.
 type CleanupPlan struct {
-	TenantID        string            `json:"tenant_id"`
-	ExecutionID     string            `json:"execution_id"`
-	OperationID     string            `json:"operation_id"`
-	SpecHash        string            `json:"execution_spec_hash"`
-	OwnerRevision   uint64            `json:"owner_revision"`
-	CloseGeneration uint64            `json:"close_generation"`
-	NamespaceUID    string            `json:"namespace_uid"`
-	PublicationID   string            `json:"publication_id"`
-	Targets         []RuntimeResource `json:"targets"`
-	PlanHash        string            `json:"plan_sha256"`
-	Retained        []string          `json:"retained"`
-	ObservedAt      time.Time         `json:"observed_at"`
+	TenantID                  string                            `json:"tenant_id"`
+	ExecutionID               string                            `json:"execution_id"`
+	OperationID               string                            `json:"operation_id"`
+	SpecHash                  string                            `json:"execution_spec_hash"`
+	OwnerRevision             uint64                            `json:"owner_revision"`
+	CloseGeneration           uint64                            `json:"close_generation"`
+	NamespaceUID              string                            `json:"namespace_uid"`
+	PublicationID             string                            `json:"publication_id"`
+	Targets                   []RuntimeResource                 `json:"targets"`
+	PlanHash                  string                            `json:"plan_sha256"`
+	Retained                  []string                          `json:"retained"`
+	ObservedAt                time.Time                         `json:"observed_at"`
+	MissingTrainingLogsReview *CleanupMissingTrainingLogsReview `json:"missing_training_logs_review,omitempty"`
 }
 
 type CleanupReceipt struct {
@@ -296,9 +305,11 @@ type CleanupReceipt struct {
 	CompletedAt     time.Time         `json:"completed_at"`
 	// Reconciliation preserves the first apply's request/result and timestamps.
 	// These fields record a later observation, never a replayed DELETE.
-	ResolvedAbsent      []RuntimeResource `json:"resolved_absent,omitempty"`
-	ReconciledAt        time.Time         `json:"reconciled_at,omitempty"`
-	ReconciledFromPhase string            `json:"reconciled_from_phase,omitempty"`
+	ResolvedAbsent            []RuntimeResource                 `json:"resolved_absent,omitempty"`
+	ReconciledAt              time.Time                         `json:"reconciled_at,omitempty"`
+	ReconciledFromPhase       string                            `json:"reconciled_from_phase,omitempty"`
+	MissingTrainingLogsReview *CleanupMissingTrainingLogsReview `json:"missing_training_logs_review,omitempty"`
+	ReviewedOwnerRevision     uint64                            `json:"reviewed_owner_revision,omitempty"`
 }
 
 type ExecutionCleanupBoundary interface {
@@ -310,7 +321,8 @@ type ExecutionCleanupBoundary interface {
 func CleanupPlanFor(record OperationRecord) (CleanupPlan, error) {
 	admitted, runtime := record.Execution, record.Runtime
 	automatic := ComputeCleanupApplied(record)
-	maintenance := ComputeCleanupMaintenanceEligible(record)
+	missingLogs := MissingTrainingLogsMaintenanceEligible(record)
+	maintenance := ComputeCleanupMaintenanceEligible(record) || missingLogs
 	if admitted.States.Close != CloseStateClosed || runtime.ClosedAt == nil || runtime.CloseGeneration == 0 || runtime.CloseReviewReason != "" || runtime.CloseEvidence == nil || admitted.OwnerRevision != runtime.OwnerRevision {
 		return CleanupPlan{}, ErrCleanupBlocked
 	}
@@ -334,6 +346,19 @@ func CleanupPlanFor(record OperationRecord) (CleanupPlan, error) {
 	if maintenance {
 		plan.Targets = ComputeCleanupMaintenanceTargets(runtime.ComputeCleanup)
 		plan.Retained = []string{"PVC", "S3 publication", "execution and audit records", "recorded training log tails", "original exhausted automatic cleanup receipt"}
+	}
+	if missingLogs {
+		review := MissingTrainingLogsReviewFor(record)
+		copied := *review
+		copied.MissingPods = append([]MissingTrainingLogPod(nil), review.MissingPods...)
+		plan.MissingTrainingLogsReview = &copied
+		plan.Retained = []string{"PVC", "S3 publication", "execution and audit records", "original exhausted automatic cleanup receipt", "unrecoverable training logs remain unavailable"}
+		if record.Cleanup != nil && record.Cleanup.MissingTrainingLogsReview != nil {
+			if record.Cleanup.ReviewedOwnerRevision == 0 || record.Cleanup.ReviewedOwnerRevision > plan.OwnerRevision {
+				return CleanupPlan{}, ErrCleanupConflict
+			}
+			plan.OwnerRevision = record.Cleanup.ReviewedOwnerRevision
+		}
 	}
 	if runtime.Observation != nil && !automatic && !maintenance {
 		seen := map[string]bool{}
@@ -377,12 +402,19 @@ func CleanupPlanFor(record OperationRecord) (CleanupPlan, error) {
 }
 
 func (operations *ExecutionOperations) PlanCleanup(ctx context.Context, tenant, execution string) (CleanupPlan, error) {
+	return operations.PlanCleanupWithMissingLogsReview(ctx, tenant, execution, nil)
+}
+func (operations *ExecutionOperations) PlanCleanupWithMissingLogsReview(ctx context.Context, tenant, execution string, review *CleanupMissingTrainingLogsReview) (CleanupPlan, error) {
 	if _, err := operations.Inspect(ctx, tenant, execution); err != nil {
 		return CleanupPlan{}, err
 	}
 	record, err := operations.repository.GetOperationRecord(ctx, tenant, execution)
 	if err != nil {
 		return CleanupPlan{}, err
+	}
+	record.CleanupReview = review
+	if review != nil && !MissingTrainingLogsMaintenanceEligible(record) {
+		return CleanupPlan{}, ErrCleanupBlocked
 	}
 	plan, err := CleanupPlanFor(record)
 	if err != nil {
@@ -398,6 +430,9 @@ func (operations *ExecutionOperations) PlanCleanup(ctx context.Context, tenant, 
 }
 
 func (operations *ExecutionOperations) ApplyCleanup(ctx context.Context, tenant, execution, expectedHash, actor string) (CleanupReceipt, error) {
+	return operations.ApplyCleanupWithMissingLogsReview(ctx, tenant, execution, expectedHash, actor, nil)
+}
+func (operations *ExecutionOperations) ApplyCleanupWithMissingLogsReview(ctx context.Context, tenant, execution, expectedHash, actor string, review *CleanupMissingTrainingLogsReview) (CleanupReceipt, error) {
 	if !closeSpecHashPattern.MatchString(expectedHash) || !validAuditActor(actor) {
 		return CleanupReceipt{}, ErrInvalidAdmission
 	}
@@ -408,6 +443,9 @@ func (operations *ExecutionOperations) ApplyCleanup(ctx context.Context, tenant,
 		return CleanupReceipt{}, err
 	}
 	if prior.Cleanup != nil {
+		if !reflect.DeepEqual(prior.Cleanup.MissingTrainingLogsReview, review) {
+			return *prior.Cleanup, ErrCleanupConflict
+		}
 		if prior.Cleanup.PlanHash != expectedHash {
 			return *prior.Cleanup, ErrCleanupConflict
 		}
@@ -416,7 +454,7 @@ func (operations *ExecutionOperations) ApplyCleanup(ctx context.Context, tenant,
 		}
 		return *prior.Cleanup, ErrCleanupUncertain
 	}
-	plan, err := operations.PlanCleanup(ctx, tenant, execution)
+	plan, err := operations.PlanCleanupWithMissingLogsReview(ctx, tenant, execution, review)
 	if err != nil {
 		return CleanupReceipt{}, err
 	}

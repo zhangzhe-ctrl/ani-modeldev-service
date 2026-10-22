@@ -233,6 +233,10 @@ type RuntimePublication struct {
 // ExecutionRuntime contains committed facts; no state value reconstructs an
 // outbound creation permit. Normal step advancement belongs to KFP.
 type ExecutionRuntime struct {
+	// ReviewedComputeCleanup is derived from the separately committed manual
+	// audit on each read. It is never copied into runtime JSON or a snapshot.
+	ReviewedComputeCleanup *CleanupReceipt `json:"-"`
+
 	GPURelease             *GPUReleaseState        `json:",omitempty"`
 	StepTimings            []ManagedStepTiming     `json:",omitempty"`
 	RuntimeTemplate        *RuntimeCreation        `json:",omitempty"`
