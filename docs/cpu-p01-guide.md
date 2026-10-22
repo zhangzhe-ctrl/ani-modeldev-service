@@ -516,6 +516,8 @@ Stop 请求为 `POST /admin/v1/modeldev/executions/{id}:stop`，**请求体必�
 | `modeldev-cleanup-apply` | 应用这份明确计划，记录原请求和结果 |
 | `modeldev-pause` | CAS 暂停新的受理绑定，不改写已受理快照 |
 
+若自动计算清理已耗尽三次尝试，且原执行已 CLOSED、尚未保存清理日志或提交任何 DELETE 意图，正常授权的 `modeldev-reconcile` 可申请唯一一次额外尝试。服务先重新验证原资源图、UID、GPU owner 签名及终态日志，再以数据库时间保存操作者、原三次失败摘要和两分钟截止时间；第 4 次清理仍遵守原 plan hash、关闭围栏及精确 UID/RV。后台协调不会授予额外预算，重复调用不续期；已有 Requested/ConfirmedAbsent、身份漂移或期限届满均不能取得新许可。原三次记录不会被重置，产物和工作卷继续保留。
+
 正常自动清理目前限于已 PUBLISHED、strict CLOSED、原 generation=1 且未 suspend/修改历史 spec 的完整训练控制链。计划 hash 使用原规范顺序；实际删除按 **TrainJob → JobSet → Job** 父级优先，使用精确 UID/RV precondition 和 Orphan，确认父级不存在后再处理子级。
 
 保留 Workflow、Pod 退出证据、PVC、S3 Publication 和业务审计。未发布失败、typed-abort、suspended/historyspec 改变和结果不明的链仍需受控核验，不能作为通用“全部删除”功能使用。超时、5xx 或未知副作用先 Inspect/Reconcile，不能盲重发 Apply、清空许可或直接 SQL 写成成功。
