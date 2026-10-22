@@ -18,13 +18,14 @@ const ComputeCleanupMaximumAttempts = 3
 // ConfirmedAbsent never substitutes for the original persisted process exits.
 type ComputeCleanupReceipt struct {
 	CleanupReceipt
-	CloseGeneration uint64                       `json:"close_generation"`
-	Targets         []RuntimeResource            `json:"targets"`
-	Logs            []RecordedTrainingLog        `json:"logs"`
-	LogsReady       bool                         `json:"logs_ready"`
-	Attempts        uint32                       `json:"attempts"`
-	LastError       string                       `json:"last_error,omitempty"`
-	OperatorRetry   *ComputeCleanupOperatorRetry `json:"operator_retry,omitempty"`
+	CloseGeneration     uint64                       `json:"close_generation"`
+	Targets             []RuntimeResource            `json:"targets"`
+	Logs                []RecordedTrainingLog        `json:"logs"`
+	LogsReady           bool                         `json:"logs_ready"`
+	Attempts            uint32                       `json:"attempts"`
+	LastError           string                       `json:"last_error,omitempty"`
+	OperatorRetry       *ComputeCleanupOperatorRetry `json:"operator_retry,omitempty"`
+	MaintenancePlanHash string                       `json:"maintenance_plan_sha256,omitempty"`
 }
 
 // ComputeCleanupOperatorRetry preserves the exhausted pre-DELETE audit. It
@@ -60,6 +61,39 @@ type ComputeCleanupOperatorRepository interface {
 	AdmitComputeCleanupRetry(context.Context, RunAuthorityCandidate, uint64, string, []RecordedTrainingLog) (ExecutionRuntime, error)
 }
 
+type ComputeCleanupResolutionRepository interface {
+	RecordComputeCleanupResolved(context.Context, RunAuthorityCandidate, uint64, string, []RuntimeResource) (ExecutionRuntime, error)
+}
+
+type ComputeCleanupMaintenanceBoundary interface {
+	VerifyComputeMaintenanceWriters(context.Context, OperationRecord) error
+	DeleteComputeMaintenanceResource(context.Context, OperationRecord, RuntimeResource) error
+	ObserveComputeMaintenanceAbsent(context.Context, OperationRecord) ([]RuntimeResource, error)
+}
+
+func ComputeCleanupMaintenanceEligible(record OperationRecord) bool {
+	r := record.Runtime.ComputeCleanup
+	if r == nil || record.Authority == nil || r.Phase != "NEEDS_REVIEW" || r.Attempts != ComputeCleanupAttemptLimit(r) || !r.LogsReady || r.ReconciledFromPhase != "" || !r.ReconciledAt.IsZero() || len(r.ResolvedAbsent) != 0 || r.MaintenancePlanHash != "" {
+		return false
+	}
+	targets, hash, err := ComputeCleanupTargets(record.Execution, *record.Authority, record.Runtime)
+	return err == nil && hash == r.PlanHash && r.CloseGeneration == record.Runtime.CloseGeneration && reflect.DeepEqual(targets, r.Targets) && reflect.DeepEqual(targets, r.Requested) && ComputeCleanupRemovedValid(targets, r.ConfirmedAbsent, false) && ComputeCleanupLogsComplete(record.Execution, record.Runtime, r.Logs)
+}
+
+func ComputeCleanupMaintenanceTargets(receipt *ComputeCleanupReceipt) []RuntimeResource {
+	remaining := []RuntimeResource{}
+	for _, target := range receipt.Targets {
+		confirmed := false
+		for _, absent := range receipt.ConfirmedAbsent {
+			confirmed = confirmed || absent.UID == target.UID
+		}
+		if !confirmed {
+			remaining = append(remaining, target)
+		}
+	}
+	return remaining
+}
+
 type ComputeCleanupRepository interface {
 	BeginComputeCleanup(context.Context, RunAuthorityCandidate, uint64) (ExecutionRuntime, error)
 	StartComputeCleanupAttempt(context.Context, RunAuthorityCandidate, uint64) (ExecutionRuntime, error)
@@ -78,11 +112,35 @@ type RecordedComputeWriterVerifier interface {
 
 func ComputeCleanupApplied(record OperationRecord) bool {
 	receipt := record.Runtime.ComputeCleanup
-	if receipt == nil || receipt.Phase != "APPLIED" || !receipt.LogsReady || receipt.CompletedAt.IsZero() || record.Authority == nil {
+	if receipt == nil || (receipt.Phase != "APPLIED" && receipt.Phase != "RECONCILED") || !receipt.LogsReady || record.Authority == nil {
+		return false
+	}
+	absent := receipt.ConfirmedAbsent
+	if receipt.Phase == "RECONCILED" {
+		if receipt.ReconciledAt.IsZero() || receipt.ReconciledAt.Before(receipt.StartedAt) || receipt.ReconciledFromPhase != "NEEDS_REVIEW" || !closeSpecHashPattern.MatchString(receipt.MaintenancePlanHash) || !receipt.CompletedAt.IsZero() || receipt.Attempts != ComputeCleanupAttemptLimit(receipt) || receipt.LastError == "" {
+			return false
+		}
+		absent = receipt.ResolvedAbsent
+	} else if receipt.CompletedAt.IsZero() {
 		return false
 	}
 	targets, hash, err := ComputeCleanupTargets(record.Execution, *record.Authority, record.Runtime)
-	return err == nil && hash == receipt.PlanHash && receipt.CloseGeneration == record.Runtime.CloseGeneration && reflect.DeepEqual(targets, receipt.Targets) && reflect.DeepEqual(targets, receipt.Requested) && ComputeCleanupRemovedValid(targets, receipt.ConfirmedAbsent, true) && ComputeCleanupLogsComplete(record.Execution, record.Runtime, receipt.Logs)
+	return err == nil && hash == receipt.PlanHash && receipt.CloseGeneration == record.Runtime.CloseGeneration && reflect.DeepEqual(targets, receipt.Targets) && reflect.DeepEqual(targets, receipt.Requested) && ComputeCleanupRemovedValid(targets, absent, true) && ComputeCleanupLogsComplete(record.Execution, record.Runtime, receipt.Logs)
+}
+
+// ComputeCleanupSettledAt distinguishes a completed automatic apply from a
+// later observed resolution. Neither timestamp erases the failed attempt.
+func ComputeCleanupSettledAt(receipt *ComputeCleanupReceipt) time.Time {
+	if receipt == nil {
+		return time.Time{}
+	}
+	if receipt.Phase == "APPLIED" {
+		return receipt.CompletedAt
+	}
+	if receipt.Phase != "RECONCILED" || !receipt.LogsReady || receipt.Attempts != ComputeCleanupAttemptLimit(receipt) || receipt.LastError == "" || !receipt.CompletedAt.IsZero() || receipt.ReconciledAt.IsZero() || receipt.ReconciledAt.Before(receipt.StartedAt) || receipt.ReconciledFromPhase != "NEEDS_REVIEW" || !closeSpecHashPattern.MatchString(receipt.MaintenancePlanHash) || !reflect.DeepEqual(receipt.Targets, receipt.Requested) || !ComputeCleanupRemovedValid(receipt.Targets, receipt.ResolvedAbsent, true) {
+		return time.Time{}
+	}
+	return receipt.ReconciledAt
 }
 
 // ComputeCleanupTargets freezes only original terminal compute identities. The

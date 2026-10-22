@@ -36,6 +36,16 @@ func (adapter *Adapter) VerifyCleanupResolved(ctx context.Context, record biz.Op
 	if err != nil {
 		return nil, err
 	}
+	if biz.ComputeCleanupMaintenanceEligible(record) {
+		boundary, ok := adapter.writers.(biz.ComputeCleanupMaintenanceBoundary)
+		if !ok {
+			return nil, biz.ErrRuntimeNotReady
+		}
+		if _, err := boundary.ObserveComputeMaintenanceAbsent(ctx, record); err != nil {
+			return nil, err
+		}
+		return append([]biz.RuntimeResource{}, plan.Targets...), nil
+	}
 	namespace := record.Execution.Snapshot.Environment.NamespaceName
 	ns, err := adapter.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}).Get(ctx, namespace, metav1.GetOptions{})
 	if err != nil || ns == nil || namespace == "" || plan.NamespaceUID == "" || ns.GetAPIVersion() != "v1" || ns.GetKind() != "Namespace" || ns.GetNamespace() != "" || ns.GetName() != namespace || string(ns.GetUID()) != plan.NamespaceUID || ns.GetDeletionTimestamp() != nil {
@@ -225,6 +235,13 @@ func (adapter *Adapter) VerifyCleanupWritersAbsent(ctx context.Context, record b
 	if err != nil {
 		return err
 	}
+	if biz.ComputeCleanupMaintenanceEligible(record) {
+		boundary, ok := adapter.writers.(biz.ComputeCleanupMaintenanceBoundary)
+		if !ok {
+			return biz.ErrRuntimeNotReady
+		}
+		return boundary.VerifyComputeMaintenanceWriters(ctx, record)
+	}
 	namespace := record.Execution.Snapshot.Environment.NamespaceName
 	ns, err := adapter.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}).Get(ctx, namespace, metav1.GetOptions{})
 	if err != nil || ns.GetAPIVersion() != "v1" || ns.GetKind() != "Namespace" || ns.GetName() != namespace || string(ns.GetUID()) != plan.NamespaceUID || ns.GetDeletionTimestamp() != nil {
@@ -354,6 +371,13 @@ func (adapter *Adapter) DeleteExecutionResource(ctx context.Context, record biz.
 	plan, err := biz.CleanupPlanFor(record)
 	if err != nil || adapter == nil || adapter.kube == nil || ctx == nil {
 		return biz.ErrCleanupBlocked
+	}
+	if biz.ComputeCleanupMaintenanceEligible(record) {
+		boundary, ok := adapter.writers.(biz.ComputeCleanupMaintenanceBoundary)
+		if !ok {
+			return biz.ErrRuntimeNotReady
+		}
+		return boundary.DeleteComputeMaintenanceResource(ctx, record, target)
 	}
 	return adapter.deleteController(ctx, record, target, plan, false)
 }

@@ -39,11 +39,11 @@ func gpuReleaseReady(execution biz.Execution, state biz.ExecutionRuntime) bool {
 	}
 	// readRuntime independently validates the complete committed close and the
 	// original cleanup target/exit graph before this post-close extension runs.
-	return state.ComputeCleanup != nil && state.ComputeCleanup.Phase == "APPLIED" && !state.ComputeCleanup.CompletedAt.IsZero() && state.StepExitCleanup != nil && state.StepExitCleanup.CompletedAt != nil
+	return !biz.ComputeCleanupSettledAt(state.ComputeCleanup).IsZero() && state.StepExitCleanup != nil && state.StepExitCleanup.CompletedAt != nil
 }
 
 func gpuReleaseScope(execution biz.Execution, state biz.ExecutionRuntime, sealed time.Time) (biz.GPUReleaseScope, error) {
-	if !gpuReleaseReady(execution, state) || sealed.IsZero() || sealed.Before(*state.ClosedAt) || state.ComputeCleanup != nil && sealed.Before(state.ComputeCleanup.CompletedAt) {
+	if !gpuReleaseReady(execution, state) || sealed.IsZero() || sealed.Before(*state.ClosedAt) || state.ComputeCleanup != nil && sealed.Before(biz.ComputeCleanupSettledAt(state.ComputeCleanup)) {
 		return biz.GPUReleaseScope{}, biz.ErrRuntimeNotReady
 	}
 	scope := biz.GPUReleaseScope{Ref: biz.GPUReleaseRef{TenantID: execution.TenantID, OwnerService: biz.GPUOwnerService, ResourceID: execution.ExecutionID, CreateOperationID: execution.OperationID}, CloseOperationID: state.CloseOperationID, ClusterID: execution.Snapshot.Environment.ClusterID, SealedAt: sealed.UTC(), Pods: []biz.GPUReleasePodRef{}}

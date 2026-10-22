@@ -39,7 +39,7 @@ func (closer *ExecutionCloser) reconcileComputeCleanup(ctx context.Context, resu
 		}
 	}
 	result.Runtime = state
-	if state.ComputeCleanup.Phase == "APPLIED" {
+	if state.ComputeCleanup.Phase == "APPLIED" || state.ComputeCleanup.Phase == "RECONCILED" {
 		return runtimeResult(result, state, replayed)
 	}
 	state, err := repository.StartComputeCleanupAttempt(ctx, owner, state.CloseGeneration)

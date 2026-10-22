@@ -181,6 +181,11 @@ func (operations *ExecutionOperations) reconcile(ctx context.Context, tenant, ex
 				return ExecutionInspect{}, err
 			}
 		}
+		if ComputeCleanupMaintenanceEligible(record) {
+			if err := operations.resolveComputeMaintenance(ctx, record); err != nil {
+				return ExecutionInspect{}, err
+			}
+		}
 	}
 	if _, err := operations.closer.Reconcile(ctx, tenant, execution); err != nil {
 		return ExecutionInspect{}, err
@@ -211,6 +216,49 @@ func (operations *ExecutionOperations) reconcile(ctx context.Context, tenant, ex
 		}
 	}
 	return operations.Inspect(ctx, tenant, execution)
+}
+
+func (operations *ExecutionOperations) resolveComputeMaintenance(ctx context.Context, record OperationRecord) error {
+	if record.Cleanup == nil || operations.cleanup == nil {
+		return ErrCleanupUncertain
+	}
+	if record.Cleanup.Phase == "STARTED" || record.Cleanup.Phase == "NEEDS_REVIEW" {
+		_, err := operations.repository.ReconcileCleanup(ctx, record.Execution.TenantID, record.Execution.ExecutionID, record.Cleanup.PlanHash, func(current OperationRecord) (CleanupReceipt, error) {
+			r := *current.Cleanup
+			absent, err := operations.cleanup.VerifyCleanupResolved(ctx, current)
+			if err != nil {
+				return r, err
+			}
+			r.ReconciledFromPhase, r.Phase, r.ResolvedAbsent = r.Phase, "RECONCILED", absent
+			return r, nil
+		})
+		if err != nil {
+			return err
+		}
+		record, err = operations.repository.GetOperationRecord(ctx, record.Execution.TenantID, record.Execution.ExecutionID)
+		if err != nil {
+			return err
+		}
+	}
+	if record.Cleanup.Phase != "APPLIED" && record.Cleanup.Phase != "RECONCILED" {
+		return ErrCleanupUncertain
+	}
+	boundary, ok := operations.closer.compute.(ComputeCleanupMaintenanceBoundary)
+	if !ok {
+		return ErrRuntimeNotReady
+	}
+	repository, ok := operations.closer.runtime.repository.(ComputeCleanupResolutionRepository)
+	if !ok {
+		return ErrRuntimeNotReady
+	}
+	bounded, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	absent, err := boundary.ObserveComputeMaintenanceAbsent(bounded, record)
+	if err != nil {
+		return err
+	}
+	_, err = repository.RecordComputeCleanupResolved(bounded, *record.Authority, record.Runtime.CloseGeneration, record.Cleanup.PlanHash, absent)
+	return err
 }
 
 var (
@@ -262,13 +310,14 @@ type ExecutionCleanupBoundary interface {
 func CleanupPlanFor(record OperationRecord) (CleanupPlan, error) {
 	admitted, runtime := record.Execution, record.Runtime
 	automatic := ComputeCleanupApplied(record)
+	maintenance := ComputeCleanupMaintenanceEligible(record)
 	if admitted.States.Close != CloseStateClosed || runtime.ClosedAt == nil || runtime.CloseGeneration == 0 || runtime.CloseReviewReason != "" || runtime.CloseEvidence == nil || admitted.OwnerRevision != runtime.OwnerRevision {
 		return CleanupPlan{}, ErrCleanupBlocked
 	}
 	if record.Dispatch != nil && (record.Dispatch.State != PipelineDispatchConfirmed || len(record.Dispatch.ConfirmedRuns) != 1) {
 		return CleanupPlan{}, ErrCleanupBlocked
 	}
-	if runtime.Training != nil && !automatic && (runtime.TrainingHandle == nil || runtime.Observation == nil || !runtime.Observation.WritersAbsent || runtime.Publication == nil || admitted.States.Delivery != DeliveryStatePublished) {
+	if runtime.Training != nil && !automatic && !maintenance && (runtime.TrainingHandle == nil || runtime.Observation == nil || !runtime.Observation.WritersAbsent || runtime.Publication == nil || admitted.States.Delivery != DeliveryStatePublished) {
 		// A stopped execution can still own the only unpublished output. Retain
 		// all of its resources until publication/retention is proved separately.
 		return CleanupPlan{}, ErrCleanupBlocked
@@ -282,7 +331,11 @@ func CleanupPlanFor(record OperationRecord) (CleanupPlan, error) {
 	if runtime.Publication != nil {
 		plan.PublicationID = runtime.Publication.ID
 	}
-	if runtime.Observation != nil && !automatic {
+	if maintenance {
+		plan.Targets = ComputeCleanupMaintenanceTargets(runtime.ComputeCleanup)
+		plan.Retained = []string{"PVC", "S3 publication", "execution and audit records", "recorded training log tails", "original exhausted automatic cleanup receipt"}
+	}
+	if runtime.Observation != nil && !automatic && !maintenance {
 		seen := map[string]bool{}
 		for _, resource := range runtime.Observation.Resources {
 			if resource.Kind == "Pod" || !resource.APIObjectPresent {
@@ -303,6 +356,9 @@ func CleanupPlanFor(record OperationRecord) (CleanupPlan, error) {
 	// ApplyCleanup dispatches parent-first; Orphan retains Pod/Workflow evidence
 	// and the workspace.
 	rank := map[string]int{"Job": 0, "JobSet": 1, "TrainJob": 2}
+	if maintenance {
+		rank = map[string]int{"TrainJob": 0, "JobSet": 1, "Job": 2, "Pod": 3, "PodGroup": 4, "Workflow": 5, "TrainingRuntime": 6}
+	}
 	sort.Slice(plan.Targets, func(i, j int) bool {
 		if rank[plan.Targets[i].Kind] != rank[plan.Targets[j].Kind] {
 			return rank[plan.Targets[i].Kind] < rank[plan.Targets[j].Kind]
@@ -392,7 +448,7 @@ func (operations *ExecutionOperations) ApplyCleanup(ctx context.Context, tenant,
 		// TrainJob cannot recreate a deleted JobSet or Job. Keep the reviewed
 		// plan's canonical target order and hash unchanged.
 		deleteTargets := append([]RuntimeResource{}, current.Targets...)
-		rank := map[string]int{"TrainJob": 0, "JobSet": 1, "Job": 2}
+		rank := map[string]int{"TrainJob": 0, "JobSet": 1, "Job": 2, "Pod": 3, "PodGroup": 4, "Workflow": 5, "TrainingRuntime": 6}
 		sort.Slice(deleteTargets, func(i, j int) bool {
 			if rank[deleteTargets[i].Kind] != rank[deleteTargets[j].Kind] {
 				return rank[deleteTargets[i].Kind] < rank[deleteTargets[j].Kind]

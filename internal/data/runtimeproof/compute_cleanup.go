@@ -97,7 +97,6 @@ func (verifier *Verifier) ReconcileComputeCleanup(ctx context.Context, execution
 		return removed, err
 	}
 	record := biz.OperationRecord{QueryRecord: biz.QueryRecord{Execution: execution, Runtime: state}, Dispatch: &dispatch, Authority: &owner}
-	controllers := cleanup.New(verifier.kube, verifier)
 	for _, target := range receipt.Targets {
 		if retry := receipt.OperatorRetry; retry != nil && !time.Now().Before(retry.DeadlineAt) {
 			return removed, biz.ErrCleanupBlocked
@@ -105,52 +104,8 @@ func (verifier *Verifier) ReconcileComputeCleanup(ctx context.Context, execution
 		if err := verifier.verifyComputeCleanupGraph(ctx, execution, owner, state, true); err != nil {
 			return removed, err
 		}
-		resource, _ := computeResource(target)
-		client := verifier.kube.Resource(resource).Namespace(owner.NamespaceName)
-		current, err := client.Get(ctx, target.Name, metav1.GetOptions{})
-		if apierrors.IsNotFound(err) {
-			fact := target
-			fact.APIObjectPresent = false
-			removed = append(removed, fact)
-			continue
-		}
-		if err != nil || !sameObject(current, target.APIVersion, target.Kind, target.Namespace, target.Name, target.UID) {
-			return removed, biz.ErrCleanupConflict
-		}
-		if target.Kind != "Workflow" && target.Kind != "Pod" && target.Kind != "PodGroup" && target.Kind != "TrainingRuntime" {
-			if err := controllers.DeleteRecordedComputeController(ctx, record, target); err != nil {
-				return removed, err
-			}
-		} else {
-			if target.Kind == "TrainingRuntime" {
-				jobs, listErr := verifier.kube.Resource(schema.GroupVersionResource{Group: "trainer.kubeflow.org", Version: "v1alpha1", Resource: "trainjobs"}).Namespace(owner.NamespaceName).List(ctx, metav1.ListOptions{})
-				if listErr != nil || jobs == nil || jobs.GetContinue() != "" {
-					return removed, biz.ErrCleanupUncertain
-				}
-				for _, job := range jobs.Items {
-					name, _, _ := unstructured.NestedString(job.Object, "spec", "runtimeRef", "name")
-					kind, _, _ := unstructured.NestedString(job.Object, "spec", "runtimeRef", "kind")
-					if name == target.Name && kind == "TrainingRuntime" {
-						return removed, biz.ErrCleanupBlocked
-					}
-				}
-			}
-			if len(current.GetFinalizers()) != 0 || current.GetResourceVersion() == "" {
-				return removed, biz.ErrCleanupBlocked
-			}
-			if target.Kind == "Pod" || target.Kind == "PodGroup" {
-				if err := verifier.computeParentsAbsent(ctx, receipt.Targets, target); err != nil {
-					return removed, err
-				}
-			}
-			uid, version := types.UID(target.UID), current.GetResourceVersion()
-			orphan := metav1.DeletePropagationOrphan
-			if err := client.Delete(ctx, target.Name, metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &uid, ResourceVersion: &version}, PropagationPolicy: &orphan}); err != nil {
-				return removed, biz.ErrCleanupUncertain
-			}
-			if _, err := client.Get(ctx, target.Name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
-				return removed, biz.ErrCleanupUncertain
-			}
+		if err := verifier.deleteComputeTarget(ctx, record, target); err != nil {
+			return removed, err
 		}
 		fact := target
 		fact.APIObjectPresent = false
@@ -160,6 +115,54 @@ func (verifier *Verifier) ReconcileComputeCleanup(ctx context.Context, execution
 		return removed, err
 	}
 	return removed, nil
+}
+
+func (verifier *Verifier) deleteComputeTarget(ctx context.Context, record biz.OperationRecord, target biz.RuntimeResource) error {
+	resource, _ := computeResource(target)
+	client := verifier.kube.Resource(resource).Namespace(record.Authority.NamespaceName)
+	current, err := client.Get(ctx, target.Name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil || !sameObject(current, target.APIVersion, target.Kind, target.Namespace, target.Name, target.UID) {
+		return biz.ErrCleanupConflict
+	}
+	if target.Kind != "Workflow" && target.Kind != "Pod" && target.Kind != "PodGroup" && target.Kind != "TrainingRuntime" {
+		if err := cleanup.New(verifier.kube, verifier).DeleteRecordedComputeController(ctx, record, target); err != nil {
+			return err
+		}
+	} else {
+		if target.Kind == "TrainingRuntime" {
+			jobs, listErr := verifier.kube.Resource(schema.GroupVersionResource{Group: "trainer.kubeflow.org", Version: "v1alpha1", Resource: "trainjobs"}).Namespace(record.Authority.NamespaceName).List(ctx, metav1.ListOptions{})
+			if listErr != nil || jobs == nil || jobs.GetContinue() != "" {
+				return biz.ErrCleanupUncertain
+			}
+			for _, job := range jobs.Items {
+				name, _, _ := unstructured.NestedString(job.Object, "spec", "runtimeRef", "name")
+				kind, _, _ := unstructured.NestedString(job.Object, "spec", "runtimeRef", "kind")
+				if name == target.Name && kind == "TrainingRuntime" {
+					return biz.ErrCleanupBlocked
+				}
+			}
+		}
+		if len(current.GetFinalizers()) != 0 || current.GetResourceVersion() == "" {
+			return biz.ErrCleanupBlocked
+		}
+		if target.Kind == "Pod" || target.Kind == "PodGroup" {
+			if err := verifier.computeParentsAbsent(ctx, record.Runtime.ComputeCleanup.Targets, target); err != nil {
+				return err
+			}
+		}
+		uid, version := types.UID(target.UID), current.GetResourceVersion()
+		orphan := metav1.DeletePropagationOrphan
+		if err := client.Delete(ctx, target.Name, metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &uid, ResourceVersion: &version}, PropagationPolicy: &orphan}); err != nil {
+			return biz.ErrCleanupUncertain
+		}
+		if err := verifier.waitComputeRemoval(ctx, target); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (verifier *Verifier) verifyComputeCleanupGraph(ctx context.Context, execution biz.Execution, owner biz.RunAuthorityCandidate, state biz.ExecutionRuntime, removalIntent bool) error {

@@ -36,12 +36,14 @@ type computeCleanupFixture struct {
 	runtime                   *unstructured.Unstructured
 	deleted                   []string
 	loseDelete, replaceDelete bool
+	loseDeleteKind            string
 	logReads                  int
 	workflowDeleted           bool
 	runtimeDeleted            bool
 	stopPatches               int
 	pvcOwnerUID               string
 	deferDelete               bool
+	deferDeleteKind           string
 	pendingReads              map[string]int
 }
 
@@ -298,6 +300,9 @@ func (f *computeCleanupFixture) serve(t *testing.T, w http.ResponseWriter, r *ht
 		f.pendingReads[r.URL.Path]--
 		if f.pendingReads[r.URL.Path] == 0 {
 			delete(f.objects, r.URL.Path)
+			if object.GetKind() == "Pod" {
+				delete(f.step.pods, object.GetName())
+			}
 			if r.URL.Path == runtimePath {
 				f.runtimeDeleted = true
 			}
@@ -356,7 +361,12 @@ func (f *computeCleanupFixture) serve(t *testing.T, w http.ResponseWriter, r *ht
 			return true
 		}
 		f.deleted = append(f.deleted, object.GetKind())
-		if f.deferDelete && object.GetKind() == "TrainJob" {
+		deferKind := f.deferDeleteKind
+		if deferKind == "" {
+			deferKind = "TrainJob"
+		}
+		deferred := f.deferDelete && object.GetKind() == deferKind
+		if deferred {
 			at := metav1.Now()
 			object.SetDeletionTimestamp(&at)
 			object.SetResourceVersion("deleting-3")
@@ -364,7 +374,7 @@ func (f *computeCleanupFixture) serve(t *testing.T, w http.ResponseWriter, r *ht
 		} else {
 			delete(f.objects, r.URL.Path)
 		}
-		if object.GetKind() == "Pod" {
+		if object.GetKind() == "Pod" && !deferred {
 			delete(f.step.pods, object.GetName())
 		}
 		if object.GetKind() == "Workflow" {
@@ -384,7 +394,7 @@ func (f *computeCleanupFixture) serve(t *testing.T, w http.ResponseWriter, r *ht
 				child.SetResourceVersion("3")
 			}
 		}
-		if f.loseDelete {
+		if f.loseDelete && (f.loseDeleteKind == "" || f.loseDeleteKind == object.GetKind()) {
 			f.loseDelete = false
 			connection, _, err := w.(http.Hijacker).Hijack()
 			if err == nil {

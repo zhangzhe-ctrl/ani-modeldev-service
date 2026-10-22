@@ -146,7 +146,7 @@ func validComputeCleanup(current *runtimeTransaction, owner biz.RunAuthorityCand
 		return true
 	}
 	targets, hash, err := biz.ComputeCleanupTargets(current.execution, owner, current.state)
-	if err != nil || receipt.ExecutionID != current.execution.ExecutionID || receipt.Actor != biz.ComputeCleanupActor || receipt.CloseGeneration != current.state.CloseGeneration || receipt.PlanHash != hash || !reflect.DeepEqual(receipt.Targets, targets) || receipt.StartedAt.IsZero() || receipt.StartedAt.Before(*current.state.ClosedAt) || receipt.StartedAt.After(current.now) || receipt.Attempts > biz.ComputeCleanupAttemptLimit(receipt) || !biz.ComputeCleanupRemovedValid(targets, receipt.ConfirmedAbsent, receipt.Phase == "APPLIED") || !receipt.ReconciledAt.IsZero() || receipt.ReconciledFromPhase != "" || len(receipt.ResolvedAbsent) != 0 {
+	if err != nil || receipt.ExecutionID != current.execution.ExecutionID || receipt.Actor != biz.ComputeCleanupActor || receipt.CloseGeneration != current.state.CloseGeneration || receipt.PlanHash != hash || !reflect.DeepEqual(receipt.Targets, targets) || receipt.StartedAt.IsZero() || receipt.StartedAt.Before(*current.state.ClosedAt) || receipt.StartedAt.After(current.now) || receipt.Attempts > biz.ComputeCleanupAttemptLimit(receipt) || !biz.ComputeCleanupRemovedValid(targets, receipt.ConfirmedAbsent, receipt.Phase == "APPLIED") {
 		return false
 	}
 	if r := receipt.OperatorRetry; r != nil {
@@ -159,6 +159,12 @@ func validComputeCleanup(current *runtimeTransaction, owner biz.RunAuthorityCand
 			return false
 		}
 	} else if len(receipt.Logs) != 0 || len(receipt.Requested) != 0 || len(receipt.ConfirmedAbsent) != 0 {
+		return false
+	}
+	if receipt.Phase == "RECONCILED" {
+		return receipt.Attempts == biz.ComputeCleanupAttemptLimit(receipt) && receipt.LogsReady && receipt.CompletedAt.IsZero() && receipt.LastError != "" && receipt.ReconciledFromPhase == "NEEDS_REVIEW" && !receipt.ReconciledAt.IsZero() && !receipt.ReconciledAt.Before(receipt.StartedAt) && !receipt.ReconciledAt.After(current.now) && len(receipt.MaintenancePlanHash) == 64 && biz.ComputeCleanupRemovedValid(targets, receipt.ResolvedAbsent, true)
+	}
+	if !receipt.ReconciledAt.IsZero() || receipt.ReconciledFromPhase != "" || len(receipt.ResolvedAbsent) != 0 || receipt.MaintenancePlanHash != "" {
 		return false
 	}
 	switch receipt.Phase {
