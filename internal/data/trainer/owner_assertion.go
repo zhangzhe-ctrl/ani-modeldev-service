@@ -60,8 +60,14 @@ func (signer *OwnerAssertionSigner) SignPod(ctx context.Context, plan biz.Traini
 	if err != nil {
 		return biz.ErrTrainingUnavailable
 	}
-	if !liveIdentity(pod, "v1", "Pod", plan.Workspace.NamespaceName, observed.GetName(), string(observed.GetUID())) || pod.GetResourceVersion() == "" {
+	if pod == nil || pod.GetAPIVersion() != "v1" || pod.GetKind() != "Pod" || pod.GetNamespace() != plan.Workspace.NamespaceName || pod.GetName() != observed.GetName() || pod.GetUID() != observed.GetUID() || pod.GetResourceVersion() == "" {
 		return biz.ErrRuntimeConflict
+	}
+	if pod.GetDeletionTimestamp() != nil {
+		terminal, code := podTermination(pod)
+		if !terminal || code == nil {
+			return biz.ErrRuntimeConflict
+		}
 	}
 	refs := pod.GetOwnerReferences()
 	if len(refs) != 1 || refs[0].Controller == nil || !*refs[0].Controller || refs[0].APIVersion != "batch/v1" || refs[0].Kind != "Job" || refs[0].UID == "" {
@@ -139,6 +145,12 @@ func (signer *OwnerAssertionSigner) SignPod(ctx context.Context, plan biz.Traini
 		if matched {
 			return nil
 		}
+	}
+	// Suspension can delete an already-signed worker while its exit finalizer
+	// retains the original UID for durable observation. Only the verified
+	// existing assertion above may be reused; never sign or repair a deleting Pod.
+	if pod.GetDeletionTimestamp() != nil {
+		return biz.ErrRuntimeConflict
 	}
 	annotations["accelerator.ani.io/execution-digest"] = gpu.ExecutionDigest
 	annotations["accelerator.ani.io/owner-signature"] = signature
