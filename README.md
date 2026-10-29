@@ -21,6 +21,9 @@ its owner must make that choice before publication.
 
 ## Runtime and verification commands
 
+生产主服务镜像使用统一入口 `make image IMAGE=仓库:标签 VERSION=版本`，完整命令、
+运行合同和 ani-deploy 接入范围见[生产镜像构建](docs/production-image.md)。
+
 For CPU-P01, execute these commands only in the task's fixed Fedora checkout.
 Starting the runtime shell there is module verification, not target-cluster
 business acceptance.

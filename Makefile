@@ -22,9 +22,16 @@ SQLC_MODULE := github.com/sqlc-dev/sqlc@$(SQLC_VERSION)
 
 SERVICE_NAME ?= ani-modeldev-service
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+IMAGE ?=
+PLATFORM ?= linux/amd64
+TARGET ?= service
+BUILDER_IMAGE ?= golang:1.26.10-bookworm
+RUNTIME_IMAGE ?= gcr.io/distroless/static-debian12:nonroot
+GOPROXY ?= https://goproxy.cn,https://proxy.golang.org,direct
+
 LDFLAGS := -X main.Name=$(SERVICE_NAME) -X main.Version=$(VERSION)
 
-.PHONY: tools check-buf check-sqlc supply-chain-tools check-govulncheck check-cyclonedx check-gitleaks config api sql vectors generate build test verify vuln secrets sbom supply-chain-verify audit clean help
+.PHONY: tools check-buf check-sqlc supply-chain-tools check-govulncheck check-cyclonedx check-gitleaks config api sql vectors generate build test verify vuln secrets sbom supply-chain-verify audit clean help image test-image
 
 tools: check-buf check-sqlc
 
@@ -96,6 +103,15 @@ build:
 	$(GO) build -trimpath -o bin/ani-modeldev-step ./cmd/ani-modeldev-step
 	$(GO) build -trimpath -o bin/ani-modeldev-webhook ./cmd/ani-modeldev-webhook
 
+image:
+	@test -n "$(IMAGE)" || { echo 'usage: make image IMAGE=registry/project/ani-modeldev-service:tag VERSION=version' >&2; exit 2; }
+	python3 scripts/build-image.py --image "$(IMAGE)" --version "$(VERSION)" \
+	  --platform "$(PLATFORM)" --target "$(TARGET)" \
+	  --builder-image "$(BUILDER_IMAGE)" --runtime-image "$(RUNTIME_IMAGE)" --goproxy "$(GOPROXY)"
+
+test-image:
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/image -v
+
 test:
 	$(GO) test -count=1 ./...
 
@@ -126,6 +142,8 @@ clean:
 	rm -rf bin .tools .work .tmp
 
 help:
+	@echo "make image IMAGE=repo:tag VERSION=version  build the production service image locally"
+	@echo "make test-image  test image orchestration without Docker"
 	@echo "make tools    install pinned source generators"
 	@echo "make generate regenerate config, API, SQL and contract vectors on Fedora"
 	@echo "make verify   run deterministic quality gates on Fedora"
