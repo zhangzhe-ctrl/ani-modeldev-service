@@ -13,6 +13,10 @@ import (
 )
 
 func (a *Adapter) ObserveTraining(ctx context.Context, plan biz.TrainingPlan, handle biz.TrainingHandle, history []biz.RuntimeResource) (biz.TrainingRuntimeObservation, error) {
+	return a.observeTraining(ctx, plan, handle, history, nil)
+}
+
+func (a *Adapter) observeTraining(ctx context.Context, plan biz.TrainingPlan, handle biz.TrainingHandle, history []biz.RuntimeResource, legacy *biz.LegacyRetirementScope) (biz.TrainingRuntimeObservation, error) {
 	observation := biz.TrainingRuntimeObservation{Handle: handle, Outcome: "UNKNOWN", ObservedAt: time.Now().UTC()}
 	train, current, err := a.readBoundTrainingForClose(ctx, plan, handle)
 	if err != nil {
@@ -236,11 +240,16 @@ func (a *Adapter) ObserveTraining(ctx context.Context, plan biz.TrainingPlan, ha
 	trainSuspended, _, _ := unstructured.NestedBool(train.Object, "spec", "suspend")
 	setSuspended, _, _ := unstructured.NestedBool(jobset.Object, "spec", "suspend")
 	creationStopped := (trainTerminal && setTerminal) || (trainSuspended && setSuspended && jobsStopped)
-	if err := a.retainPodLogs(ctx, plan, handle, resources, objects, history); err != nil {
-		return observation, err
-	}
-	exitPending, err := a.releaseRecordedPodExits(ctx, plan, handle, resources, objects, history)
-	if err != nil {
+	exitPending := false
+	if legacy == nil {
+		if err := a.retainPodLogs(ctx, plan, handle, resources, objects, history); err != nil {
+			return observation, err
+		}
+		exitPending, err = a.releaseRecordedPodExits(ctx, plan, handle, resources, objects, history)
+		if err != nil {
+			return observation, err
+		}
+	} else if err := legacyOriginalTrainingExit(*legacy, resources, objects); err != nil {
 		return observation, err
 	}
 	// There is no exit code to invent when every original controller has

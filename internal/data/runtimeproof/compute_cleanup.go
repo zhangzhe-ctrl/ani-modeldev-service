@@ -86,11 +86,15 @@ func sameTrainingResourcesAfterPodGC(execution biz.Execution, state biz.Executio
 // The durable exits/logs and frozen scope remain authoritative; only actual
 // NotFound responses for all original identities can complete the receipt.
 func (verifier *Verifier) ObserveComputeCleanupAbsence(ctx context.Context, execution biz.Execution, owner biz.RunAuthorityCandidate, state biz.ExecutionRuntime) ([]biz.RuntimeResource, error) {
+	return verifier.observeComputeCleanupAbsence(ctx, execution, owner, state, false)
+}
+
+func (verifier *Verifier) observeComputeCleanupAbsence(ctx context.Context, execution biz.Execution, owner biz.RunAuthorityCandidate, state biz.ExecutionRuntime, legacy bool) ([]biz.RuntimeResource, error) {
 	if verifier == nil || verifier.kube == nil || ctx == nil || ctx.Err() != nil {
 		return nil, biz.ErrRuntimeNotReady
 	}
 	r := state.ComputeCleanup
-	if r == nil || r.Attempts == 0 || r.Attempts > biz.ComputeCleanupAttemptLimit(r) || !r.LogsReady || !biz.ComputeCleanupLogsComplete(execution, state, r.Logs) {
+	if r == nil || r.Attempts == 0 || r.Attempts > biz.ComputeCleanupAttemptLimit(r) || !cleanupLogQualification(execution, owner, state, legacy) {
 		return nil, biz.ErrCleanupBlocked
 	}
 	targets, hash, err := biz.ComputeCleanupTargets(execution, owner, state)
@@ -141,9 +145,13 @@ func (verifier *Verifier) ObserveComputeCleanupAbsence(ctx context.Context, exec
 }
 
 func (verifier *Verifier) ReconcileComputeCleanup(ctx context.Context, execution biz.Execution, owner biz.RunAuthorityCandidate, state biz.ExecutionRuntime) ([]biz.RuntimeResource, error) {
+	return verifier.reconcileComputeCleanup(ctx, execution, owner, state, false)
+}
+
+func (verifier *Verifier) reconcileComputeCleanup(ctx context.Context, execution biz.Execution, owner biz.RunAuthorityCandidate, state biz.ExecutionRuntime, legacy bool) ([]biz.RuntimeResource, error) {
 	removed := []biz.RuntimeResource{}
 	receipt := state.ComputeCleanup
-	if receipt == nil || !receipt.LogsReady || receipt.Attempts == 0 || receipt.Attempts > biz.ComputeCleanupAttemptLimit(receipt) || receipt.Phase != "STARTED" || !biz.ComputeCleanupLogsComplete(execution, state, receipt.Logs) {
+	if receipt == nil || receipt.Attempts == 0 || receipt.Attempts > biz.ComputeCleanupAttemptLimit(receipt) || receipt.Phase != "STARTED" || !cleanupLogQualification(execution, owner, state, legacy) {
 		return removed, biz.ErrCleanupBlocked
 	}
 	if retry := receipt.OperatorRetry; retry != nil {
@@ -168,7 +176,7 @@ func (verifier *Verifier) ReconcileComputeCleanup(ctx context.Context, execution
 		if retry := receipt.OperatorRetry; retry != nil && !time.Now().Before(retry.DeadlineAt) {
 			return removed, biz.ErrCleanupBlocked
 		}
-		if err := verifier.verifyComputeCleanupGraph(ctx, execution, owner, state, true); err != nil {
+		if err := verifier.verifyComputeCleanupGraphWithLegacy(ctx, execution, owner, state, true, legacy); err != nil {
 			return removed, err
 		}
 		resource, _ := computeResource(target)
@@ -184,7 +192,13 @@ func (verifier *Verifier) ReconcileComputeCleanup(ctx context.Context, execution
 			return removed, biz.ErrCleanupConflict
 		}
 		if target.Kind != "Workflow" && target.Kind != "Pod" && target.Kind != "PodGroup" && target.Kind != "TrainingRuntime" && target.Kind != "PersistentVolumeClaim" {
-			if err := controllers.DeleteRecordedComputeController(ctx, record, target); err != nil {
+			var deleteErr error
+			if legacy {
+				deleteErr = controllers.DeleteLegacyRetirementComputeController(ctx, record, target)
+			} else {
+				deleteErr = controllers.DeleteRecordedComputeController(ctx, record, target)
+			}
+			if err := deleteErr; err != nil {
 				return removed, err
 			}
 		} else {
@@ -222,13 +236,17 @@ func (verifier *Verifier) ReconcileComputeCleanup(ctx context.Context, execution
 		fact.APIObjectPresent = false
 		removed = append(removed, fact)
 	}
-	if err := verifier.verifyComputeCleanupGraph(ctx, execution, owner, state, true); err != nil {
+	if err := verifier.verifyComputeCleanupGraphWithLegacy(ctx, execution, owner, state, true, legacy); err != nil {
 		return removed, err
 	}
 	return removed, nil
 }
 
 func (verifier *Verifier) verifyComputeCleanupGraph(ctx context.Context, execution biz.Execution, owner biz.RunAuthorityCandidate, state biz.ExecutionRuntime, removalIntent bool) error {
+	return verifier.verifyComputeCleanupGraphWithLegacy(ctx, execution, owner, state, removalIntent, false)
+}
+
+func (verifier *Verifier) verifyComputeCleanupGraphWithLegacy(ctx context.Context, execution biz.Execution, owner biz.RunAuthorityCandidate, state biz.ExecutionRuntime, removalIntent, legacy bool) error {
 	if verifier == nil || verifier.kube == nil || verifier.plans == nil || ctx == nil || ctx.Err() != nil || state.ComputeCleanup == nil {
 		return biz.ErrRuntimeNotReady
 	}
@@ -236,10 +254,10 @@ func (verifier *Verifier) verifyComputeCleanupGraph(ctx context.Context, executi
 	if err != nil || state.ComputeCleanup.PlanHash != hash || !reflect.DeepEqual(state.ComputeCleanup.Targets, targets) {
 		return biz.ErrCleanupConflict
 	}
-	if removalIntent && (!state.ComputeCleanup.LogsReady || !reflect.DeepEqual(targets, state.ComputeCleanup.Requested)) {
+	if removalIntent && (!cleanupLogQualification(execution, owner, state, legacy) || !reflect.DeepEqual(targets, state.ComputeCleanup.Requested)) {
 		return biz.ErrCleanupBlocked
 	}
-	if err := verifier.verifyRecordedOwnerWritersAbsent(ctx, execution, owner, state.Workspace, state.StepExitCleanup.Evidence, removalIntent); err != nil {
+	if err := verifier.verifyRecordedOwnerWritersAbsentWithArchive(ctx, execution, owner, state.Workspace, state.StepExitCleanup.Evidence, removalIntent, legacy); err != nil {
 		return err
 	}
 	byUID := map[string]biz.RuntimeResource{}

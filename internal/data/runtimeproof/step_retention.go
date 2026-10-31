@@ -28,6 +28,10 @@ func (verifier *Verifier) VerifyRecordedOwnerWritersAbsent(ctx context.Context, 
 }
 
 func (verifier *Verifier) verifyRecordedOwnerWritersAbsent(ctx context.Context, execution biz.Execution, authority biz.RunAuthorityCandidate, workspace *biz.WorkspaceBinding, evidence biz.ManagedCloseEvidence, workflowRemovalRecorded bool) error {
+	return verifier.verifyRecordedOwnerWritersAbsentWithArchive(ctx, execution, authority, workspace, evidence, workflowRemovalRecorded, false)
+}
+
+func (verifier *Verifier) verifyRecordedOwnerWritersAbsentWithArchive(ctx context.Context, execution biz.Execution, authority biz.RunAuthorityCandidate, workspace *biz.WorkspaceBinding, evidence biz.ManagedCloseEvidence, workflowRemovalRecorded, archived bool) error {
 	if verifier == nil || verifier.kube == nil || verifier.runs == nil || verifier.plans == nil || ctx == nil || ctx.Err() != nil || evidence.OwnerTermination == nil || len(evidence.OwnerTermination.WorkflowNodesSHA256) != 64 || evidence.RunID != authority.RunID || evidence.WorkflowUID != authority.WorkflowUID {
 		return biz.ErrRuntimeNotReady
 	}
@@ -65,7 +69,10 @@ func (verifier *Verifier) verifyRecordedOwnerWritersAbsent(ctx context.Context, 
 	}
 	workflows := verifier.kube.Resource(schema.GroupVersionResource{Group: "argoproj.io", Version: "v1alpha1", Resource: "workflows"}).Namespace(environment.NamespaceName)
 	workflow, err := workflows.Get(ctx, authority.WorkflowName, metav1.GetOptions{})
-	if !(apierrors.IsNotFound(err) && workflowRemovalRecorded) {
+	if archived && !apierrors.IsNotFound(err) {
+		return biz.ErrRuntimeConflict
+	}
+	if !(apierrors.IsNotFound(err) && (workflowRemovalRecorded || archived)) {
 		if err != nil || !sameObject(workflow, "argoproj.io/v1alpha1", "Workflow", environment.NamespaceName, authority.WorkflowName, authority.WorkflowUID) || workflow.GetDeletionTimestamp() != nil {
 			return biz.ErrRuntimeNotReady
 		}
@@ -168,10 +175,14 @@ func recordedStepTerminated(pod *unstructured.Unstructured, expected biz.Runtime
 // A retried request uses the same UID, finalizer list and resourceVersion. The
 // complete durable exit receipt survives a successful request with a lost reply.
 func (verifier *Verifier) ReconcileStepExitCleanup(ctx context.Context, execution biz.Execution, authority biz.RunAuthorityCandidate, workspace *biz.WorkspaceBinding, receipt biz.StepExitCleanupReceipt) ([]biz.RuntimeResource, error) {
+	return verifier.reconcileStepExitCleanup(ctx, execution, authority, workspace, receipt, verifier.VerifyRecordedOwnerWritersAbsent)
+}
+
+func (verifier *Verifier) reconcileStepExitCleanup(ctx context.Context, execution biz.Execution, authority biz.RunAuthorityCandidate, workspace *biz.WorkspaceBinding, receipt biz.StepExitCleanupReceipt, verify func(context.Context, biz.Execution, biz.RunAuthorityCandidate, *biz.WorkspaceBinding, biz.ManagedCloseEvidence) error) ([]biz.RuntimeResource, error) {
 	if receipt.StartedAt.IsZero() || receipt.CloseGeneration == 0 || receipt.CompletedAt != nil {
 		return nil, biz.ErrRuntimeConflict
 	}
-	if err := verifier.VerifyRecordedOwnerWritersAbsent(ctx, execution, authority, workspace, receipt.Evidence); err != nil {
+	if err := verify(ctx, execution, authority, workspace, receipt.Evidence); err != nil {
 		return nil, err
 	}
 	client := verifier.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "pods"}).Namespace(authority.NamespaceName)
@@ -234,7 +245,7 @@ func (verifier *Verifier) ReconcileStepExitCleanup(ctx context.Context, executio
 		fact.APIObjectPresent = false
 		removed = append(removed, fact)
 	}
-	if err := verifier.VerifyRecordedOwnerWritersAbsent(ctx, execution, authority, workspace, receipt.Evidence); err != nil {
+	if err := verify(ctx, execution, authority, workspace, receipt.Evidence); err != nil {
 		return nil, err
 	}
 	return removed, nil

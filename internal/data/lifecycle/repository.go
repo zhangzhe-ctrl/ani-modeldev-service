@@ -25,7 +25,10 @@ import (
 	submissionsql "github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/submission/sqlc"
 )
 
-type Repository struct{ pool *pgxpool.Pool }
+type Repository struct {
+	pool             *pgxpool.Pool
+	legacyRetirement bool
+}
 
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
 
@@ -77,6 +80,7 @@ type runtimeTransaction struct {
 	requireCreationOpen   bool
 	writeDeadline         time.Time
 	commandFence          uint64
+	legacyRetirement      bool
 }
 
 func (repository *Repository) GetRuntime(ctx context.Context, tenant, execution string) (biz.ExecutionRuntime, error) {
@@ -96,7 +100,7 @@ func (repository *Repository) GetRuntime(ctx context.Context, tenant, execution 
 		return biz.ExecutionRuntime{}, biz.ErrPersistence
 	}
 	defer rollback(tx)
-	current, err := readRuntime(ctx, tx, tenantID, executionID)
+	current, err := repository.readRuntime(ctx, tx, tenantID, executionID)
 	if err != nil {
 		return biz.ExecutionRuntime{}, err
 	}
@@ -127,7 +131,7 @@ func (repository *Repository) mutate(ctx context.Context, authority biz.RunAutho
 	if _, err = queries.LockRuntimeIdentity(ctx, lifecyclesql.LockRuntimeIdentityParams{TenantID: tenantID, ExecutionID: executionID}); err != nil {
 		return biz.ExecutionRuntime{}, false, storageError(err)
 	}
-	current, err := readRuntime(ctx, tx, tenantID, executionID)
+	current, err := repository.readRuntime(ctx, tx, tenantID, executionID)
 	if err != nil {
 		return biz.ExecutionRuntime{}, false, err
 	}
@@ -168,6 +172,14 @@ func (repository *Repository) mutate(ctx context.Context, authority biz.RunAutho
 }
 
 func readRuntime(ctx context.Context, tx pgx.Tx, tenantID, executionID pgtype.UUID) (*runtimeTransaction, error) {
+	return readRuntimeWithLegacy(ctx, tx, tenantID, executionID, false)
+}
+
+func (repository *Repository) readRuntime(ctx context.Context, tx pgx.Tx, tenantID, executionID pgtype.UUID) (*runtimeTransaction, error) {
+	return readRuntimeWithLegacy(ctx, tx, tenantID, executionID, repository.legacyRetirement)
+}
+
+func readRuntimeWithLegacy(ctx context.Context, tx pgx.Tx, tenantID, executionID pgtype.UUID, legacy bool) (*runtimeTransaction, error) {
 	executions := executionsql.New(tx)
 	row, err := executions.GetExecution(ctx, executionsql.GetExecutionParams{TenantID: tenantID, ExecutionID: executionID})
 	if err != nil {
@@ -205,6 +217,9 @@ func readRuntime(ctx context.Context, tx pgx.Tx, tenantID, executionID pgtype.UU
 		return nil, biz.ErrPersistence
 	}
 	if err == nil && json.Unmarshal(facts, &state) != nil {
+		return nil, biz.ErrPersistence
+	}
+	if state.LegacyRetirement != nil && !legacy {
 		return nil, biz.ErrPersistence
 	}
 	if state.Workspace != nil && !validWorkspace(admitted, *state.Workspace) {
@@ -297,7 +312,10 @@ func readRuntime(ctx context.Context, tx pgx.Tx, tenantID, executionID pgtype.UU
 	if !identity.DatabaseNow.Valid || identity.DatabaseNow.InfinityModifier != pgtype.Finite {
 		return nil, biz.ErrPersistence
 	}
-	current := &runtimeTransaction{transaction: tx, queries: queries, tenantID: tenantID, executionID: executionID, execution: admitted, state: state, now: identity.DatabaseNow.Time.UTC(), commandFence: generation}
+	current := &runtimeTransaction{transaction: tx, queries: queries, tenantID: tenantID, executionID: executionID, execution: admitted, state: state, now: identity.DatabaseNow.Time.UTC(), commandFence: generation, legacyRetirement: legacy}
+	if state.LegacyRetirement != nil && (!biz.LegacyRetirementQualification(admitted, state.LegacyRetirement.Authority, state) || state.ClosedAt == nil || state.LegacyRetirement.CommandFence != generation || state.LegacyRetirement.ExpectedOwnerRevision >= revision || state.LegacyRetirement.RecordedAt.After(current.now) || !state.LegacyRetirement.RecordedAt.Equal(*state.ClosedAt)) {
+		return nil, biz.ErrPersistence
+	}
 	if !validManagedTimings(current) {
 		return nil, biz.ErrPersistence
 	}

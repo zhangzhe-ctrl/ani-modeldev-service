@@ -22,6 +22,12 @@ import (
 // VerifyOwnerWritersAbsent observes owner-initiated close independently of a
 // managed close Pod and its token.
 func (verifier *Verifier) VerifyOwnerWritersAbsent(ctx context.Context, execution biz.Execution, authority biz.RunAuthorityCandidate, workspace *biz.WorkspaceBinding) (biz.ManagedCloseEvidence, error) {
+	return verifier.verifyOwnerWritersAbsent(ctx, execution, authority, workspace, nil)
+}
+
+// The optional archive is private and can only be constructed by the fixed
+// one-time retirement gate. The ordinary path always reads the live owner.
+func (verifier *Verifier) verifyOwnerWritersAbsent(ctx context.Context, execution biz.Execution, authority biz.RunAuthorityCandidate, workspace *biz.WorkspaceBinding, archive *legacyRetirementWorkflow) (biz.ManagedCloseEvidence, error) {
 	if verifier == nil || verifier.kube == nil || verifier.runs == nil || verifier.plans == nil || ctx == nil || ctx.Err() != nil {
 		return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
 	}
@@ -61,10 +67,22 @@ func (verifier *Verifier) VerifyOwnerWritersAbsent(ctx context.Context, executio
 	}
 	workflows := verifier.kube.Resource(schema.GroupVersionResource{Group: "argoproj.io", Version: "v1alpha1", Resource: "workflows"}).Namespace(environment.NamespaceName)
 	workflow, err := workflows.Get(ctx, authority.WorkflowName, metav1.GetOptions{})
+	deniedNode := serverDeniedAdmissionNode
+	rejectedTask := serverRejectedManagedTask
+	if archive != nil {
+		// Observe absence through the real API. Archived metadata is never
+		// returned by a substitute Kubernetes GET or claimed to be current.
+		if !apierrors.IsNotFound(err) {
+			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+		}
+		workflow = archive.workflow
+		err = nil
+		deniedNode, rejectedTask = archive.deniedNode, archive.rejectedTask
+	}
 	if err != nil || !sameObject(workflow, "argoproj.io/v1alpha1", "Workflow", environment.NamespaceName, authority.WorkflowName, authority.WorkflowUID) || workflow.GetDeletionTimestamp() != nil {
 		return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
 	}
-	proof, nodes, err := ownerWorkflowCompletion(workflow, observedAt)
+	proof, nodes, err := ownerWorkflowCompletionWithDeniedNode(workflow, observedAt, deniedNode)
 	if err != nil {
 		return biz.ManagedCloseEvidence{}, fmt.Errorf("owner workflow completion: %w", err)
 	}
@@ -84,7 +102,7 @@ func (verifier *Verifier) VerifyOwnerWritersAbsent(ctx context.Context, executio
 	if err != nil || pods == nil || pods.GetContinue() != "" {
 		return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
 	}
-	if workspace == nil && rootAdmissionRejected(workflow, dispatch.Plan, authority.RunID, run, pods.Items) {
+	if archive == nil && workspace == nil && rootAdmissionRejected(workflow, dispatch.Plan, authority.RunID, run, pods.Items) {
 		if _, absent := verifier.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "persistentvolumeclaims"}).Namespace(environment.NamespaceName).Get(ctx, biz.ExpectedWorkspacePVCName(execution.ExecutionID), metav1.GetOptions{}); !apierrors.IsNotFound(absent) {
 			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
 		}
@@ -104,7 +122,7 @@ func (verifier *Verifier) VerifyOwnerWritersAbsent(ctx context.Context, executio
 	association := biz.ManagedStepAssociation{RunID: authority.RunID, NamespaceName: authority.NamespaceName, NamespaceUID: authority.NamespaceUID, WorkflowName: authority.WorkflowName, WorkflowUID: authority.WorkflowUID}
 	evidence := biz.ManagedCloseEvidence{RunID: authority.RunID, WorkflowUID: authority.WorkflowUID, OwnerTermination: &proof}
 	if workspace == nil {
-		evidence.UnpreparedWorkspace, err = verifier.observeUnpreparedWorkspace(ctx, execution, authority, workflow, run, pods.Items)
+		evidence.UnpreparedWorkspace, err = verifier.observeUnpreparedWorkspaceWithRejectedTask(ctx, execution, authority, workflow, run, pods.Items, rejectedTask)
 		if err != nil {
 			return biz.ManagedCloseEvidence{}, fmt.Errorf("unprepared workspace request: %w", err)
 		}
@@ -117,7 +135,7 @@ func (verifier *Verifier) VerifyOwnerWritersAbsent(ctx context.Context, executio
 		if pod.GetAPIVersion() != "v1" || pod.GetKind() != "Pod" || pod.GetNamespace() != environment.NamespaceName {
 			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
 		}
-		if podMatchesServerDeniedNode(workflow, pod) {
+		if podMatchesDeniedNode(workflow, pod, deniedNode) {
 			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
 		}
 		owned := workflowOwner(pod, association)
@@ -201,7 +219,7 @@ func (verifier *Verifier) VerifyOwnerWritersAbsent(ctx context.Context, executio
 	// This owner-only exception must not grant a current step caller identity.
 	ownerTasks := make([]kfp.ManagedTask, 0, len(run.Tasks))
 	for _, task := range run.Tasks {
-		if !serverRejectedManagedTask(workflow, task, run.Tasks) {
+		if !rejectedTask(workflow, task, run.Tasks) {
 			ownerTasks = append(ownerTasks, task)
 		}
 	}
@@ -238,7 +256,11 @@ func (verifier *Verifier) VerifyOwnerWritersAbsent(ctx context.Context, executio
 		}
 	}
 	current, err := workflows.Get(ctx, authority.WorkflowName, metav1.GetOptions{})
-	if err != nil || !sameObject(current, "argoproj.io/v1alpha1", "Workflow", environment.NamespaceName, authority.WorkflowName, authority.WorkflowUID) || current.GetDeletionTimestamp() != nil || current.GetResourceVersion() != proof.WorkflowResourceVersion {
+	if archive != nil {
+		if !apierrors.IsNotFound(err) {
+			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+		}
+	} else if err != nil || !sameObject(current, "argoproj.io/v1alpha1", "Workflow", environment.NamespaceName, authority.WorkflowName, authority.WorkflowUID) || current.GetDeletionTimestamp() != nil || current.GetResourceVersion() != proof.WorkflowResourceVersion {
 		return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
 	}
 
@@ -273,6 +295,10 @@ func terminatedOwnerStructuralTask(workflow *unstructured.Unstructured, task kfp
 // ownerWorkflowCompletion requires the controller's completion marker and the
 // full historical node set, not merely a terminal phase or a stop request.
 func ownerWorkflowCompletion(workflow *unstructured.Unstructured, now time.Time) (biz.ManagedOwnerTermination, map[string]bool, error) {
+	return ownerWorkflowCompletionWithDeniedNode(workflow, now, serverDeniedAdmissionNode)
+}
+
+func ownerWorkflowCompletionWithDeniedNode(workflow *unstructured.Unstructured, now time.Time, deniedNode func(*unstructured.Unstructured, map[string]any) bool) (biz.ManagedOwnerTermination, map[string]bool, error) {
 	phase, _ := textAt(workflow, "status", "phase")
 	finished, _ := textAt(workflow, "status", "finishedAt")
 	at, err := time.Parse(time.RFC3339Nano, finished)
@@ -345,7 +371,7 @@ func ownerWorkflowCompletion(workflow *unstructured.Unstructured, now time.Time)
 		if !ok || err != nil || nodeFinished.IsZero() || nodeFinished.After(at) {
 			return biz.ManagedOwnerTermination{}, nil, biz.ErrRuntimeNotReady
 		}
-		if serverDeniedAdmissionNode(workflow, node) {
+		if deniedNode(workflow, node) {
 			continue
 		}
 		fulfillablePods[id] = true
@@ -511,6 +537,10 @@ func zeroRetryInput(node map[string]any) bool {
 }
 
 func serverRejectedManagedTask(workflow *unstructured.Unstructured, task kfp.ManagedTask, tasks []kfp.ManagedTask) bool {
+	return serverRejectedManagedTaskWithDeniedNode(workflow, task, tasks, serverDeniedAdmissionNode)
+}
+
+func serverRejectedManagedTaskWithDeniedNode(workflow *unstructured.Unstructured, task kfp.ManagedTask, tasks []kfp.ManagedTask, deniedNode func(*unstructured.Unstructured, map[string]any) bool) bool {
 	if task.State != "FAILED" || task.PodName != "" {
 		return false
 	}
@@ -535,7 +565,7 @@ func serverRejectedManagedTask(workflow *unstructured.Unstructured, task kfp.Man
 			continue
 		}
 		matches++
-		if !serverDeniedAdmissionNode(workflow, node) || node["templateName"] != strings.TrimSuffix(controllerTemplate, "executor")+"impl" || node["name"] != controller["name"].(string)+".executor(0)" || outbound[0] != executorID {
+		if !deniedNode(workflow, node) || node["templateName"] != strings.TrimSuffix(controllerTemplate, "executor")+"impl" || node["name"] != controller["name"].(string)+".executor(0)" || outbound[0] != executorID {
 			return false
 		}
 		members := 0
@@ -562,6 +592,10 @@ func serverRejectedManagedTask(workflow *unstructured.Unstructured, task kfp.Man
 }
 
 func podMatchesServerDeniedNode(workflow *unstructured.Unstructured, pod *unstructured.Unstructured) bool {
+	return podMatchesDeniedNode(workflow, pod, serverDeniedAdmissionNode)
+}
+
+func podMatchesDeniedNode(workflow *unstructured.Unstructured, pod *unstructured.Unstructured, deniedNode func(*unstructured.Unstructured, map[string]any) bool) bool {
 	nodes, found, err := unstructured.NestedMap(workflow.Object, "status", "nodes")
 	if err != nil || !found {
 		return false
@@ -569,7 +603,7 @@ func podMatchesServerDeniedNode(workflow *unstructured.Unstructured, pod *unstru
 	annotations := pod.GetAnnotations()
 	for id, raw := range nodes {
 		node, ok := raw.(map[string]any)
-		if !ok || !serverDeniedAdmissionNode(workflow, node) {
+		if !ok || !deniedNode(workflow, node) {
 			continue
 		}
 		if pod.GetName() == id || annotations["workflows.argoproj.io/node-id"] == id || annotations["workflows.argoproj.io/node-name"] == node["name"] {

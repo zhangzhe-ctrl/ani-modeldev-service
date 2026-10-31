@@ -230,6 +230,7 @@ type RuntimePublication struct {
 // ExecutionRuntime contains committed facts; no state value reconstructs an
 // outbound creation permit. Normal step advancement belongs to KFP.
 type ExecutionRuntime struct {
+	LegacyRetirement       *LegacyRetirementRecord `json:",omitempty"`
 	GPURelease             *GPUReleaseState        `json:",omitempty"`
 	StepTimings            []ManagedStepTiming     `json:",omitempty"`
 	RuntimeTemplate        *RuntimeCreation        `json:",omitempty"`

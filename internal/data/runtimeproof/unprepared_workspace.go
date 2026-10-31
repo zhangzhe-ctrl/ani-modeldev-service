@@ -20,6 +20,10 @@ import (
 // This is a close-only observation of the official KFP CreatePVC primitive.
 // It neither substitutes for prepare nor grants normal workspace authority.
 func (v *Verifier) observeUnpreparedWorkspace(ctx context.Context, execution biz.Execution, owner biz.RunAuthorityCandidate, workflow *unstructured.Unstructured, run kfp.ManagedRun, pods []unstructured.Unstructured) (*biz.UnpreparedWorkspace, error) {
+	return v.observeUnpreparedWorkspaceWithRejectedTask(ctx, execution, owner, workflow, run, pods, serverRejectedManagedTask)
+}
+
+func (v *Verifier) observeUnpreparedWorkspaceWithRejectedTask(ctx context.Context, execution biz.Execution, owner biz.RunAuthorityCandidate, workflow *unstructured.Unstructured, run kfp.ManagedRun, pods []unstructured.Unstructured, rejectedTask func(*unstructured.Unstructured, kfp.ManagedTask, []kfp.ManagedTask) bool) (*biz.UnpreparedWorkspace, error) {
 	name := biz.ExpectedWorkspacePVCName(execution.ExecutionID)
 	client := v.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "persistentvolumeclaims"}).Namespace(owner.NamespaceName)
 	pvc, err := client.Get(ctx, name, metav1.GetOptions{})
@@ -38,7 +42,7 @@ func (v *Verifier) observeUnpreparedWorkspace(ctx context.Context, execution biz
 	if apierrors.IsNotFound(err) && creates <= 1 && create.State != "SUCCEEDED" {
 		return nil, nil
 	}
-	if err != nil || pvc == nil || creates != 1 || prepares != 1 || create.State != "SUCCEEDED" || prepare.State != "FAILED" || (!serverRejectedManagedTask(workflow, prepare, run.Tasks) && !failedPrepareExited(workflow, prepare, run.Tasks, pods, execution.Snapshot.Kind)) {
+	if err != nil || pvc == nil || creates != 1 || prepares != 1 || create.State != "SUCCEEDED" || prepare.State != "FAILED" || (!rejectedTask(workflow, prepare, run.Tasks) && !failedPrepareExited(workflow, prepare, run.Tasks, pods, execution.Snapshot.Kind)) {
 		return nil, biz.ErrRuntimeNotReady
 	}
 	nodes, _, _ := unstructured.NestedMap(workflow.Object, "status", "nodes")

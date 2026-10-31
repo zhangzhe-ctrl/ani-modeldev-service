@@ -459,7 +459,11 @@ func (adapter *Adapter) deleteController(ctx context.Context, record biz.Operati
 }
 
 func (adapter *Adapter) verifyOriginalSuspendedSets(ctx context.Context, record biz.OperationRecord, plan biz.CleanupPlan, target biz.RuntimeResource, train *unstructured.Unstructured) error {
-	if record.Runtime.ClosedAt == nil || record.Runtime.CloseRequestedAt.IsZero() || (record.Runtime.CloseReason != "USER_STOP" && record.Runtime.CloseReason != "DEADLINE" && record.Runtime.CloseReason != "STEP_FAILED") || !originalObservedSuspend(train, record.Runtime.CloseRequestedAt) {
+	return adapter.verifyOriginalSuspendedSetsForPlan(ctx, record, plan, target, train, true)
+}
+
+func (adapter *Adapter) verifyOriginalSuspendedSetsForPlan(ctx context.Context, record biz.OperationRecord, plan biz.CleanupPlan, target biz.RuntimeResource, train *unstructured.Unstructured, requireCommittedClose bool) error {
+	if requireCommittedClose && record.Runtime.ClosedAt == nil || record.Runtime.CloseRequestedAt.IsZero() || (record.Runtime.CloseReason != "USER_STOP" && record.Runtime.CloseReason != "DEADLINE" && record.Runtime.CloseReason != "STEP_FAILED") || !originalObservedSuspend(train, record.Runtime.CloseRequestedAt) {
 		return biz.ErrCleanupBlocked
 	}
 	sets := 0

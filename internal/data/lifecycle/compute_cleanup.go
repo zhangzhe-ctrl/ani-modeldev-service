@@ -17,7 +17,7 @@ var _ biz.ComputeCleanupRepository = (*Repository)(nil)
 func (repository *Repository) AdmitComputeCleanupRetry(ctx context.Context, owner biz.RunAuthorityCandidate, generation uint64, actor string, logs []biz.RecordedTrainingLog) (biz.ExecutionRuntime, error) {
 	state, _, err := repository.mutate(ctx, owner, func(current *runtimeTransaction) (bool, error) {
 		r := current.state.ComputeCleanup
-		if !cpup01.ValidAuditActor(actor) || generation != current.state.CloseGeneration || r == nil {
+		if current.state.LegacyRetirement != nil || !cpup01.ValidAuditActor(actor) || generation != current.state.CloseGeneration || r == nil {
 			return false, biz.ErrCleanupBlocked
 		}
 		if r.OperatorRetry != nil {
@@ -78,6 +78,14 @@ func (repository *Repository) StartComputeCleanupAttempt(ctx context.Context, ow
 		}
 		receipt.Attempts++
 		receipt.Phase, receipt.LastError = "STARTED", ""
+		if current.legacyRetirement && current.state.LegacyRetirement != nil {
+			if !biz.LegacyRetirementQualification(current.execution, owner, current.state) || receipt.OperatorRetry != nil {
+				return false, biz.ErrCleanupBlocked
+			}
+			// The independent UNRECOVERABLE journal authorizes this bounded
+			// maintenance intent. LogsReady and captured log history stay false.
+			receipt.Requested = append([]biz.RuntimeResource{}, receipt.Targets...)
+		}
 		return true, nil
 	})
 	if err == nil && state.ComputeCleanup.Phase != "APPLIED" && state.ComputeCleanup.LastError == "ATTEMPTS_EXHAUSTED" {
@@ -89,7 +97,7 @@ func (repository *Repository) StartComputeCleanupAttempt(ctx context.Context, ow
 func (repository *Repository) RecordComputeCleanupLogs(ctx context.Context, owner biz.RunAuthorityCandidate, generation uint64, logs []biz.RecordedTrainingLog) (biz.ExecutionRuntime, error) {
 	state, _, err := repository.mutate(ctx, owner, func(current *runtimeTransaction) (bool, error) {
 		receipt := current.state.ComputeCleanup
-		if receipt == nil || generation != current.state.CloseGeneration || receipt.CloseGeneration != generation || receipt.Attempts == 0 || !biz.ComputeCleanupLogsComplete(current.execution, current.state, logs) {
+		if current.state.LegacyRetirement != nil || receipt == nil || generation != current.state.CloseGeneration || receipt.CloseGeneration != generation || receipt.Attempts == 0 || !biz.ComputeCleanupLogsComplete(current.execution, current.state, logs) {
 			return false, biz.ErrCleanupConflict
 		}
 		if receipt.LogsReady {
@@ -117,7 +125,8 @@ func (repository *Repository) RecordComputeCleanupResult(ctx context.Context, ow
 		if receipt.Phase == "APPLIED" {
 			return false, nil
 		}
-		if attempt == 0 || attempt != receipt.Attempts || (code != "" && code != "BLOCKED" && code != "IDENTITY_CONFLICT" && code != "BOUNDARY_UNCERTAIN") || !biz.ComputeCleanupRemovedValid(receipt.Targets, removed, code == "") || (len(removed) != 0 && !receipt.LogsReady) {
+		legacyAuthorized := current.legacyRetirement && biz.LegacyRetirementCleanupAuthorized(current.execution, owner, current.state)
+		if attempt == 0 || attempt != receipt.Attempts || (code != "" && code != "BLOCKED" && code != "IDENTITY_CONFLICT" && code != "BOUNDARY_UNCERTAIN") || !biz.ComputeCleanupRemovedValid(receipt.Targets, removed, code == "") || (len(removed) != 0 && !receipt.LogsReady && !legacyAuthorized) {
 			return false, biz.ErrCleanupConflict
 		}
 		byUID := map[string]biz.RuntimeResource{}
@@ -158,6 +167,10 @@ func validComputeCleanup(current *runtimeTransaction, owner biz.RunAuthorityCand
 		if receipt.Attempts == 0 || !biz.ComputeCleanupLogsComplete(current.execution, current.state, receipt.Logs) || !reflect.DeepEqual(receipt.Requested, targets) {
 			return false
 		}
+	} else if current.legacyRetirement && current.state.LegacyRetirement != nil && receipt.Attempts > 0 {
+		if !biz.LegacyRetirementCleanupAuthorized(current.execution, owner, current.state) {
+			return false
+		}
 	} else if len(receipt.Logs) != 0 || len(receipt.Requested) != 0 || len(receipt.ConfirmedAbsent) != 0 {
 		return false
 	}
@@ -167,7 +180,8 @@ func validComputeCleanup(current *runtimeTransaction, owner biz.RunAuthorityCand
 	case "NEEDS_REVIEW":
 		return receipt.Attempts > 0 && receipt.CompletedAt.IsZero() && (receipt.LastError == "BLOCKED" || receipt.LastError == "IDENTITY_CONFLICT" || receipt.LastError == "BOUNDARY_UNCERTAIN" || receipt.LastError == "ATTEMPTS_EXHAUSTED")
 	case "APPLIED":
-		return receipt.LogsReady && receipt.Attempts > 0 && receipt.LastError == "" && !receipt.CompletedAt.IsZero() && !receipt.CompletedAt.Before(receipt.StartedAt) && !receipt.CompletedAt.After(current.now)
+		logsAuthorized := receipt.LogsReady || current.legacyRetirement && biz.LegacyRetirementCleanupAuthorized(current.execution, owner, current.state)
+		return logsAuthorized && receipt.Attempts > 0 && receipt.LastError == "" && !receipt.CompletedAt.IsZero() && !receipt.CompletedAt.Before(receipt.StartedAt) && !receipt.CompletedAt.After(current.now)
 	}
 	return false
 }

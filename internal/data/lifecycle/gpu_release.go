@@ -162,7 +162,7 @@ func (repository *Repository) gpuReleaseMutation(ctx context.Context, tenant, ex
 	if _, err = queries.LockRuntimeIdentity(ctx, lifecyclesql.LockRuntimeIdentityParams{TenantID: tenantID, ExecutionID: executionID}); err != nil {
 		return biz.ExecutionRuntime{}, storageError(err)
 	}
-	current, err := readRuntime(ctx, tx, tenantID, executionID)
+	current, err := repository.readRuntime(ctx, tx, tenantID, executionID)
 	if err != nil {
 		return biz.ExecutionRuntime{}, err
 	}
@@ -209,6 +209,9 @@ func (repository *Repository) gpuReleaseMutation(ctx context.Context, tenant, ex
 
 func (repository *Repository) SealGPURelease(ctx context.Context, tenant, execution string) (biz.ExecutionRuntime, error) {
 	state, err := repository.gpuReleaseMutation(ctx, tenant, execution, func(current *runtimeTransaction) (bool, error) {
+		if current.legacyRetirement && current.state.LegacyRetirement != nil {
+			return false, biz.ErrRuntimeConflict
+		}
 		if current.execution.Snapshot.ComputeOrigin.DeviceMode == "cpu" {
 			if current.state.GPURelease != nil {
 				return false, biz.ErrPersistence
