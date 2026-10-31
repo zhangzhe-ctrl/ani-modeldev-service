@@ -12,3 +12,7 @@
 - 既有正式源码提交仍为 `d807cbdbd5dd6664d61480acedc752e19cfca48a`。未更改生产逻辑、预算、API/生成文件、依赖或 `evidence/modeldev-tested-source-identity.json`。既有丢响应/SIGKILL恢复及d807门禁PASS覆盖保持原界限，不包含本次未运行草稿。
 
 结构化记录：`evidence/03-environment-budget-recovery-record.json`。
+
+## 第二轮已解除
+
+Fedora入口恢复后，原传输handle17571已不存在，且先前从未启动测试。本轮将同一草稿同步到已核对的最终源码mirror，在Fedora执行gofmt和唯一一次定向测试：exit0，25.555s；固定Ensure总预算实际25.001233984s，6个完成请求/1取消，7条持久receipt（6confirmed/1pending），锁释放，显式续跑保持原environment/Namespace/对象UID，到sealed READY且Experiment POST=1。当前权威结果见03-environment-budget-recovery-record.json和03-environment-budget-recovery.log；本文前述NOT_RUN仅为上一轮历史状态。

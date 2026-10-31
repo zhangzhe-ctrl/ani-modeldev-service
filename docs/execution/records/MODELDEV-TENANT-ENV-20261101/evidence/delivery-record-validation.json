@@ -1,17 +1,15 @@
 {
   "schema": "ani.modeldev.delivery-record-validation.v1",
   "status": "PASS",
-  "scope": "record/table links and status integrity only, not product acceptance",
+  "scope": "record links/status/manifest integrity only, not product acceptance",
   "acceptance_rows": 32,
   "status_counts": {
-    "NOT_RUN": 2,
-    "PASS": 15,
-    "BLOCKED": 15
+    "PASS": 19,
+    "BLOCKED": 13
   },
-  "pass_without_evidence": [],
   "missing_evidence_paths": [],
   "missing_report_links": [],
-  "unresolved_report_placeholders": [],
+  "sensitive_format_hits_without_values": [],
   "runnable_go_evidence_files": 0,
   "overall_product_status": "BLOCKED"
 }

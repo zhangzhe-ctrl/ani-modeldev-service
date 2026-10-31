@@ -1,7 +1,7 @@
 # 03 环境登记、Ensure/Get 与有限开通
 
 Status: ready-for-agent
-Resolution: open
+Resolution: resolved
 Blocked by: 01, 02
 
 ## Goal
@@ -51,7 +51,7 @@ Blocked by: 01, 02
 
 ## Result
 
-- Outcome: COMPONENT_IMPLEMENTED / VALIDATION_BLOCKED；Resolution: open。EN02固定25秒预算耗尽后续跑的直接补测因Fedora SSH失联NOT_RUN，不能宣称本项全部验收完成。显式 Ensure/Get、真实持久化、typed receipts恢复及最终仓库门禁均已有本次证据；不表示指定集群A/B开通、artifact I/O或新服务上线完成。
+- Outcome: PASS（源码组件、真实PG、进程恢复及固定25秒预算续跑）；Resolution: resolved。真实A/B环境开通仍由09/10现场验收，不据此记LIVE通过。显式 Ensure/Get、真实持久化、typed receipts恢复及最终仓库门禁均已有本次证据；不表示指定集群A/B开通、artifact I/O或新服务上线完成。
 - Base / final commits: ModelDev base 21bf4bd6540d462a61c91b629f26250899583223；最终已测试源码提交 d807cbdbd5dd6664d61480acedc752e19cfca48a，对应 evidence/modeldev-tested-source-identity.json（matched=true、different_files=[]）。Res依赖正式pin 71b3ad7a2a88ae531e5e7b80abde2f494ff28d9d；推送/部署镜像映射由主任务统一记录，本项不声明已部署。
 - Changed files / generated artifacts: internal/biz/tenant_environment.go；internal/data/tenantenvironment/；contract/tenantenvironment/binding.go；internal/service/tenant_environment.go及测试；migrations/0002_tenant_execution_environments.up.sql。gRPC/proto、精确方法认证与runtime装配已纳入主任务最终门禁。
 - Validation commands / exit codes / required gates: Fedora定向 go test ./internal/data/tenantenvironment ./contract/tenantenvironment ./internal/service -run 'TenantEnvironment|Environment' -count=1 -v，exit0（evidence/03-environment-component-tests.log）；真实PG子进程SIGKILL恢复定向测试exit0（evidence/03-environment-process-recovery.log）。最终ModelDev make verify PASS，含生成一致性、全仓Go测试、vet/build/mod verify/diff check（evidence/modeldev-final-make-verify.log）。真实PG与生产业务纵向CPU外部边界替身也通过（evidence/04/modeldev-cpu-mainflow-final-shared-budget.log），不作为真实KFP/Kubernetes/S3验收。
@@ -66,3 +66,5 @@ Blocked by: 01, 02
 
 - 初始任务，尚无实施或验收完成声明；后续按时间追加事实与证据。
 - 达到本项验收后再更新 Resolution 和 Result；后续现场证据不得提前标记通过。
+
+第二轮补证：Fedora恢复后，原预算恢复草稿在已核对的最终源码mirror唯一一次定向执行exit0，25.555s；真实固定25秒耗尽后持久7receipt（6confirmed/1pending）、锁释放，下次显式Ensure同environment/Namespace/对象UID到sealed READY，Experiment POST=1。仅test提交6b0b952478081034baee8ab27fd8216b26742700，生产/API未改。证据evidence/03-environment-budget-recovery-record.json和03-environment-budget-recovery.log。原NOT_RUN为上一轮历史，当前已解除。

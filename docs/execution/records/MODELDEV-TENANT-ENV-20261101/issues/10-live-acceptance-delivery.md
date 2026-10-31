@@ -51,7 +51,7 @@ Blocked by: 09
 
 ## Result
 
-- Outcome: BLOCKED；Resolution保持open。ModelDev/Resource源码及门禁、真实PG的CPU外部边界替身纵向已完成；最终Gov默认race/make check/audit结果因Fedora SSH失联未取回，EN02固定25秒续跑补测未运行；09存在三条OPEN旧执行，严格清理前置未满足，未部署新系统，不能完成真实A/B LIVE验收或宣称整个方案完成。
+- Outcome: BLOCKED；Resolution保持open。ModelDev/Resource源码及门禁、真实PG的CPU外部边界替身纵向已完成；Fedora本轮恢复，最终Gov相关race通过、make check及audit终态FAIL已取回；EN02固定25秒续跑补测已通过（见03新证据）；09存在三条OPEN旧执行，严格清理前置未满足，未部署新系统，不能完成真实A/B LIVE验收或宣称整个方案完成。
 - Base / final commits: ModelDev base 21bf4bd6540d462a61c91b629f26250899583223；最终已测试源码提交 d807cbdbd5dd6664d61480acedc752e19cfca48a，evidence/modeldev-tested-source-identity.json记录matched=true、different_files=[]。三仓正式提交/API pin/推送与部署映射由主任务最终交付统一列示；本Result不伪造未发生的imageID或发布ID。
 - Changed files / generated artifacts: CONTEXT.md、configs/examples/managed-runtime.yaml、docs/modeldev-tenant-environments.md、docs/modeldev-webhook.md、docs/runtime-verification.md、docs/adr/0001-modeldev-webhook.md及相关当前facts/Prepare-Finalize与历史设计标识。移除当前示例中的binding_file/binding_sha256/dispatch_batch_size和STS租户数组说明，补必需catalogue/Resource接线；ADR0002原释放权威未改。精确范围 evidence/10-source-doc-residue.md；本项Result不改acceptance表或主报告。
 - Validation commands / exit codes / required gates: 最终Fedora ModelDev make verify PASS，含生成一致性、全仓Go测试、vet/build/mod verify/diff check（evidence/modeldev-final-make-verify.log）。真实PG+生产业务+仅外部KFP/Kubernetes/S3边界替身纵向PASS：48步实际CPU MLP、文件发布核验、CLOSED持久化、原6个step及compute清理、日志重连查询和跨tenant拒绝；坏CSV不训练/不发布并关闭（evidence/04/modeldev-cpu-mainflow-final-shared-budget.log）。KFP/cleanup定向整包exit0（evidence/10-kfp-cleanup-regression.log）。示例严格YAML→protobuf→Bootstrap.Validate及旧binding_file拒绝PASS（evidence/10-example-config-check.log）。这些均非指定集群A/B训练验收。
@@ -64,3 +64,5 @@ Blocked by: 09
 
 - 初始任务，尚无实施或验收完成声明；后续按时间追加事实与证据。
 - 达到本项验收后再更新 Resolution 和 Result；后续现场证据不得提前标记通过。
+
+第二轮补齐EN02真实25秒预算续跑与Gov真实JWT/Redis/Casbin/PG→HTTP→mTLS peer正向/撤权组件集成，均exit0；19项组件行PASS不代替AD/native或11项LIVE。Gov原default/race exit0、make check exit2、audit恢复后续一次exit1已取得，失联/未知状态已解除。新发现官方v1原UID归档，但第三原live/denial/writer资格仍不满足，两原训练日志仍缺；详新的09归档评估，不再泛称所有Workflow归档不存在。

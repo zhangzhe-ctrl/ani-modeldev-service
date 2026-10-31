@@ -64,3 +64,7 @@ Blocked by: 02, 05, 06, 07, 08
 
 - 初始任务，尚无实施或验收完成声明；后续按时间追加事实与证据。
 - 达到本项验收后再更新 Resolution 和 Result；后续现场证据不得提前标记通过。
+
+第二轮当前状态复核：2026-10-31T20:23:19Z至20:23:22Z，完整identity一致；三原execution仍OPEN且close reason/原Pod与containerID、115bytes日志hash均未变；三个原Workflow仍NotFound。无新可推进原关闭证据。证据evidence/09/open-current-recheck-20261031T202319Z.json；未重跑全量inventory/OpenSearch，未进行持久写。
+
+第二轮新原证据：官方v1 GetRun detail精确返回3原Run的6份manifest，原WorkflowUID/name/Namespace匹配，35/35/25节点终态，但无直接PodUID或原日志archive URI。第三条原CloseAuthority已存在、4原Pod退出已核；原live UID/RV读取、image_contract Error资格及完整writer/PVC/模板证明仍不满足，单纯authority重放no-op。详evidence/09/kfp-v1-original-run-detail-20261031T204206Z.json及third-archive-close-assessment.md。未做CAS/重建/清理；与此前‘未建立归档来源’不同，当前具体断点是原关闭不支持该archive证据及额外资格缺口。

@@ -51,7 +51,7 @@ Blocked by: 03, 04
 
 ## Result
 
-- Outcome: COMPONENT_PASS + SERVER_SCHEMA_PASS；Resolution保持open。动态Webhook组件与21对象server schema dry-run已通过，真实安装、controller typeChecking和正反业务行为尚未完成，不构成AD01/AD02或LIVE02全PASS。
+- Outcome: BLOCKED（组件与server schema子项PASS）；Resolution保持open。动态Webhook组件与21对象server schema dry-run已通过，真实安装、controller typeChecking和正反业务行为尚未完成，不构成AD01/AD02或LIVE02全PASS。
 - Base / final commits: ModelDev base 21bf4bd6540d462a61c91b629f26250899583223；最终源码提交 d807cbdbd5dd6664d61480acedc752e19cfca48a，对应 evidence/modeldev-tested-source-identity.json。最终仓库门禁通过；不声明新webhook镜像已部署。
 - Changed files / generated artifacts: internal/server/modeldevwebhook/及相关测试；cmd/ani-modeldev-webhook/main.go；deploy/modeldev-webhook/；deploy/modeldev-tenant-policy/。配置schema ani.modeldev.webhook.v2删除旧bindings；一个全局OR registration、三固定native VAP/Binding、精确RBAC、共享bundle及独立platform普通文件copy均已实现。
 - Validation commands / exit codes / required gates: Fedora Webhook Go整包与cmd编译exit0（evidence/06-webhook-component-tests.log）；两renderer各3项Python测试exit0（evidence/06-renderer-component-tests.log），CEL最小修正后native3项再次exit0（evidence/06-native-server-dryrun.python-tests.log）。重核完整指定集群身份后逐21对象 kubectl apply --dry-run=server 全exit0，无stderr错误/警告，原对象UID/RV/完整摘要前后一致（evidence/06-native-server-dryrun.fixed.json、evidence/06-native-server-dryrun.fixed.log）。最终 make verify PASS（evidence/modeldev-final-make-verify.log）；生产HTTPS webhook参与的真实PG/48步CPU/关闭清理替身纵向通过（evidence/04/modeldev-cpu-mainflow-final-shared-budget.log）。

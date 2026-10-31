@@ -51,7 +51,7 @@ Blocked by: 04, 06
 
 ## Result
 
-- Outcome: COMPONENT_PASS（工具、真实四IR编译、不可变材料与渲染子项）；Resolution保持open。现场新镜像构建/运行映射、四定义实际发布ID、最终材料安装及切换未完成，不能记LIVE PASS。
+- Outcome: BLOCKED（组件子项PASS：工具、真实四IR编译、不可变材料与渲染子项）；Resolution保持open。现场新镜像构建/运行映射、四定义实际发布ID、最终材料安装及切换未完成，不能记LIVE PASS。
 - Base / final commits: ModelDev base 21bf4bd6540d462a61c91b629f26250899583223；最终源码提交 d807cbdbd5dd6664d61480acedc752e19cfca48a及 matched=true 的本次源码核对见 evidence/modeldev-tested-source-identity.json；不将附件历史镜像/发布记录当作本次最终映射。
 - Changed files / generated artifacts: deploy/modeldev-environment/{bundle.py,publisher.py,platform_config.py,render.py,verify_target.py,test_materials.py,README.md}。固定四profile原IR，发布journal先意图后POST且未知结果不重发；同一canonical manifest/raw SHA供service和webhook；八材料普通文件copy与独立platform copy；Kubernetes/KFP独立投影audiences及artifact两键Secret文件引用，未带tenant map或秘密值。
 - Validation commands / exit codes / required gates: Fedora /home/chabking/tenantenv-20261101/modeldev-snapshot，固定KFP/kfp-kubernetes/kfp-pipeline-spec2.16.0，PYTHONPATH=deploy/modeldev-environment .../kfp-resource-venv/bin/python -m unittest discover -s deploy/modeldev-environment -p test_materials.py -v，6项、exit0、4.535s（evidence/08/tools.log）。最终ModelDev make verify PASS（evidence/modeldev-final-make-verify.log）；该Go门禁不代替上述Python编译测试或真实发布。
@@ -65,3 +65,7 @@ Blocked by: 04, 06
 
 - 初始任务，尚无实施或验收完成声明；后续按时间追加事实与证据。
 - 达到本项验收后再更新 Resolution 和 Result；后续现场证据不得提前标记通过。
+
+第二轮公开输入补证：evidence/08-public-inputs-readonly-20261101.json和公开CA原bytes(713bytes)；只读实际metadata Service派生新tenant候选metadata-grpc-service.kubeflow.svc:8080，原CM仅短名、旧namespace同名CM404。已取driver/launcher/Argo原digest，显式TLS flags未暴露保持UNKNOWN，不当false；未作新launcher加载/I-O。
+
+第二轮镜像准备入口事实：evidence/08-workbench-build-only-readonly-20261101.json。线上app.js/request7字段与本地前端一致；本地后端拒额外字段且push后无条件deploy，但live后端hash未暴露不宣称同源。没有可安全使用的build-only操作，现有modeldev recipe仅主service，未涵盖webhook/step/training；WORKLOAD_IMAGE尚未固定。未POST job或直接绕开入口。需取得支持完整镜像发布的确切入口合同，实际构建与digest仍NOT_RUN。

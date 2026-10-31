@@ -1,6 +1,6 @@
 {
   "schema": "ani.modeldev.tenant-environment.deployment-inputs.v1",
-  "status": "BLOCKED_LEGACY_CLOSE_EVIDENCE",
+  "status": "BLOCKED",
   "instructions": "null须从明确部署/源证据取得，不是可随意选择；只保存非敏感值或秘密文件引用。",
   "target": {
     "ssh_host": "100.64.128.12",
@@ -40,13 +40,16 @@
     "actual_token_auth_evidence": null,
     "rotation_evidence": null,
     "experiment_unique_constraint_evidence": null,
-    "metadata_grpc_host": null,
-    "metadata_grpc_port": null,
+    "metadata_grpc_host": "metadata-grpc-service.kubeflow.svc",
+    "metadata_grpc_port": 8080,
     "driver_tls_flags": null,
     "launcher_tls_flags": null,
     "cabundle_key_name": "ca.crt",
-    "kfp_public_ca_file": null,
-    "argo_workflow_defaults_evidence": null
+    "kfp_public_ca_file": "evidence/08-public-kfp-ca.crt",
+    "argo_workflow_defaults_evidence": null,
+    "public_inputs_evidence": "evidence/08-public-inputs-readonly-20261101.json",
+    "public_inputs_level": "READ_ONLY_CONFIG candidates; namespace-qualified metadata host derived from exact existing Service; new launcher actual CA loading/auth/I-O NOT_RUN; explicit TLS flags still UNKNOWN",
+    "kfp_public_ca_sha256": "e8ce7d3b810977805834b968604c3610342a1366be420d9729edc44bc1d96236"
   },
   "principals": {
     "control": "system:serviceaccount:ani-system:modeldev-control",
@@ -201,12 +204,14 @@
       "commit": "d807cbdbd5dd6664d61480acedc752e19cfca48a",
       "image_digest": null,
       "deployed_image_id": null,
-      "test_only_supplement_commit": "e4067444498394d0c5247bc927fa5476bc198015"
+      "test_only_supplement_commit": "e4067444498394d0c5247bc927fa5476bc198015",
+      "budget_recovery_test_commit": "6b0b952478081034baee8ab27fd8216b26742700"
     },
     "gov": {
       "commit": "fa80f886d022177173d7e9cf81ec51e54c2df4c8",
       "image_digest": null,
-      "deployed_image_id": null
+      "deployed_image_id": null,
+      "test_only_supplement_commit": "5cfa9065190b9585b799e428537a0019ca70e41a"
     },
     "res": {
       "commit": "71b3ad7a2a88ae531e5e7b80abde2f494ff28d9d",
@@ -252,7 +257,10 @@
       "new native/Webhook policy installation",
       "new service rollout",
       "A/B Ensure and live matrix"
-    ]
+    ],
+    "archive_observation": "evidence/09/kfp-v1-original-run-detail-20261031T204206Z.json",
+    "original_close_qualification": "evidence/09/third-archive-close-assessment.md",
+    "legacy_archive_status": "original Workflow archive found for all3; two original training logs absent, third live/denial/writer qualifications unresolved; no mutation"
   },
   "pending_inputs": [
     {
@@ -280,18 +288,6 @@
       "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
     },
     {
-      "path": "kfp.metadata_grpc_host",
-      "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
-    },
-    {
-      "path": "kfp.metadata_grpc_port",
-      "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
-    },
-    {
       "path": "kfp.driver_tls_flags",
       "owner_task": "08",
       "status": "NOT_RUN",
@@ -299,12 +295,6 @@
     },
     {
       "path": "kfp.launcher_tls_flags",
-      "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
-    },
-    {
-      "path": "kfp.kfp_public_ca_file",
       "owner_task": "08",
       "status": "NOT_RUN",
       "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
@@ -683,9 +673,20 @@
   },
   "validation_blocker": {
     "status": "BLOCKED",
-    "reason": "Fedora SSH banner exchange timeout, exit255; unreturned Gov checks RESULT_UNKNOWN; new EN02 budget-recovery test NOT_RUN",
-    "evidence": "evidence/gov-final/fedora-final-recovery-probe.json",
-    "pending_sessions": "evidence/gov-final/pending-fedora-sessions.json",
-    "no_local_heavy_fallback": true
-  }
+    "reason": "round2 original default/race exit0; make check exit2 from baseline VM authority mapping; audit continuation exit1 with original unchanged negative fixture finding",
+    "evidence": "evidence/gov-final/fedora-round2-original-session-exits.json",
+    "source_identity": "evidence/gov-final/fedora-round2-source-identity.json",
+    "no_local_heavy_fallback": true,
+    "entrypoint_status": "PASS (recovered)"
+  },
+  "image_preparation": {
+    "status": "BLOCKED",
+    "evidence": "evidence/08-workbench-build-only-readonly-20261101.json",
+    "observed_interface": "online frontend seven-field POST /api/jobs; no observed safe build-only option",
+    "backend_evidence_boundary": "local matching-frontend source contract unconditionally deploys after push; live backend source hash not exposed",
+    "current_modeldev_recipe": "main service only; webhook/step/training not included",
+    "job_posted": false,
+    "bypass_used": false
+  },
+  "status_reason": "LEGACY_CLOSE_EVIDENCE_AND_ORIGINAL_QUALIFICATION"
 }

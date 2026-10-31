@@ -23,22 +23,54 @@
     "task_container_removed": true,
     "evidence": "formal-pg-six-captured.log"
   },
-  "final_default_race": "RESULT_UNKNOWN",
-  "final_make_check": "RESULT_UNKNOWN",
-  "final_audit": "RESULT_UNKNOWN",
-  "final_tree_remote_identity": "NOT_COMPARED",
+  "final_default_race": {
+    "status": "PASS",
+    "exit_code": 0,
+    "source": "original session44762 terminal result after Fedora recovery",
+    "evidence": "environment-formal-default-tests.log"
+  },
+  "final_make_check": {
+    "status": "FAIL",
+    "exit_code": 2,
+    "failure": "baseline active GET /api/v1/virtual-machines/{vm_id}/logs missing authoritative capability mapping",
+    "evidence": "environment-formal-make-check.log"
+  },
+  "final_audit": {
+    "status": "FAIL",
+    "exit_code": 1,
+    "evidence": "environment-formal-audit-resume-once.log",
+    "receipt": "environment-formal-audit-resume-once-receipt.json",
+    "govulncheck_called_affected": 0,
+    "govulncheck_other_observations": "1 imported package / 10 required modules have vulnerabilities; no affected call observed",
+    "gitleaks_findings": 1,
+    "gitleaks_metadata": "gitleaks-final-finding-metadata.json",
+    "no_allowlist_added": true
+  },
+  "final_tree_remote_identity": {
+    "status": "PASS",
+    "source_commit": "fa80f886d022177173d7e9cf81ec51e54c2df4c8",
+    "changed_files": 44,
+    "mismatches": 0,
+    "evidence": "fedora-round2-source-identity.json"
+  },
   "live_ab": "NOT_RUN / BLOCKED old original executions and deployment prerequisites",
   "deployment": "NOT_RUN",
   "maintenance_results_not_substituted": true,
   "final_commit": "fa80f886d022177173d7e9cf81ec51e54c2df4c8",
   "branch": "codex/modeldev-dynamic-tenant-environment",
   "local_worktree_clean_after_commit": true,
-  "required_gate_status": "RESULT_UNKNOWN / INCOMPLETE; not deployment ready",
-  "further_fedora_waits_stopped": true,
+  "required_gate_status": "FAIL: baseline VM authority mapping; no VM privilege expansion",
+  "further_fedora_waits_stopped": "historical prior turn only; round2 original sessions recovered terminal exits",
   "ssh_push": {
     "status": "PASS",
     "url": "ssh://git@ssh.github.com:443/zhangzhe-ctrl/ani-governance.git",
     "branch": "codex/modeldev-dynamic-tenant-environment",
     "commit": "fa80f886d022177173d7e9cf81ec51e54c2df4c8"
+  },
+  "final_audit_original": {
+    "status": "FAIL",
+    "exit_code": 1,
+    "failure": "vuln.go.dev database network read timeout before Gitleaks",
+    "evidence": "environment-formal-audit.log"
   }
 }

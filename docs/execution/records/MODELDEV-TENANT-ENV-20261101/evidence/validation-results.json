@@ -30,10 +30,13 @@
       "runtime_api_source_unchanged": true
     },
     "budget_recovery_followup": {
-      "status": "NOT_RUN",
-      "draft_only": true,
+      "status": "PASS",
+      "test_only_commit": "6b0b952478081034baee8ab27fd8216b26742700",
       "evidence": "03-environment-budget-recovery-record.json",
-      "blocker": "Gov final bounded Fedora SSH probe exit255/banner exchange timeout"
+      "output": "03-environment-budget-recovery.log",
+      "runtime_api_source_unchanged": true,
+      "fixed_ensure_budget_observed": "25.001233984s",
+      "resumed_original_identity_to_sealed_ready": true
     }
   },
   "resource": {
@@ -53,12 +56,20 @@
     "formal_resource_pin": "v0.0.0-20261031180451-71b3ad7a2a88",
     "pin_status": "PASS",
     "real_pg_six": "PASS",
-    "final_default_race": "RESULT_UNKNOWN",
-    "final_make_check": "RESULT_UNKNOWN",
-    "final_audit": "RESULT_UNKNOWN",
-    "final_remote_source_identity": "NOT_COMPARED",
+    "final_default_race": "PASS / original session exit0",
+    "final_make_check": "FAIL / original session exit2; baseline active VM logs route missing authoritative capability mapping",
+    "final_audit": "FAIL / continuation exit1; 0 affected calls, baseline unchanged fixture Gitleaks finding",
+    "final_remote_source_identity": "PASS / 44 changed files, 0 mismatch",
     "replace_or_copied_pb": false,
-    "evidence": "gov-final/result.json"
+    "evidence": "gov-final/result.json",
+    "http_integration_followup": {
+      "status": "PASS",
+      "test_only_commit": "5cfa9065190b9585b799e428537a0019ca70e41a",
+      "evidence": "gov-final/environment-http-integration-final-receipt.json",
+      "external_boundary": "mTLS ModelDev peer only; actual JWT/Redis/Casbin/PG authorization and service/client",
+      "exit_code": 0,
+      "runtime_api_source_unchanged": true
+    }
   },
   "governance_old_api_maintenance": {
     "source_commit": "6a7c721ea113d51497421d7975122ec7ca8105c2",
