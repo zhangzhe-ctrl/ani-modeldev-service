@@ -56,7 +56,7 @@ func (verifier *Verifier) VerifyOwnerWritersAbsent(ctx context.Context, executio
 		return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
 	}
 	namespace, err := verifier.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}).Get(ctx, environment.NamespaceName, metav1.GetOptions{})
-	if err != nil || !sameObject(namespace, "v1", "Namespace", "", environment.NamespaceName, environment.NamespaceUID) || namespace.GetDeletionTimestamp() != nil {
+	if err != nil || !sameObject(namespace, "v1", "Namespace", "", environment.NamespaceName, environment.NamespaceUID) || namespace.GetLabels()["network.ani.io/managed-by"] != "ani-network-service" || namespace.GetLabels()["network.ani.io/tenant-id"] != authority.TenantID {
 		return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
 	}
 	workflows := verifier.kube.Resource(schema.GroupVersionResource{Group: "argoproj.io", Version: "v1alpha1", Resource: "workflows"}).Namespace(environment.NamespaceName)

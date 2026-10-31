@@ -101,7 +101,7 @@ func (verifier *Verifier) ObserveComputeCleanupAbsence(ctx context.Context, exec
 	if err != nil {
 		return nil, biz.ErrCleanupUncertain
 	}
-	if !sameObject(namespace, "v1", "Namespace", "", owner.NamespaceName, owner.NamespaceUID) || namespace.GetDeletionTimestamp() != nil {
+	if !sameObject(namespace, "v1", "Namespace", "", owner.NamespaceName, owner.NamespaceUID) || namespace.GetLabels()["network.ani.io/managed-by"] != "ani-network-service" || namespace.GetLabels()["network.ani.io/tenant-id"] != owner.TenantID {
 		return nil, biz.ErrCleanupConflict
 	}
 	if state.Workspace != nil {
@@ -309,8 +309,11 @@ func (verifier *Verifier) verifyComputeCleanupGraph(ctx context.Context, executi
 			}
 		}
 		if ownerUID != target.OwnerUID {
-			if !removalIntent || ownerUID != "" || target.OwnerUID == "" || verifier.computeParentsAbsent(ctx, targets, target) != nil {
+			if !removalIntent || ownerUID != "" || target.OwnerUID == "" {
 				return biz.ErrCleanupConflict
+			}
+			if err := verifier.computeParentsAbsent(ctx, targets, target); err != nil {
+				return err
 			}
 		}
 		if target.Kind == "Pod" {
@@ -399,6 +402,9 @@ func (verifier *Verifier) computeParentsAbsent(ctx context.Context, targets []bi
 			return biz.ErrCleanupConflict
 		}
 		if _, err := verifier.kube.Resource(resource).Namespace(parent.Namespace).Get(ctx, parent.Name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+			if err != nil {
+				return biz.ErrCleanupUncertain
+			}
 			return biz.ErrCleanupConflict
 		}
 		child = parent
