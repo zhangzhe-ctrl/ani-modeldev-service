@@ -1,0 +1,29 @@
+{
+  "acceptance_id": "EN02",
+  "status": "NOT_RUN",
+  "scope": "Follow-up test only: real fixed 25-second Ensure budget exhaustion, durable PostgreSQL receipts, advisory-lock release, and explicit retry preserving original environment/Namespace/object UIDs to sealed READY",
+  "base_code_commit": "d807cbdbd5dd6664d61480acedc752e19cfca48a",
+  "source_file": "internal/data/tenantenvironment/budget_recovery_test.go",
+  "local_sha256": "4538c8935df0bec9c29cc9250634fb1128ea189b0f574b7bae6255448ddee7b0",
+  "fedora_sha256": null,
+  "formatting_status": "NOT_RUN: no formatting command issued; remote transfer pending",
+  "planned_command": "GOTOOLCHAIN=auto go test ./internal/data/tenantenvironment -run '^TestEnvironmentPostgresEnsureBudgetExhaustionResumesReceipts$' -count=1 -v",
+  "command_executed": false,
+  "exit_code": null,
+  "remote_directory": "/home/chabking/tenantenv-20261101/modeldev-environment",
+  "blocked_at": "Initial rsync of this new test has not returned; no remote formatting or test command was issued. Root assigned Fedora entry-point diagnosis to the resource agent; no duplicate connection or local execution fallback was attempted.",
+  "transfer_session_id": 17571,
+  "shared_entrypoint_diagnosis": {
+    "reported_by": "/root/resource",
+    "diagnostic_exit_code": 255,
+    "diagnostic_result": "Independent bounded SSH without connection reuse timed out during banner exchange at 172.16.101.31:22; this is entry-point evidence, not a test execution result."
+  },
+  "unchanged": [
+    "production source",
+    "API and generated files",
+    "module dependencies",
+    "production Ensure and upstream budgets",
+    "evidence/modeldev-tested-source-identity.json"
+  ],
+  "evidence_boundary": "Existing d807 make verify and SIGKILL/lost-response tests remain valid only for their recorded coverage. They do not establish this new aggregate-budget recovery case."
+}

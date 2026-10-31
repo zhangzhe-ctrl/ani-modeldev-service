@@ -1,0 +1,691 @@
+{
+  "schema": "ani.modeldev.tenant-environment.deployment-inputs.v1",
+  "status": "BLOCKED_LEGACY_CLOSE_EVIDENCE",
+  "instructions": "null须从明确部署/源证据取得，不是可随意选择；只保存非敏感值或秘密文件引用。",
+  "target": {
+    "ssh_host": "100.64.128.12",
+    "ssh_user": "kubercloud",
+    "context": "kubernetes-admin@ani-kcn-full",
+    "apiserver": "https://lb.kubesphere.local:6443",
+    "cluster_id": "f39bf6e2-f3ed-4191-ada3-caeebf86c220",
+    "kube_system_uid": "3eeb5379-8748-4bf8-8f6d-d7a48ce3bc24",
+    "kubernetes_version": "v1.35.8",
+    "confirmed_at": "2026-10-31T17:44:33.093019+00:00",
+    "evidence": "evidence/baseline.json",
+    "remote_build_os": "Fedora via ssh fedora"
+  },
+  "source_baseline": {
+    "modeldev": "21bf4bd6540d462a61c91b629f26250899583223",
+    "governance": "ddd98f4c79751ba848fa862bab6878dc7bc99bb7",
+    "resource": "23e25b33ca02890231cd273ef7246b0fc415476c",
+    "refetched_main": {
+      "modeldev": "21bf4bd6540d462a61c91b629f26250899583223",
+      "governance": "ddd98f4c79751ba848fa862bab6878dc7bc99bb7",
+      "resource": "23e25b33ca02890231cd273ef7246b0fc415476c"
+    },
+    "related_diff_evidence": "evidence/contract-freeze.md"
+  },
+  "kfp": {
+    "version": "2.16.0",
+    "health_sha": "85a38e0719870e5b2f97a74f5c966d79bcc7c960",
+    "endpoint": "https://ani-kfp-entry.kubeflow.svc:8443",
+    "multiuser": true,
+    "shared_read": false,
+    "require_namespace_for_pipelines": true,
+    "connection_ref": null,
+    "control_token_file": "/var/run/modeldev-kfp/token",
+    "control_audience": "pipelines.kubeflow.org",
+    "projected_expiration_seconds": 3600,
+    "callback_audience": "https://kubernetes.default.svc.cluster.local",
+    "actual_token_auth_evidence": null,
+    "rotation_evidence": null,
+    "experiment_unique_constraint_evidence": null,
+    "metadata_grpc_host": null,
+    "metadata_grpc_port": null,
+    "driver_tls_flags": null,
+    "launcher_tls_flags": null,
+    "cabundle_key_name": "ca.crt",
+    "kfp_public_ca_file": null,
+    "argo_workflow_defaults_evidence": null
+  },
+  "principals": {
+    "control": "system:serviceaccount:ani-system:modeldev-control",
+    "webhook": "system:serviceaccount:ani-system:ani-modeldev-webhook",
+    "kfp_api": "system:serviceaccount:kubeflow:ml-pipeline",
+    "argo": "system:serviceaccount:kubeflow:argo",
+    "trainer": "system:serviceaccount:kubeflow-system:kubeflow-trainer-controller-manager",
+    "jobset": "system:serviceaccount:kubeflow-system:jobset-controller-manager",
+    "job_controller": "system:serviceaccount:kube-system:job-controller",
+    "persistence_agent": "system:serviceaccount:kubeflow:ml-pipeline-persistenceagent",
+    "maintenance": "kubernetes-admin",
+    "verified_evidence": "evidence/native-principals.json",
+    "node_principals": [
+      "system:node:node1",
+      "system:node:node2",
+      "system:node:node3"
+    ]
+  },
+  "platform_materials": {
+    "catalogue_path": null,
+    "catalogue_sha256": null,
+    "managed_registry_authority": null,
+    "platform_project": null,
+    "authenticated_fixed_images": [],
+    "anonymous_support_images": [],
+    "workspace_storage_class": null,
+    "workspace_size": null,
+    "target_platform": null,
+    "step_callback_endpoint": null,
+    "modeldev_public_ca_file": null,
+    "s3_public_ca_file": null,
+    "owner_reference": null,
+    "owner_revision_sha256": null,
+    "pipelines": [
+      {
+        "name": "modeldev-mlp-cpu",
+        "namespace": "ani-system",
+        "pipeline_id": null,
+        "version_id": null,
+        "ir_sha256": null,
+        "material_sha256": null
+      },
+      {
+        "name": "modeldev-mlp-gpu",
+        "namespace": "ani-system",
+        "pipeline_id": null,
+        "version_id": null,
+        "ir_sha256": null,
+        "material_sha256": null
+      },
+      {
+        "name": "modeldev-sft-lora-cpu",
+        "namespace": "ani-system",
+        "pipeline_id": null,
+        "version_id": null,
+        "ir_sha256": null,
+        "material_sha256": null
+      },
+      {
+        "name": "modeldev-sft-lora-gpu",
+        "namespace": "ani-system",
+        "pipeline_id": null,
+        "version_id": null,
+        "ir_sha256": null,
+        "material_sha256": null
+      }
+    ]
+  },
+  "storage": {
+    "input": {
+      "connection_id": null,
+      "bucket": null,
+      "prefix": "inputs/<tenant_uuid>"
+    },
+    "publication": {
+      "connection_id": null,
+      "bucket": null,
+      "prefix": "executions/<tenant_uuid>",
+      "actual_write_prefix": "executions/<tenant_uuid>/<execution_uuid>/"
+    },
+    "model": {
+      "connection_id": null,
+      "bucket": null,
+      "prefix": "<tenant_uuid>"
+    },
+    "kfp_artifacts": {
+      "endpoint": null,
+      "region": null,
+      "dedicated_bucket": null,
+      "default_root": "s3://<dedicated_bucket>/artifacts/<tenant_uuid>",
+      "run_root": "s3://<dedicated_bucket>/artifacts/<tenant_uuid>/<execution_uuid>",
+      "secret_name": "modeldev-kfp-artifacts",
+      "access_key_file": null,
+      "secret_key_file": null,
+      "bucket_only_iam_evidence": null,
+      "tls_loading_evidence": null,
+      "real_io_evidence": null,
+      "access_isolation_evidence": null
+    }
+  },
+  "namespace_samples": [
+    {
+      "name": "A",
+      "gov_tenant_id": 2,
+      "resource_tenant_id": "64c5c35a-f554-432c-b4bc-7b4f36f08420",
+      "namespace_name": "tenant-64c5c35a-f554-432c-b4bc-7b4f36f08420",
+      "namespace_uid": "a8d8a472-8a8a-43cf-abf0-0e805bbe67b0",
+      "image_space_ready": null,
+      "namespace_check_evidence": "evidence/native-principals.json"
+    },
+    {
+      "name": "B",
+      "gov_tenant_id": 40,
+      "resource_tenant_id": "207328fc-f08d-4dc4-b403-16ec86396ce2",
+      "namespace_name": "tenant-207328fc-f08d-4dc4-b403-16ec86396ce2",
+      "namespace_uid": "8698b0b5-f4c8-4770-85e5-10f25ad7b347",
+      "image_space_ready": null,
+      "namespace_check_evidence": "evidence/native-principals.json"
+    }
+  ],
+  "policies": {
+    "vap_names": [
+      "modeldev-bootstrap-v1",
+      "modeldev-environment-config-v1",
+      "modeldev-workload-guard-v1"
+    ],
+    "webhook_name": "ani-modeldev-webhook",
+    "policy_uids_and_digests": null,
+    "cel_typecheck_evidence": null,
+    "rbac_sar_evidence": null,
+    "coexistence_evidence": null,
+    "schema_server_dryrun_evidence": "evidence/06-native-server-dryrun.fixed.json (21 accepted; none persisted; actual policy typeChecking/behavior NOT_RUN)"
+  },
+  "cleanup": {
+    "manifest_path": "evidence/09/old-inventory.json",
+    "manifest_sha256": "aa5420bd1c2ad02f373509d625a99080b4c6721050de1bcdb3496ad1d15a44d2",
+    "old_modeldev_rows_before": {
+      "executions": 50,
+      "inputs": 10,
+      "closed": 47,
+      "open": 3,
+      "observed_at": "2026-10-31T18:48:36.682031+00:00"
+    },
+    "old_modeldev_rows_after": null,
+    "old_gov_pending_after": null,
+    "release_reconciliation_evidence": "evidence/09/old-gov-inventory.json",
+    "res_uid_backfill_evidence": "evidence/09/res-namespace-pre-migration.json (read-only preflight; migration/backfill NOT_RUN)",
+    "manifest_status": "READ_ONLY_INVENTORY_NOT_EXECUTABLE; exact deletion eligibility and complete manifest remain blocked by 3 OPEN executions"
+  },
+  "delivered_builds": {
+    "modeldev": {
+      "commit": "d807cbdbd5dd6664d61480acedc752e19cfca48a",
+      "image_digest": null,
+      "deployed_image_id": null,
+      "test_only_supplement_commit": "e4067444498394d0c5247bc927fa5476bc198015"
+    },
+    "gov": {
+      "commit": "fa80f886d022177173d7e9cf81ec51e54c2df4c8",
+      "image_digest": null,
+      "deployed_image_id": null
+    },
+    "res": {
+      "commit": "71b3ad7a2a88ae531e5e7b80abde2f494ff28d9d",
+      "image_digest": null,
+      "deployed_image_id": null
+    }
+  },
+  "secrets_must_not_be_included": true,
+  "authorization_inventory": {
+    "apiserver_modes": [
+      "Node",
+      "RBAC"
+    ],
+    "authorization_config_evidence": "evidence/native-principals.json#node_principal_evidence.api_server (all three current API servers --authorization-mode=Node,RBAC); full future Secret authorization inventory/subject audit remains NOT_RUN",
+    "authorization_config_sha256": null,
+    "platform_trusted_subjects": [],
+    "trusted_group_management_evidence": null,
+    "source_secret_platform_access_evidence": null,
+    "list_page_size": 100,
+    "max_pages_per_collection": 10,
+    "max_distinct_roles": 128,
+    "max_rules": 8192,
+    "timeout_seconds": 8,
+    "proof_valid_seconds": 30,
+    "global_clusterrole": "modeldev-rbac-inventory-global-v1",
+    "global_clusterrolebinding": "modeldev-rbac-inventory-global"
+  },
+  "maintenance_build": {
+    "governance_commit": "6a7c721ea113d51497421d7975122ec7ca8105c2",
+    "branch": "codex/modeldev-create-maintenance",
+    "deployed": false,
+    "required_check": "FAIL (pre-existing VM route permission mapping missing)",
+    "audit": "FAIL (pre-existing synthetic component-name gitleaks finding; 0 called vulnerability)",
+    "evidence": "evidence/gov-maintenance/result.json"
+  },
+  "blocking_evidence": {
+    "legacy_close": "evidence/09/open-execution-blockers.md",
+    "state": "BLOCKED",
+    "unexecuted_mutations": [
+      "old Create/publisher pause",
+      "old resource/DB/KFP/S3 deletion",
+      "Res migration/backfill",
+      "new native/Webhook policy installation",
+      "new service rollout",
+      "A/B Ensure and live matrix"
+    ]
+  },
+  "pending_inputs": [
+    {
+      "path": "kfp.connection_ref",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "kfp.actual_token_auth_evidence",
+      "owner_task": "10",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "kfp.rotation_evidence",
+      "owner_task": "10",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "kfp.experiment_unique_constraint_evidence",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "kfp.metadata_grpc_host",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "kfp.metadata_grpc_port",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "kfp.driver_tls_flags",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "kfp.launcher_tls_flags",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "kfp.kfp_public_ca_file",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "kfp.argo_workflow_defaults_evidence",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.catalogue_path",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.catalogue_sha256",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.managed_registry_authority",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.platform_project",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.workspace_storage_class",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.workspace_size",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.target_platform",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.step_callback_endpoint",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.modeldev_public_ca_file",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.s3_public_ca_file",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.owner_reference",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.owner_revision_sha256",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.pipelines[0].pipeline_id",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.pipelines[0].version_id",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.pipelines[0].ir_sha256",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.pipelines[0].material_sha256",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.pipelines[1].pipeline_id",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.pipelines[1].version_id",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.pipelines[1].ir_sha256",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.pipelines[1].material_sha256",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.pipelines[2].pipeline_id",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.pipelines[2].version_id",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.pipelines[2].ir_sha256",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.pipelines[2].material_sha256",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.pipelines[3].pipeline_id",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.pipelines[3].version_id",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.pipelines[3].ir_sha256",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "platform_materials.pipelines[3].material_sha256",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "storage.input.connection_id",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "storage.input.bucket",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "storage.publication.connection_id",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "storage.publication.bucket",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "storage.model.connection_id",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "storage.model.bucket",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "storage.kfp_artifacts.endpoint",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "storage.kfp_artifacts.region",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "storage.kfp_artifacts.dedicated_bucket",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "storage.kfp_artifacts.access_key_file",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "storage.kfp_artifacts.secret_key_file",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "storage.kfp_artifacts.bucket_only_iam_evidence",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "storage.kfp_artifacts.tls_loading_evidence",
+      "owner_task": "10",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "storage.kfp_artifacts.real_io_evidence",
+      "owner_task": "10",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "storage.kfp_artifacts.access_isolation_evidence",
+      "owner_task": "10",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "namespace_samples[0].image_space_ready",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "namespace_samples[1].image_space_ready",
+      "owner_task": "08",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "policies.policy_uids_and_digests",
+      "owner_task": "06/09",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "policies.cel_typecheck_evidence",
+      "owner_task": "06/09",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "policies.rbac_sar_evidence",
+      "owner_task": "10",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "policies.coexistence_evidence",
+      "owner_task": "10",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "cleanup.old_modeldev_rows_after",
+      "owner_task": "09",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "cleanup.old_gov_pending_after",
+      "owner_task": "09",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "delivered_builds.modeldev.image_digest",
+      "owner_task": "09",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "delivered_builds.modeldev.deployed_image_id",
+      "owner_task": "09",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "delivered_builds.gov.image_digest",
+      "owner_task": "09",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "delivered_builds.gov.deployed_image_id",
+      "owner_task": "09",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "delivered_builds.res.image_digest",
+      "owner_task": "09",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "delivered_builds.res.deployed_image_id",
+      "owner_task": "09",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "authorization_inventory.authorization_config_sha256",
+      "owner_task": "03/08/10",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "authorization_inventory.trusted_group_management_evidence",
+      "owner_task": "03/08/10",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    },
+    {
+      "path": "authorization_inventory.source_secret_platform_access_evidence",
+      "owner_task": "03/08/10",
+      "status": "NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+    }
+  ],
+  "api_pins": {
+    "modeldev": "v0.0.0-20261031195825-d807cbdbd5dd",
+    "resource": "v0.0.0-20261031180451-71b3ad7a2a88",
+    "governance_pin_evidence": "evidence/gov-final/formal-module-pin-captured.log; no replace, official immutable module"
+  },
+  "validation_blocker": {
+    "status": "BLOCKED",
+    "reason": "Fedora SSH banner exchange timeout, exit255; unreturned Gov checks RESULT_UNKNOWN; new EN02 budget-recovery test NOT_RUN",
+    "evidence": "evidence/gov-final/fedora-final-recovery-probe.json",
+    "pending_sessions": "evidence/gov-final/pending-fedora-sessions.json",
+    "no_local_heavy_fallback": true
+  }
+}
