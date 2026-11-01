@@ -214,6 +214,26 @@ func TestEnvironmentExperimentRecoversUnknownPostAndReadsRotatingToken(t *testin
 			_ = json.NewEncoder(w).Encode(result)
 			return
 		}
+		// The deployed KFP v2beta1 Filter.Predicate uses operation, not v1beta1 op.
+		var filter struct {
+			Predicates []struct {
+				Key         string `json:"key"`
+				Operation   string `json:"operation"`
+				StringValue string `json:"string_value"`
+			} `json:"predicates"`
+		}
+		decoder := json.NewDecoder(strings.NewReader(r.URL.Query().Get("filter")))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&filter); err != nil {
+			t.Errorf("KFP v2beta1 filter rejected: %v", err)
+			http.Error(w, "invalid v2beta1 filter", http.StatusBadRequest)
+			return
+		}
+		if len(filter.Predicates) != 1 || filter.Predicates[0].Key != "display_name" || filter.Predicates[0].Operation != "EQUALS" || filter.Predicates[0].StringValue != intent.Name || r.URL.Query().Get("namespace") != intent.Namespace || r.URL.Query().Get("page_size") != "100" {
+			t.Error("KFP query lost the original exact name/namespace predicate")
+			http.Error(w, "incorrect original intent query", http.StatusBadRequest)
+			return
+		}
 		if created {
 			_ = json.NewEncoder(w).Encode(map[string]any{"experiments": []experiment{result}})
 		} else {

@@ -137,7 +137,7 @@ func (k *experimentClient) find(ctx context.Context, i *biz.EnvironmentExperimen
 	seen := map[string]bool{}
 	matches := []experiment{}
 	for page := 0; page < 10; page++ {
-		filter, _ := json.Marshal(map[string]any{"predicates": []any{map[string]any{"key": "display_name", "op": "EQUALS", "string_value": i.Name}}})
+		filter, _ := json.Marshal(map[string]any{"predicates": []any{map[string]any{"key": "display_name", "operation": "EQUALS", "string_value": i.Name}}})
 		q := url.Values{"namespace": {i.Namespace}, "page_size": {"100"}, "filter": {string(filter)}}
 		if token != "" {
 			q.Set("page_token", token)
