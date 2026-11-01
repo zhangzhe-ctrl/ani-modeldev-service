@@ -146,6 +146,7 @@ def run(inp):
     old = ledger()
     require(old["active_create_leases"] == 0, "CREATE_LEASES_NOT_DRAINED")
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+    response_sha = {}
     def post(path, body, token=None):
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
         if token:
@@ -158,6 +159,7 @@ def run(inp):
         with response:
             raw = response.read(65537)
             require(len(raw) <= 65536, "HTTP_RESPONSE_TOO_LARGE")
+            response_sha[path] = hashlib.sha256(raw).hexdigest()
             return response.status, json.loads(raw)
     status, login = post("/api/v1/auth/password/login", {
         "tenant_name": "tenant-a", "username": "admin", "password": inp["password"]})
@@ -184,7 +186,9 @@ def run(inp):
             "status": "PASS", "identity": target, "runtime": after,
             "tenant_authentication": "actual login HTTP200; token omitted",
             "probe_id": probe_id, "create_http_status": status,
-            "create_reason": denial["reason"], "ledger_before": old, "ledger_after": new,
+            "create_reason": denial["reason"],
+            "create_response_sha256": response_sha["/api/v1/modeldev/executions"],
+            "ledger_before": old, "ledger_after": new,
             "scope": "Create denial, drained leases and no new acceptance/charge/publisher claims only",
             "stop_close_release": "NOT_RUN by this probe", "root_apply_authorized": False}
 

@@ -51,14 +51,14 @@ Blocked by: 09
 
 ## Result
 
-- Outcome: BLOCKED；19组件行PASS，AD01/02及LIVE01–11仍BLOCKED；没有真实A/B成功声明。
-- Base / final commits: 三仓与独立维护分支映射见implementation-report.md/deployment-inputs.json；固定API源d807/71b3和Gov正式pin未变。
-- Changed files / generated artifacts: 验收表/部署输入/八节报告、原身份与保留资产清单、B IAM与GPU政策准备、精确旧资格和更新范围收据。
-- Validation commands / exit codes / required gates: 只复用已完成必要组件/真实隔离PG/gate证据；未因文档更新重跑全量。旧维护完整gate实际FAIL保留。Live新服务启动、Ensure、训练、Stop、下载/隔离/轮换/共存故障测试NOT_RUN。
-- Acceptance IDs / actual values / evidence paths: A Gov2/Resource64c5c35a-f554-432c-b4bc-7b4f36f08420；B Gov40/code e2e-full-20261029/Resource207328fc-f08d-4dc4-b403-16ec86396ce2，原标准NS UID均已核。B现有role26具备原模型/训练API权限，尚未安装新environment manage/view权限；B无既有MD input，B合法model归属UNKNOWN，GPU_SHARED政策缺失，不借用A资产或直接扩权。见evidence/10/b-principal-preparation.json。
-- Deployment or cleanup effects / preserved assets: 新A/B账号、quota配置及Ensure尚未创建/执行；其他owner资产未改。没有用同名旧ModelDev Pod或旧A训练当新共享进程验收。
-- Remaining blockers / affected dependencies: 09原退休/精确清理/Res窗口和08实际材料/策略/挂载/服务切换，B合法输入/基模/必要测试政策，再跑全部LIVE01–11。当前网络间歇失败如实留证，不缩减目标。
-- Contract conflicts / evidence / minimal correction: 更新route1已明确批准；仅额外发布/维护路径改变，唯一个集群入口、完整身份核验、无新RPC/无v3兼容/原Reserve-fence-release和Inference边界保持。
+- Outcome: BLOCKED；19组件行PASS，AD01/02及LIVE01–11仍BLOCKED；新A/B真实训练/Stop/下载/隔离/轮换未完成。
+- Base / final commits: 三仓运行源d807/244780/67dcee及正式API pin不变；旧维护6c17/ca01/651/1464分别有独立固定来源与必要验证，见报告。
+- Changed files / generated artifacts: 验收表、部署输入、八节报告、原身份/保留资产清单及实际镜像发布/工具清理/维护503/原退休收据随进度回填。
+- Validation commands / exit codes / required gates: 复用固定源码必要组件、真实隔离PG和gate，无文档触发全量重跑。旧MD完整gate实际FAIL保留；Gov6c17/ca01完整gate PASS。指定集群新共享服务与全部A/B业务验收NOT_RUN。
+- Acceptance IDs / actual values / evidence paths: A Gov2/Resource64c5c35a-f554-432c-b4bc-7b4f36f08420、B Gov40/Resource207328fc-f08d-4dc4-b403-16ec86396ce2，原标准Namespace UID均核实。原3已CLOSED/cleanup APPLIED，原GPU ALREADY_APPLIED及账户零差；四原UNKNOWN正常Stop202/fenceACK已实证。全部四固定镜像已发布，新增构建工具已清理，均不替代LIVE06。
+- Deployment or cleanup effects / preserved assets: 旧API维护Gov已实际部署并验证503/drain；B新user50沿既有role26且实际登录200、专用plan10复制12模块/physical1并仅加shared49140、原plan2不变；尚未切换v4、Ensure A/B或新增A/B训练资产，标准及旧Namespace保留。完整其他owner UID/健康最终对比待历史清理后执行。
+- Remaining blockers / affected dependencies: 原四命令已native CLOSED/NoDispatch且旧worker精确scale0；7条历史资格/完整删除收敛、完整外部/DB清理、Res窗口、最终材料/策略/服务部署、B合法输入/基模/必要GPU政策，然后完成全部LIVE01–11。
+- Contract conflicts / evidence / minimal correction: route1及测试节点大镜像构建/撤销额外限额已获明确授权；唯一个集群入口、写前完整身份、固定权限方案、无新RPC/兼容、原Reserve-fence-release和Inference边界保持。
 
 ## Comments
 

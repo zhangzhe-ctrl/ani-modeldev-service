@@ -51,14 +51,14 @@ Blocked by: 04, 06
 
 ## Result
 
-- Outcome: BLOCKED；材料工具/四profile编译与两个附加镜像本地构建已完成，真实发布/安装/I-O未完成。
-- Base / final commits: 固定runtime/API源d807cbdbd5dd6664d61480acedc752e19cfca48a，tree141053367fa4be9a6fb9c764b2d7900b5282be20。689输入SHA与Fedora一致；没有用漂移的共享snapshot构建。
-- Changed files / generated artifacts: 同一四profile编译、发布journal、完整Struct读回、不可变bundle、平台config和挂载renderer；step/webhook Fedora本地镜像。完整范围见`evidence/08/update-entry-complete-inventory.md`。
-- Validation commands / exit codes / required gates: 6项工具真实编译/材料/恢复测试exit0，见evidence/08/tools.log；21native对象schema server dry-run通过但未安装。step/webhook固定源build exit0，缺配置真实启动exit1拒绝，见`evidence/08/build/build-receipt.json`。无真实registry push/pull/TLS/artifact结论。
-- Acceptance IDs / actual values / evidence paths: step36,725,738B（35.02MiB）、webhook67,703,675B（64.57MiB），共99.59MiB本地Size，非压缩传输量。CPU/GPU training未构建，固定官方base当前构建store不在缓存；不把历史base登记或固定FROM当新runtime镜像。现有registry10.10.1.66:30003/projectani-resource-factor10-20261022、业务connection/bucket、workspace class和公开CA候选已精确只读核验，见new-public-inputs-readonly.json；新客户端加载/I-O仍NOT_RUN。
-- Deployment or cleanup effects / preserved assets: 本地镜像未发布/部署；四个Pipeline/Version最终ID、sealed材料包、专用artifact身份/IAM、native/bootstrap、配置挂载未安装。没有每租户副本或新Namespace。
-- Remaining blockers / affected dependencies: 最终registry digest/大小/认证pull，training固定base与build，shared workspace容量选择，四定义实际发布、bucket-only内部artifact身份及真实TLS/I-O、最终最小RBAC/native行为、旧清理完成后的v4切换与A/B验收。
-- Contract conflicts / evidence / minimal correction: 指定入口只有主服务image-only目标。用户已在完整清单后批准route1，其他固定材料镜像Fedora+指定SSH维护；太慢须报告，重任务仍在Fedora且不打包传输。见update-entry-scope-approval-20261101.json。该批准未豁免任何原身份/退出/释放门禁。
+- Outcome: BLOCKED；四镜像已实际发布并按digest读回，新增构建工具已清理；最终四Pipeline/Version、sealed材料、策略安装和真实I/O未完成。
+- Base / final commits: 固定runtime/API源d807cbdbd5dd6664d61480acedc752e19cfca48a，tree141053367fa4be9a6fb9c764b2d7900b5282be20；689构建输入逐SHA一致。
+- Changed files / generated artifacts: 四profile编译/发布journal/完整Struct读回/不可变bundle/配置挂载工具已实现。CPU/GPU/step/webhook四镜像实际发布清单见evidence/08/image-publication/result.json。
+- Validation commands / exit codes / required gates: 必要6项工具测试exit0；21对象schema server dry-run通过但尚未持久安装。四镜像缺配置启动实际exit1；发布采用原Harbor CA验证TLS，manifest及Harbor digest读回一致；没有把它作为真实训练验收。
+- Acceptance IDs / actual values / evidence paths: CPU9369651248B/digest31227c3a…，GPU9369651247B/digestaa1f6ae2…，step16911953B/digestedc52340…，webhook27604938B/digest98715f78…；完整引用与原任务未丢失证明见上述result/node receipts。两个大镜像复用原29层完整cache，实际并行构建6.110/6.437秒，无附加CPU/内存/并发限额。
+- Deployment or cleanup effects / preserved assets: 新增BuildKit/私有state/socket/auth/临时unit与333493615B节点目录及262742886B本地中转已清理、SHA/absence核实，原BuildKit/containerd/cache/tasks保留。清单evidence/08/image-publication/added-tools-cleanup-ledger.json；活跃旧退休CLI暂留，任务收尾后删除。专用bucket已建且VersioningEnabled，source Secret UIDbc62d45a-d83c-4ca8-b5fa-ca07c6cadb47；共享内部artifact账号仅此bucket，其他三个业务bucket及admin API实际403，见artifact-storage-complete-account-result.json；正向launcher I/O仍NOT_RUN。
+- Remaining blockers / affected dependencies: 两training镜像原Resource PLATFORM登记、四定义实际发布/真实ID、sealed bundle、native/RBAC实际安装与行为、最终主服务切换及A/B真实训练/隔离/轮换。runtime control按合同只读平台定义，不授publisher写权限。
+- Contract conflicts / evidence / minimal correction: 用户已批准route1并进一步明确允许两个大镜像直接在指定测试节点构建、撤销额外构建限额；主服务仍走指定Workbench。新增工具完整记账并清理。所有原身份/退出/释放门禁保持。
 
 ## Comments
 

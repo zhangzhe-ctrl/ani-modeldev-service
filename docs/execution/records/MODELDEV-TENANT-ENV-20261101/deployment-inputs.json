@@ -12,8 +12,8 @@
     "kubernetes_version": "v1.35.8",
     "confirmed_at": "2026-10-31T17:44:33.093019+00:00",
     "evidence": "evidence/baseline.json",
-    "remote_build_os": "Fedora via ssh fedora",
-    "latest_readonly_identity_evidence": "evidence/09/open-state-only-recheck-20261031T205637Z.json"
+    "remote_build_os": "Fedora; user authorized CPU/GPU training image build directly on specified test node without additional resource limits",
+    "latest_readonly_identity_evidence": "evidence/09/gov-maintenance-probe-refresh-20261101T023318Z.json"
   },
   "source_baseline": {
     "modeldev": "21bf4bd6540d462a61c91b629f26250899583223",
@@ -74,10 +74,15 @@
     "catalogue_sha256": null,
     "managed_registry_authority": "10.10.1.66:30003",
     "platform_project": "ani-resource-factor10-20261022",
-    "authenticated_fixed_images": [],
+    "authenticated_fixed_images": [
+      "10.10.1.66:30003/ani-resource-factor10-20261022/ani-modeldev-training-cpu@sha256:31227c3af9d3d0afe5cffddf34d6a3e0a922e29ea7e153892c8b0a0d1ed7f1d5",
+      "10.10.1.66:30003/ani-resource-factor10-20261022/ani-modeldev-training-gpu@sha256:aa1f6ae2159eead52d0d2343d53d785021aa4572dc9978e1af221eb30519eb6e",
+      "10.10.1.66:30003/ani-resource-factor10-20261022/ani-modeldev-step@sha256:edc52340b24ef678608c3119c7eb05a95cd9f60505324f59f83dd47ef1f6a600",
+      "10.10.1.66:30003/ani-resource-factor10-20261022/ani-modeldev-webhook@sha256:98715f788bceeae293c64cc10617190b6cc28c0468824f24e59dac02f3795ec4"
+    ],
     "anonymous_support_images": [],
     "workspace_storage_class": "ani-cephfs",
-    "workspace_size": null,
+    "workspace_size": 68719476736,
     "target_platform": null,
     "step_callback_endpoint": null,
     "modeldev_public_ca_file": "evidence/08-public-kfp-ca.crt",
@@ -123,14 +128,18 @@
     "workspace_size_candidates": {
       "builtin.mlp": 4294967296,
       "builtin.sft_lora": 68719476736,
-      "final_shared_size": "UNSELECTED"
+      "final_shared_size": 68719476736
     },
     "step_callback_candidate": {
       "target": "ani-modeldev.ani-system.svc:9001",
       "sni": "ani-modeldev.ani-system.svc",
       "actual_rpc": "NOT_RUN",
       "evidence": "evidence/08/new-public-inputs-readonly.json"
-    }
+    },
+    "workspace_access_mode": "ReadWriteMany",
+    "workspace_size_selection": "Deployment choice: common64Gi/RWX covers both original4Gi MLP and64Gi SFT requirements on existing ani-cephfs; final live PVC/I-O NOT_RUN",
+    "fixed_image_publication_evidence": "evidence/08/image-publication/result.json",
+    "anonymous_support_evidence": "evidence/08/platform-materials-final/anonymous-support-pull.json"
   },
   "storage": {
     "input": {
@@ -156,18 +165,24 @@
       "new_scope_acceptance": "NOT_RUN"
     },
     "kfp_artifacts": {
-      "endpoint": null,
-      "region": null,
-      "dedicated_bucket": null,
+      "endpoint": "https://ani-rustfs-svc.ani-platform.svc.cluster.local:9000",
+      "region": "us-east-1",
+      "dedicated_bucket": "ani-md-tenantenv-kfp-20261101",
       "default_root": "s3://<dedicated_bucket>/artifacts/<tenant_uuid>",
       "run_root": "s3://<dedicated_bucket>/artifacts/<tenant_uuid>/<execution_uuid>",
       "secret_name": "modeldev-kfp-artifacts",
       "access_key_file": null,
       "secret_key_file": null,
-      "bucket_only_iam_evidence": null,
+      "bucket_only_iam_evidence": "evidence/08/artifact-storage-complete-account-result.json",
       "tls_loading_evidence": null,
       "real_io_evidence": null,
-      "access_isolation_evidence": null
+      "access_isolation_evidence": null,
+      "source_secret": {
+        "namespace": "ani-system",
+        "name": "modeldev-tenantenv-artifact-source-20261101",
+        "uid": "bc62d45a-d83c-4ca8-b5fa-ca07c6cadb47"
+      },
+      "versioning": "Enabled"
     },
     "public_endpoint": {
       "endpoint": "https://ani-rustfs-svc.ani-platform.svc.cluster.local:9000",
@@ -233,17 +248,16 @@
       "live_apply": "NOT_RUN"
     },
     "legacy_retirement_tool": {
-      "commit": "ae42fb08f5a091ad8bdaac9418dc7925bf993532",
+      "commit": "651f5ea14f2fb79e8980102de1b6411eac999549",
       "final_diagnostic_test_evidence": "evidence/09/legacy-retirement/final-route-source-identity.json",
       "original_required_gate": "FAIL retained, old baseline conflicts",
-      "live_apply": "NOT_RUN",
+      "live_apply": "PASS exact3 CLOSED/step+compute APPLIED/original GPU ALREADY_APPLIED/account zero delta",
       "live_readonly_plan": "evidence/09/legacy-retirement/final-route-live-readonly-plan.json",
-      "readonly_qualification": {
-        "eca4d47b-5911-4f0f-8b45-89c1be775925": "READY for original qualification only; actual retirement cleanup/ACK NOT_RUN",
-        "1cce950b-d6e9-453e-aa11-fffd8846224b": "BLOCKED CURRENT_ORIGINAL_TRAINING_EXIT",
-        "4a1a92f7-4d94-439d-a8d7-1833f38c7dbc": "BLOCKED CURRENT_ORIGINAL_TRAINING_EXIT"
-      }
-    }
+      "completion_evidence": "evidence/09/legacy-retirement/original-stop-three-retirements-complete.json"
+    },
+    "original_four_native_closed_evidence": "evidence/09/gov-original-command-retirement/original-four-post-delivery-native-20261101T024109Z.json",
+    "original_four_status": "Actual original dispatchACKED and nativeclosed_at/USER_STOP/NoDispatch true; no pipeline_dispatch/RunAuthority/runtime resources; no forged cleanupAPPLIED",
+    "old_worker_stopped_evidence": "evidence/09/old-worker-stopped-proof-20261101T024313Z.json"
   },
   "delivered_builds": {
     "modeldev": {
@@ -294,7 +308,27 @@
       "push": "NOT_RUN",
       "rollout": "NOT_RUN",
       "evidence": "evidence/08/build/build-receipt.json",
-      "cpu_gpu_status": "BLOCKED_CACHED_OFFICIAL_BASE_MISSING"
+      "cpu_gpu_status": "PUBLISHED_MANIFEST_SHA_READBACK_PASS_LIVE_TRAINING_NOT_RUN"
+    },
+    "gov_maintenance": {
+      "commit": "6c17f0103994620f49c8f6f10c09f414169c6b7d",
+      "image_digest": "sha256:2f66dc480e1a45a1a6c2cfc6df2275cd8496eb29a5d9ad5066f2776f02528d05",
+      "pod_uid": "7e3c6bd5-4d76-4b44-92bf-6e3b89d48a6f",
+      "deployed_image_id": "10.10.1.66:30003/ani-gpu-platform/ani-governance@sha256:2f66dc480e1a45a1a6c2cfc6df2275cd8496eb29a5d9ad5066f2776f02528d05",
+      "evidence": "evidence/09/workbench-maintenance-6c17-terminal.json",
+      "maintenance503": "evidence/09/gov-maintenance-probe-076fbe97-25d6-493a-bf63-adf55a980129.json"
+    },
+    "published_training_images": {
+      "cpu": {
+        "image": "10.10.1.66:30003/ani-resource-factor10-20261022/ani-modeldev-training-cpu@sha256:31227c3af9d3d0afe5cffddf34d6a3e0a922e29ea7e153892c8b0a0d1ed7f1d5",
+        "registry_size_bytes": 9369651248,
+        "evidence": "evidence/08/image-publication/node-registry-readback-and-stopped-units.json"
+      },
+      "gpu": {
+        "image": "10.10.1.66:30003/ani-resource-factor10-20261022/ani-modeldev-training-gpu@sha256:aa1f6ae2159eead52d0d2343d53d785021aa4572dc9978e1af221eb30519eb6e",
+        "registry_size_bytes": 9369651247,
+        "evidence": "evidence/08/image-publication/node-registry-readback-and-stopped-units.json"
+      }
     }
   },
   "secrets_must_not_be_included": true,
@@ -421,16 +455,16 @@
     {
       "path": "platform_materials.managed_registry_authority",
       "owner_task": "08",
-      "status": "CONFIG_SOURCE_CONFIRMED_LIVE_NOT_RUN",
+      "status": "PUBLISHED_TLS_DIGEST_VERIFIED",
       "required_evidence": "Exact existing-source configuration observed; new-system actual TLS, authorization and I/O remain required",
-      "evidence": "evidence/08/new-public-inputs-readonly.json"
+      "evidence": "evidence/08/image-publication/result.json"
     },
     {
       "path": "platform_materials.platform_project",
       "owner_task": "08",
-      "status": "CONFIG_SOURCE_CONFIRMED_LIVE_NOT_RUN",
+      "status": "PUBLISHED_TLS_DIGEST_VERIFIED",
       "required_evidence": "Exact existing-source configuration observed; new-system actual TLS, authorization and I/O remain required",
-      "evidence": "evidence/08/new-public-inputs-readonly.json"
+      "evidence": "evidence/08/image-publication/result.json"
     },
     {
       "path": "platform_materials.workspace_storage_class",
@@ -442,8 +476,9 @@
     {
       "path": "platform_materials.workspace_size",
       "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "DEPLOYMENT_SELECTED_LIVE_PVC_NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values",
+      "evidence": "evidence/08/new-public-inputs-readonly.json"
     },
     {
       "path": "platform_materials.target_platform",
@@ -624,56 +659,65 @@
     {
       "path": "storage.kfp_artifacts.endpoint",
       "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "PROVISIONED_BUCKET_AND_SCOPED_IAM_LAUNCHER_NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values",
+      "evidence": "evidence/08/artifact-storage-complete-account-result.json"
     },
     {
       "path": "storage.kfp_artifacts.region",
       "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "PROVISIONED_BUCKET_AND_SCOPED_IAM_LAUNCHER_NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values",
+      "evidence": "evidence/08/artifact-storage-complete-account-result.json"
     },
     {
       "path": "storage.kfp_artifacts.dedicated_bucket",
       "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "PROVISIONED_BUCKET_AND_SCOPED_IAM_LAUNCHER_NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values",
+      "evidence": "evidence/08/artifact-storage-complete-account-result.json"
     },
     {
       "path": "storage.kfp_artifacts.access_key_file",
       "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "PROVISIONED_BUCKET_AND_SCOPED_IAM_LAUNCHER_NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values",
+      "evidence": "evidence/08/artifact-storage-complete-account-result.json"
     },
     {
       "path": "storage.kfp_artifacts.secret_key_file",
       "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "PROVISIONED_BUCKET_AND_SCOPED_IAM_LAUNCHER_NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values",
+      "evidence": "evidence/08/artifact-storage-complete-account-result.json"
     },
     {
       "path": "storage.kfp_artifacts.bucket_only_iam_evidence",
       "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "PROVISIONED_BUCKET_AND_SCOPED_IAM_LAUNCHER_NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values",
+      "evidence": "evidence/08/artifact-storage-complete-account-result.json"
     },
     {
       "path": "storage.kfp_artifacts.tls_loading_evidence",
       "owner_task": "10",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "PROVISIONED_BUCKET_AND_SCOPED_IAM_LAUNCHER_NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values",
+      "evidence": "evidence/08/artifact-storage-complete-account-result.json"
     },
     {
       "path": "storage.kfp_artifacts.real_io_evidence",
       "owner_task": "10",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "PROVISIONED_BUCKET_AND_SCOPED_IAM_LAUNCHER_NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values",
+      "evidence": "evidence/08/artifact-storage-complete-account-result.json"
     },
     {
       "path": "storage.kfp_artifacts.access_isolation_evidence",
       "owner_task": "10",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "PROVISIONED_BUCKET_AND_SCOPED_IAM_LAUNCHER_NOT_RUN",
+      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values",
+      "evidence": "evidence/08/artifact-storage-complete-account-result.json"
     },
     {
       "path": "namespace_samples[0].image_space_ready",
@@ -797,15 +841,70 @@
     "does_not_resolve_legacy_close_or_live_acceptance": true
   },
   "image_preparation": {
-    "status": "BLOCKED",
-    "evidence": "evidence/08-workbench-build-only-readonly-20261101.json",
+    "status": "FOUR_IMAGES_PUBLISHED_DIGEST_VERIFIED",
+    "evidence": "evidence/08/image-publication/result.json",
     "observed_interface": "online frontend seven-field POST /api/jobs; no observed safe build-only option",
-    "backend_evidence_boundary": "local matching-frontend source contract unconditionally deploys after push; live backend source hash not exposed",
+    "backend_evidence_boundary": "Historical Workbench image-only limit resolved by explicit user route1 and node-build authorization; final main-service switch still Workbench",
     "current_modeldev_recipe": "main service only; webhook/step/training not included",
     "job_posted": false,
-    "bypass_used": false
+    "bypass_used": false,
+    "published_four_images": {
+      "cpu": {
+        "image": "10.10.1.66:30003/ani-resource-factor10-20261022/ani-modeldev-training-cpu:tenantenv-d807cbdbd5dd-node-20261101-8f6ba4",
+        "immutable_image": "10.10.1.66:30003/ani-resource-factor10-20261022/ani-modeldev-training-cpu@sha256:31227c3af9d3d0afe5cffddf34d6a3e0a922e29ea7e153892c8b0a0d1ed7f1d5",
+        "digest": "sha256:31227c3af9d3d0afe5cffddf34d6a3e0a922e29ea7e153892c8b0a0d1ed7f1d5",
+        "layer_count": 36,
+        "compressed_layer_bytes": 9369609309,
+        "artifact_size_bytes": 9369651248,
+        "source_receipt": "node-receipt.json",
+        "missing_configuration_rejected": true
+      },
+      "gpu": {
+        "image": "10.10.1.66:30003/ani-resource-factor10-20261022/ani-modeldev-training-gpu:tenantenv-d807cbdbd5dd-node-20261101-8f6ba4",
+        "immutable_image": "10.10.1.66:30003/ani-resource-factor10-20261022/ani-modeldev-training-gpu@sha256:aa1f6ae2159eead52d0d2343d53d785021aa4572dc9978e1af221eb30519eb6e",
+        "digest": "sha256:aa1f6ae2159eead52d0d2343d53d785021aa4572dc9978e1af221eb30519eb6e",
+        "layer_count": 36,
+        "compressed_layer_bytes": 9369609309,
+        "artifact_size_bytes": 9369651247,
+        "source_receipt": "node-receipt.json",
+        "missing_configuration_rejected": true
+      },
+      "step": {
+        "image": "10.10.1.66:30003/ani-resource-factor10-20261022/ani-modeldev-step:tenantenv-d807cbdbd5dd-node-20261101-8f6ba4",
+        "immutable_image": "10.10.1.66:30003/ani-resource-factor10-20261022/ani-modeldev-step@sha256:edc52340b24ef678608c3119c7eb05a95cd9f60505324f59f83dd47ef1f6a600",
+        "digest": "sha256:edc52340b24ef678608c3119c7eb05a95cd9f60505324f59f83dd47ef1f6a600",
+        "layer_count": 1,
+        "compressed_layer_bytes": 16909525,
+        "artifact_size_bytes": 16911953,
+        "source_receipt": "node-small-receipt.json",
+        "missing_configuration_rejected": true
+      },
+      "webhook": {
+        "image": "10.10.1.66:30003/ani-resource-factor10-20261022/ani-modeldev-webhook:tenantenv-d807cbdbd5dd-node-20261101-8f6ba4",
+        "immutable_image": "10.10.1.66:30003/ani-resource-factor10-20261022/ani-modeldev-webhook@sha256:98715f788bceeae293c64cc10617190b6cc28c0468824f24e59dac02f3795ec4",
+        "digest": "sha256:98715f788bceeae293c64cc10617190b6cc28c0468824f24e59dac02f3795ec4",
+        "layer_count": 1,
+        "compressed_layer_bytes": 27602030,
+        "artifact_size_bytes": 27604938,
+        "source_receipt": "node-small-receipt.json",
+        "missing_configuration_rejected": true
+      }
+    },
+    "additional_build_tool_cleanup": "evidence/08/image-publication/added-tools-cleanup-ledger.json"
   },
-  "status_reason": "LEGACY_CLOSE_EVIDENCE_AND_ORIGINAL_QUALIFICATION",
+  "status_reason": "Original3CLOSED/cleanupAPPLIED/GPUackcomplete; original4 normalStop/fenceACK/dispatchACKED; fourimagespublished/buildtoolscleaned; full historical cleanup/Reswindow/material publication/nativeinstall/v4switch/A-B live incomplete",
   "update_entry_scope_inventory": "evidence/08/update-entry-complete-inventory.md",
-  "update_entry_scope_approval": "evidence/08/update-entry-scope-approval-20261101.json"
+  "update_entry_scope_approval": "evidence/08/update-entry-scope-approval-20261101.json",
+  "b_test_principal": {
+    "tenant_id": 40,
+    "resource_tenant_id": "207328fc-f08d-4dc4-b403-16ec86396ce2",
+    "user_id": 50,
+    "username": "md-tenantenv-20261101",
+    "role_id": 26,
+    "actual_login": "HTTP200",
+    "new_role_or_grant": false,
+    "evidence": "evidence/10/b-test-principal-create-result.json",
+    "private_plan_id": 10,
+    "private_plan_evidence": "evidence/10/b-gpu-private-plan-apply-result.json"
+  }
 }

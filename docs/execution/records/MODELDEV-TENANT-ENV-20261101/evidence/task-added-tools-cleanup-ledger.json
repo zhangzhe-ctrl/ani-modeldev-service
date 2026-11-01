@@ -1,0 +1,48 @@
+{
+  "schema": "ani.modeldev.task-tool-cleanup-ledger.v1",
+  "updated_at": "2026-11-01T02:46:07.134742+00:00",
+  "status": "ACTIVE_GOAL_REQUIRED_AUXILIARY_TOOLS_RETAINED_UNTIL_USE_COMPLETES",
+  "user_requirement": "Record each added tool and remove at task completion; no additional build CPU/memory/concurrency caps.",
+  "completed_ledgers": [
+    "08/image-publication/added-tools-cleanup-ledger.json",
+    "08/platform-materials-final/cleanup-ledger.json",
+    "09/legacy-data-cleanup/final-training-platform-images.json"
+  ],
+  "retained_required": [
+    {
+      "host": "node1",
+      "path": "/home/kubercloud/tenantenv-20261101/gov-original-command-retirement-ca01cabf/modeldev-original-command-retirement",
+      "sha256": "bbf33c31d36046f298bce3f5d95c90e1302362e99c1034ab0173da53297aa4e1",
+      "purpose": "Original four delivery completed; retain until accepted original envelopes and final DB manifest captured; then delete exact tool and private config."
+    },
+    {
+      "host": "node1",
+      "path": "/tmp/modeldev-legacy-retirement-101a2fd",
+      "sha256": "4e8d7f7177a7efb521fb27ac9b59b2fe752f8e9cd75d0295dfec0e50af2377a4",
+      "purpose": "Original three retirement completed; retain private journal for cleanup qualification, delete binary/private config once exact history cleanup finishes."
+    },
+    {
+      "host": "fedora",
+      "path": "/home/chabking/tenantenv-20261101/modeldev-materials-d807-20261101/modeldev-execution-materials",
+      "sha256": "e4fb94044a470de18758e883cda00ef9c056645788508ed50208eddeea954097",
+      "purpose": "Final canonical material render needs real published IDs; remove after seal verified."
+    },
+    {
+      "host": "local",
+      "path": "/home/chabking/workspace/.evidence/modeldev-node-control-20261101-v2/node.sock",
+      "purpose": "Task-owned stable SSH ControlMaster, parent closes only after all node work completes."
+    }
+  ],
+  "new_system_packages_installed": false,
+  "retained_deliverables": [
+    "Four immutable platform registry images",
+    "Canonical material source/evidence",
+    "Dedicated internal-artifact bucket/IAM and source Secret",
+    "B test account50/private plan10 and later authorized business assets"
+  ],
+  "cleanup_rules": [
+    "Verify exact task ownership, SHA/UID and absence after removal.",
+    "Preserve original BuildKit/tools/containerd cache/tasks and all other-owner data.",
+    "Do not label whole task tool cleanup PASS before all active auxiliary tools/temporary jobs and private credentials are removed."
+  ]
+}

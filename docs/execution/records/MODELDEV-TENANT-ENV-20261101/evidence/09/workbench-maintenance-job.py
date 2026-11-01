@@ -43,6 +43,32 @@ def now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
+def verified_required_check(commit):
+    """Reuse the actual Fedora full gate only for its exact committed inputs."""
+    proof = Path(__file__).resolve().parent.parent / "gov-maintenance-codec-pin" / "delivery.json"
+    raw = proof.read_bytes()
+    value = json.loads(raw)
+    check = value["complete_make_check"]
+    expected_files = {"go.mod", "go.sum", "app/admin/service/internal/data/modeldev_maintenance_original_codec_test.go"}
+    if (value.get("schema") != "ani.gov.maintenance.original-v3-pin.delivery.v1"
+            or value.get("commit") != commit or value.get("branch") != BRANCH
+            or value.get("push", {}).get("exit_code") != 0
+            or check.get("exit_code") != 0 or check.get("includes_audit") is not True
+            or set(value.get("source_hashes", {})) != expected_files):
+        raise Refusal("complete required-check receipt does not match selected commit")
+    log = proof.parent / "make-check.log"
+    if hashlib.sha256(log.read_bytes()).hexdigest() != check["log_sha256"]:
+        raise Refusal("required-check raw log SHA mismatch")
+    repo = "/home/chabking/workspace/.worktrees/governance-modeldev-create-maintenance"
+    for path, digest in value["source_hashes"].items():
+        blob = subprocess.check_output(["git", "-C", repo, "show", commit + ":" + path], timeout=10)
+        if hashlib.sha256(blob).hexdigest() != digest:
+            raise Refusal("committed input differs from tested input")
+    return {"commit": commit, "exit_code": 0, "includes_audit": True,
+            "delivery_sha256": hashlib.sha256(raw).hexdigest(),
+            "log_sha256": check["log_sha256"], "execution_host": "ssh fedora"}
+
+
 def scalar_fields(value, keys):
     return {k: value[k] for k in keys if k in value and
             (value[k] is None or type(value[k]) in (str, int, float, bool))}
@@ -200,12 +226,16 @@ def remote(args):
 
     posted = False
     selection = {"project": "governance", "branch": BRANCH, "commit": args.get("commit"),
-                 "environment": "ani-kcn-full", "harbor": "intranet", "run_verify": True,
+                 "environment": "ani-kcn-full", "harbor": "intranet", "run_verify": not bool(args.get("verified_check")),
                  "request_id": args.get("request_id")}
     try:
         checked = {}
         if args["command"] == "submit":
             checked["identity"] = identity()
+            if args.get("verified_check"):
+                if args["verified_check"].get("commit") != selection["commit"]:
+                    raise Refusal("required-check reuse commit mismatch")
+                checked["required_check_reused"] = args["verified_check"]
             deployment = kget("-n", "ani-system", "get", "deployment", "ani-governance")
             if deployment["metadata"]["uid"] != args["expected_deployment_uid"]:
                 raise Refusal("Gov Deployment UID mismatch")
@@ -217,6 +247,8 @@ def remote(args):
         session = http("/api/me")
         if not isinstance(session.get("csrf"), str) or not session["csrf"]:
             raise Refusal("Workbench session unavailable")
+        if args.get("expected_actor") and session.get("username") != args["expected_actor"]:
+            raise Refusal("Workbench recovery actor mismatch")
         jobs = http("/api/jobs")
         if args["command"] == "query":
             matches = [j for j in jobs if j.get("id") == args.get("job_id")] if args.get("job_id") else [j for j in jobs if j.get("request_id") == args["request_id"]]
@@ -257,7 +289,7 @@ def remote(args):
         job = http("/api/jobs", body=selection, csrf=session["csrf"])
         if (job.get("project") != "governance" or job.get("source_commit") != selection["commit"] or
             job.get("branch") != BRANCH or job.get("request_id") != selection["request_id"] or
-            job.get("run_verify") is not True or not re.fullmatch(r"[0-9a-f]{32}", job.get("id", "")) or
+            job.get("run_verify") is not selection["run_verify"] or not re.fullmatch(r"[0-9a-f]{32}", job.get("id", "")) or
             job.get("selection") != {k: v for k, v in selection.items() if k != "request_id"}):
             raise Refusal("unexpected POST response")
         return {"status": "SUBMITTED", "selection": selection, "preflight": checked, "job": public_job(job)}
@@ -279,6 +311,7 @@ def main():
     submit.add_argument("--commit", required=True)
     submit.add_argument("--request-id", required=True)
     submit.add_argument("--expected-deployment-uid", required=True)
+    submit.add_argument("--reuse-verified-check", action="store_true", help="reuse exact-commit Fedora make check including audit")
     query = subs.add_parser("query")
     query.add_argument("--diagnostic", action="store_true", help="allowlisted package progress only")
     select = query.add_mutually_exclusive_group(required=True)
@@ -289,6 +322,8 @@ def main():
                            ("job_id", r"[0-9a-f]{32}"), ("expected_deployment_uid", r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")):
         if args.get(field) is not None and not re.fullmatch(pattern, args[field]):
             parser.error("invalid " + field)
+    if args.pop("reuse_verified_check", False):
+        args["verified_check"] = verified_required_check(args["commit"])
     receipt = None
     reserved = {"status": "POST_OUTCOME_UNKNOWN", "recorded_at_utc": now(), "selection": args,
                 "instruction": "Reserved before SSH. Never resubmit this request ID; query it if interrupted."}
@@ -302,7 +337,10 @@ def main():
             parser.error("request ID already reserved locally; query instead")
     command = "python3 - --remote " + shlex.quote(json.dumps(args))
     try:
-        result = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", SSH, command],
+        ssh_args = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
+        if os.environ.get("MODELDEV_TENANTENV_SSH_CONTROL_PATH"):
+            ssh_args += ["-S", os.environ["MODELDEV_TENANTENV_SSH_CONTROL_PATH"]]
+        result = subprocess.run(ssh_args + [SSH, command],
                                 input=Path(__file__).read_text(), capture_output=True, text=True, timeout=240)
         if result.returncode:
             raise Refusal("SSH process failed; stderr omitted")
