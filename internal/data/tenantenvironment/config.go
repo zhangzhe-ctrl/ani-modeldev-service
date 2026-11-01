@@ -13,6 +13,7 @@ import (
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01"
 	projection "github.com/zhangzhe-ctrl/ani-modeldev-service/contract/tenantenvironment"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/dynamic"
 )
 
@@ -56,6 +57,7 @@ type Config struct {
 	Profiles                              []projection.Profile         `json:"profiles"`
 	ControllerPrincipals                  []string                     `json:"controller_principals"`
 	KFPAPIServiceAccount                  Subject                      `json:"kfp_api_service_account"`
+	WebhookServiceAccount                 Subject                      `json:"webhook_service_account"`
 	Bootstrap                             []BootstrapObject            `json:"bootstrap"`
 	AnonymousImages                       []AnonymousImage             `json:"anonymous_images"`
 	IRSources                             []IRSource                   `json:"ir_sources"`
@@ -182,6 +184,9 @@ func (c Config) validate() error {
 		seenIR[source.ProfileID] = true
 	}
 	if c.KFPAPIServiceAccount.Kind != "ServiceAccount" || c.KFPAPIServiceAccount.Name == "" || c.KFPAPIServiceAccount.Namespace == "" {
+		return biz.ErrTenantEnvironmentInvalid
+	}
+	if c.WebhookServiceAccount.Kind != "ServiceAccount" || c.WebhookServiceAccount.Namespace != "ani-system" || len(validation.IsDNS1123Subdomain(c.WebhookServiceAccount.Name)) != 0 {
 		return biz.ErrTenantEnvironmentInvalid
 	}
 	return nil
