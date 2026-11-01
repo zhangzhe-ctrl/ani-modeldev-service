@@ -54,46 +54,10 @@ type EnvironmentExperimentIntent struct {
 	BodyDigest  string `json:"body_digest"`
 	Sent        bool   `json:"sent"`
 }
-type EnvironmentAuthorizationProof struct {
-	OperationID             string                           `json:"operation_id"`
-	NamespaceUID            string                           `json:"namespace_uid"`
-	PolicyDigest            string                           `json:"policy_digest"`
-	AuthModesDigest         string                           `json:"auth_modes_digest"`
-	TrustedDigest           string                           `json:"trusted_digest"`
-	StartedAt               time.Time                        `json:"started_at"`
-	CompletedAt             time.Time                        `json:"completed_at"`
-	ExpiresAt               time.Time                        `json:"expires_at"`
-	RoleBindingPages        int                              `json:"role_binding_pages"`
-	ClusterRoleBindingPages int                              `json:"cluster_role_binding_pages"`
-	Objects                 []EnvironmentAuthorizationObject `json:"objects"`
-	RuleCount               int                              `json:"rule_count"`
-	FailureReason           string                           `json:"failure_reason,omitempty"`
-	DangerousEdges          []EnvironmentAuthorizationEdge   `json:"dangerous_edges,omitempty"`
-}
-type EnvironmentAuthorizationEdge struct {
-	BindingKind      string   `json:"binding_kind"`
-	BindingName      string   `json:"binding_name"`
-	RoleKind         string   `json:"role_kind"`
-	RoleName         string   `json:"role_name"`
-	SubjectKind      string   `json:"subject_kind"`
-	SubjectName      string   `json:"subject_name"`
-	SubjectNamespace string   `json:"subject_namespace,omitempty"`
-	Resources        []string `json:"resources"`
-	Verbs            []string `json:"verbs"`
-}
-type EnvironmentAuthorizationObject struct {
-	Kind            string `json:"kind"`
-	Namespace       string `json:"namespace,omitempty"`
-	Name            string `json:"name"`
-	UID             string `json:"uid"`
-	ResourceVersion string `json:"resource_version"`
-	Digest          string `json:"digest"`
-}
 type EnvironmentReceipts struct {
-	Objects       []EnvironmentObjectReceipt     `json:"objects"`
-	Materials     []EnvironmentMaterialReceipt   `json:"materials"`
-	ImageSecret   string                         `json:"image_secret,omitempty"`
-	Authorization *EnvironmentAuthorizationProof `json:"authorization,omitempty"`
+	Objects     []EnvironmentObjectReceipt   `json:"objects"`
+	Materials   []EnvironmentMaterialReceipt `json:"materials"`
+	ImageSecret string                       `json:"image_secret,omitempty"`
 }
 type EnvironmentMaterialReceipt struct {
 	Kind       string    `json:"kind"`

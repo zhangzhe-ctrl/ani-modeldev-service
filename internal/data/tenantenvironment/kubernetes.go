@@ -30,12 +30,8 @@ func resource(kind string) schema.GroupVersionResource {
 		return schema.GroupVersionResource{Version: "v1", Resource: "secrets"}
 	case "RoleBinding":
 		return schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "rolebindings"}
-	case "Role":
-		return schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "roles"}
 	case "ClusterRole":
 		return schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterroles"}
-	case "ClusterRoleBinding":
-		return schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterrolebindings"}
 	case "ValidatingAdmissionPolicy":
 		return schema.GroupVersionResource{Group: "admissionregistration.k8s.io", Version: "v1", Resource: "validatingadmissionpolicies"}
 	case "ValidatingAdmissionPolicyBinding":
@@ -49,6 +45,25 @@ func (p *Platform) get(ctx context.Context, gvr schema.GroupVersionResource, nam
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	return p.kube.Resource(gvr).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+}
+
+// These are actual responses to this service account's request. No other
+// principal's grants or the cluster's authorization graph are inferred here.
+func kubernetesFailure(err error) error {
+	if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) {
+		return biz.EnvironmentError("ENVIRONMENT_AUTHORIZATION_UNVERIFIED")
+	}
+	if apierrors.IsInvalid(err) {
+		return biz.EnvironmentError("INCOMPATIBLE_ADMISSION_POLICY")
+	}
+	return biz.EnvironmentError("ENVIRONMENT_DEPENDENCY_UNAVAILABLE")
+}
+
+func originalObjectFailure(err error) error {
+	if apierrors.IsNotFound(err) {
+		return biz.EnvironmentConflict("ENVIRONMENT_OBJECT_CONFLICT")
+	}
+	return kubernetesFailure(err)
 }
 func (p *Platform) VerifyNamespace(ctx context.Context, row *biz.TenantExecutionEnvironment) error {
 	name, err := biz.TenantNamespace(row.TenantID)
@@ -188,18 +203,19 @@ func (p *Platform) ensureObject(ctx context.Context, row *biz.TenantExecutionEnv
 		if r.UID != "" {
 			return biz.EnvironmentConflict("ENVIRONMENT_OBJECT_CONFLICT")
 		}
-		if secret {
-			if err = p.validProof(row); err != nil {
-				return err
-			}
-		}
 		call, cancel := context.WithTimeout(ctx, 5*time.Second)
-		_, _ = p.kube.Resource(resource(kind)).Namespace(row.NamespaceName).Create(call, expected, metav1.CreateOptions{})
+		_, createErr := p.kube.Resource(resource(kind)).Namespace(row.NamespaceName).Create(call, expected, metav1.CreateOptions{})
 		cancel()
+		// An authoritative native refusal cannot be recovered by observing a
+		// concurrent object's existence. Only an uncertain response retains the
+		// original readback recovery path below.
+		if apierrors.IsForbidden(createErr) || apierrors.IsUnauthorized(createErr) || apierrors.IsInvalid(createErr) {
+			return kubernetesFailure(createErr)
+		}
 		actual, err = p.get(ctx, resource(kind), row.NamespaceName, name)
 	}
 	if err != nil {
-		return biz.EnvironmentError("ENVIRONMENT_DEPENDENCY_UNAVAILABLE")
+		return kubernetesFailure(err)
 	}
 	if !sameOwner(actual, expected) || (r.UID != "" && r.UID != string(actual.GetUID())) {
 		return biz.EnvironmentConflict("ENVIRONMENT_OBJECT_CONFLICT")
@@ -213,9 +229,6 @@ func (p *Platform) ensureObject(ctx context.Context, row *biz.TenantExecutionEnv
 			return biz.EnvironmentConflict("ENVIRONMENT_OBJECT_CONFLICT")
 		}
 		if !reflect.DeepEqual(actual.Object["data"], expected.Object["data"]) {
-			if err := p.validProof(row); err != nil {
-				return err
-			}
 			if err := p.VerifyNamespace(ctx, row); err != nil {
 				return err
 			}
@@ -224,12 +237,15 @@ func (p *Platform) ensureObject(ctx context.Context, row *biz.TenantExecutionEnv
 			_, err = p.kube.Resource(resource(kind)).Namespace(row.NamespaceName).Patch(call, name, types.MergePatchType, patch, metav1.PatchOptions{})
 			cancel()
 			if err != nil {
-				return biz.EnvironmentError("ENVIRONMENT_DEPENDENCY_UNAVAILABLE")
+				return kubernetesFailure(err)
 			}
 			actual, err = p.get(ctx, resource(kind), row.NamespaceName, name)
 		}
 	}
-	if err != nil || !sameManaged(actual, expected) {
+	if err != nil {
+		return originalObjectFailure(err)
+	}
+	if !sameManaged(actual, expected) {
 		return biz.EnvironmentConflict("ENVIRONMENT_OBJECT_CONFLICT")
 	}
 	if err = p.VerifyNamespace(ctx, row); err != nil {
@@ -307,23 +323,6 @@ func (p *Platform) Resources(ctx context.Context, row *biz.TenantExecutionEnviro
 			return err
 		}
 	}
-	proof, err := p.authorization(ctx, row)
-	if err != nil {
-		proof.FailureReason = "ENVIRONMENT_AUTHORIZATION_UNVERIFIED"
-		if err.Error() == "KFP_ARTIFACT_ACCESS_NOT_ISOLATED" {
-			proof.FailureReason = err.Error()
-		}
-	}
-	row.Receipts.Authorization = &proof
-	if saved := checkpoint(); saved != nil {
-		return saved
-	}
-	if err != nil {
-		return err
-	}
-	if err = p.validProof(row); err != nil {
-		return err
-	}
 	ak, err := readFile(p.config.ArtifactAccessKeyFile, 16<<10)
 	if err != nil || len(ak) == 0 {
 		return biz.EnvironmentError("KFP_ARTIFACT_CONFIGURATION_NOT_READY")
@@ -338,9 +337,6 @@ func (p *Platform) Resources(ctx context.Context, row *biz.TenantExecutionEnviro
 	return p.ensureObject(ctx, row, o, checkpoint)
 }
 func (p *Platform) Seal(ctx context.Context, row *biz.TenantExecutionEnvironment) ([]byte, error) {
-	if err := p.validProof(row); err != nil {
-		return nil, err
-	}
 	c := p.config
 	input, err := cpup01.TenantStorageScope(c.InputScope, row.TenantID, "input")
 	if err != nil {
@@ -394,7 +390,7 @@ func (p *Platform) VerifyBinding(ctx context.Context, tenant string, b cpup01.En
 	}
 	projectionObject, err := p.get(ctx, resource("ConfigMap"), b.NamespaceName, "modeldev-execution-environment")
 	if err != nil {
-		return biz.EnvironmentError("ENVIRONMENT_DEPENDENCY_UNAVAILABLE")
+		return kubernetesFailure(err)
 	}
 	data, ok, _ := unstructured.NestedStringMap(projectionObject.Object, "data")
 	if !ok || len(data) != 2 || data["binding.sha256"] != b.BindingDigest || biz.EnvironmentDigest([]byte(data["binding.json"])) != b.BindingDigest {
@@ -410,7 +406,10 @@ func (p *Platform) VerifyBinding(ctx context.Context, tenant string, b cpup01.En
 	}
 	for _, identity := range []struct{ name, uid string }{{b.Identities.KFPStepServiceAccount, b.Identities.KFPStepServiceAccountUID}, {b.Identities.TrainerServiceAccount, b.Identities.TrainerServiceAccountUID}, {b.Identities.VerifierServiceAccount, b.Identities.VerifierServiceAccountUID}} {
 		o, e := p.get(ctx, resource("ServiceAccount"), b.NamespaceName, identity.name)
-		if e != nil || string(o.GetUID()) != identity.uid || !sameOwner(o, object(&row, "ServiceAccount", identity.name, nil)) {
+		if e != nil {
+			return originalObjectFailure(e)
+		}
+		if string(o.GetUID()) != identity.uid || !sameOwner(o, object(&row, "ServiceAccount", identity.name, nil)) {
 			return biz.EnvironmentConflict("ENVIRONMENT_OBJECT_CONFLICT")
 		}
 		got, _, _ := unstructured.NestedSlice(o.Object, "imagePullSecrets")
@@ -425,15 +424,9 @@ func (p *Platform) VerifyBinding(ctx context.Context, tenant string, b cpup01.En
 	return p.VerifyNamespace(ctx, &row)
 }
 func (p *Platform) Publish(ctx context.Context, row *biz.TenantExecutionEnvironment, checkpoint func() error) error {
-	if err := p.validProof(row); err != nil {
-		return err
-	}
 	return p.ensureObject(ctx, row, object(row, "ConfigMap", "modeldev-execution-environment", map[string]any{"immutable": true, "data": map[string]any{"binding.json": string(row.BindingCanonical), "binding.sha256": row.BindingDigest}}), checkpoint)
 }
 func (p *Platform) VerifyPublication(ctx context.Context, row *biz.TenantExecutionEnvironment) error {
-	if err := p.validProof(row); err != nil {
-		return err
-	}
 	b, err := projection.Decode(row.BindingCanonical)
 	if err != nil {
 		return err
@@ -443,7 +436,10 @@ func (p *Platform) VerifyPublication(ctx context.Context, row *biz.TenantExecuti
 	}
 	o, err := p.get(ctx, resource("ConfigMap"), row.NamespaceName, "modeldev-execution-environment")
 	r := receipt(row, "ConfigMap", "modeldev-execution-environment")
-	if err != nil || r == nil || r.UID != string(o.GetUID()) || !sameManaged(o, object(row, "ConfigMap", "modeldev-execution-environment", map[string]any{"immutable": true, "data": map[string]any{"binding.json": string(row.BindingCanonical), "binding.sha256": row.BindingDigest}})) {
+	if err != nil {
+		return originalObjectFailure(err)
+	}
+	if r == nil || r.UID != string(o.GetUID()) || !sameManaged(o, object(row, "ConfigMap", "modeldev-execution-environment", map[string]any{"immutable": true, "data": map[string]any{"binding.json": string(row.BindingCanonical), "binding.sha256": row.BindingDigest}})) {
 		return biz.EnvironmentConflict("ENVIRONMENT_OBJECT_CONFLICT")
 	}
 	return p.verifyBootstrap(ctx)

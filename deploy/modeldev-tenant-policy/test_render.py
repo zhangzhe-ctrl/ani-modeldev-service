@@ -52,6 +52,21 @@ class NativeTemplates(unittest.TestCase):
             with self.assertRaises(ValueError):
                 render.render(value)
 
+    def test_native_rbac_needs_no_global_authorization_inventory(self):
+        rows=render.render(config())["items"]
+        self.assertFalse(any(o["metadata"]["name"].startswith("modeldev-rbac-inventory-global") for o in rows))
+        roles={o["metadata"]["name"]:o for o in rows if o["kind"]=="ClusterRole"}
+        runtime=roles["modeldev-runtime-v1"]["rules"]
+        self.assertFalse(any(set(r["resources"]) & {"roles","rolebindings","clusterroles","clusterrolebindings"} for r in runtime))
+        control=roles["modeldev-environment-control-v1"]["rules"]
+        bootstrap=next(r for r in control if r["resources"]==["clusterroles"] and "get" in r["verbs"])
+        self.assertEqual(set(bootstrap["resourceNames"]),{n+"-v1" for n in render.RB})
+        for role in roles.values():
+            for rule in role["rules"]:
+                self.assertNotIn("clusterrolebindings",rule["resources"])
+                self.assertFalse("roles" in rule["resources"])
+                self.assertFalse("rolebindings" in rule["resources"] and "list" in rule["verbs"])
+
 
 if __name__=="__main__":
     unittest.main()

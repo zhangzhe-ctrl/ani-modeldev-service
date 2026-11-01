@@ -60,8 +60,6 @@ func resource(kind string) schema.GroupVersionResource {
 		return schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterroles"}
 	case "RoleBinding":
 		return schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "rolebindings"}
-	case "ClusterRoleBinding":
-		return schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterrolebindings"}
 	case "ValidatingAdmissionPolicy":
 		return schema.GroupVersionResource{Group: "admissionregistration.k8s.io", Version: "v1", Resource: "validatingadmissionpolicies"}
 	case "ValidatingAdmissionPolicyBinding":
@@ -94,7 +92,7 @@ func NewFixture(t testing.TB, a biz.Admission) *Fixture {
 	if artifact.Host == "" {
 		t.Fatal("fixture requires original artifact bucket")
 	}
-	c := adapter.Config{SchemaVersion: "ani.modeldev.tenant-environment-platform.v1", ClusterID: s.Environment.ClusterID, KFPConnectionRef: s.Environment.KFPConnectionRef, KFPTokenFile: token, ArtifactEndpoint: "https://s3.example.test", ArtifactRegion: "us-east-1", ArtifactBucket: artifact.Host, ArtifactAccessKeyFile: ak, ArtifactSecretKeyFile: sk, ArtifactBucketIsolationEvidenceSHA256: strings.Repeat("a", 64), KFPCAKey: "ca.crt", MetadataHost: "metadata.kubeflow.svc", MetadataPort: "8080", RegistryAuthority: "registry.example.test", PlatformProject: "platform", InputScope: cpup01.StorageScope{StorageConnectionID: s.Input.Object.StorageConnectionID, Bucket: s.Input.Object.Bucket, CredentialReference: "input-read"}, PublicationScope: s.PublicationScope, ModelScope: conformance.FinetuningSnapshotV1().Finetuning.BaseModel.Scope, Workspace: s.Workspace, Timing: cpup01.TimingConfiguration{ExecutionTimeoutDefaultSeconds: s.Timing.ExecutionTimeoutSeconds, ExecutionTimeoutMaxSeconds: s.Timing.ExecutionTimeoutMaxSeconds, StepTimeoutSeconds: s.Timing.StepTimeoutSeconds}, InputFilePath: "/inputs/data.csv", OutputDirectoryPath: "/outputs", TargetPlatform: cpup01.TrainingPlatform{OS: "linux", Architecture: "amd64"}, DispatchOwner: s.DispatchOwner, MaterialBundleDigest: strings.Repeat("b", 64), ControllerPrincipals: []string{"system:serviceaccount:kubeflow:argo"}, KFPAPIServiceAccount: adapter.Subject{Kind: "ServiceAccount", Name: "ml-pipeline", Namespace: "kubeflow"}, AuthorizationModes: []string{"Node", "RBAC"}, AuthorizationModesEvidenceSHA256: strings.Repeat("c", 64), TrustedPrincipalsEvidenceSHA256: strings.Repeat("c", 64), TrustedPrincipals: []adapter.Subject{{Kind: "ServiceAccount", Name: "modeldev-control", Namespace: "ani-system"}, {Kind: "ServiceAccount", Name: "ani-modeldev-webhook", Namespace: "ani-system"}, {Kind: "ServiceAccount", Name: "ml-pipeline", Namespace: "kubeflow"}}, StepOwner: adapter.StepOwnerConfig{Target: "modeldev:443"}}
+	c := adapter.Config{SchemaVersion: "ani.modeldev.tenant-environment-platform.v1", ClusterID: s.Environment.ClusterID, KFPConnectionRef: s.Environment.KFPConnectionRef, KFPTokenFile: token, ArtifactEndpoint: "https://s3.example.test", ArtifactRegion: "us-east-1", ArtifactBucket: artifact.Host, ArtifactAccessKeyFile: ak, ArtifactSecretKeyFile: sk, ArtifactBucketIsolationEvidenceSHA256: strings.Repeat("a", 64), KFPCAKey: "ca.crt", MetadataHost: "metadata.kubeflow.svc", MetadataPort: "8080", RegistryAuthority: "registry.example.test", PlatformProject: "platform", InputScope: cpup01.StorageScope{StorageConnectionID: s.Input.Object.StorageConnectionID, Bucket: s.Input.Object.Bucket, CredentialReference: "input-read"}, PublicationScope: s.PublicationScope, ModelScope: conformance.FinetuningSnapshotV1().Finetuning.BaseModel.Scope, Workspace: s.Workspace, Timing: cpup01.TimingConfiguration{ExecutionTimeoutDefaultSeconds: s.Timing.ExecutionTimeoutSeconds, ExecutionTimeoutMaxSeconds: s.Timing.ExecutionTimeoutMaxSeconds, StepTimeoutSeconds: s.Timing.StepTimeoutSeconds}, InputFilePath: "/inputs/data.csv", OutputDirectoryPath: "/outputs", TargetPlatform: cpup01.TrainingPlatform{OS: "linux", Architecture: "amd64"}, DispatchOwner: s.DispatchOwner, MaterialBundleDigest: strings.Repeat("b", 64), ControllerPrincipals: []string{"system:serviceaccount:kubeflow:argo"}, KFPAPIServiceAccount: adapter.Subject{Kind: "ServiceAccount", Name: "ml-pipeline", Namespace: "kubeflow"}, StepOwner: adapter.StepOwnerConfig{Target: "modeldev:443"}}
 	if s.Finetuning != nil {
 		c.ModelScope = s.Finetuning.BaseModel.Scope
 	}
@@ -141,7 +139,7 @@ func NewFixture(t testing.TB, a biz.Admission) *Fixture {
 		}
 	}
 	add("MutatingWebhookConfiguration", "ani-modeldev-webhook", map[string]any{"webhooks": []any{}})
-	f.Kube = fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{resource("RoleBinding"): "RoleBindingList", resource("ClusterRoleBinding"): "ClusterRoleBindingList"}, objects...)
+	f.Kube = fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil, objects...)
 	f.Kube.PrependReactor("create", "*", func(action ktesting.Action) (bool, runtime.Object, error) {
 		o := action.(ktesting.CreateAction).GetObject().(*unstructured.Unstructured)
 		o.SetUID(types.UID(uuid.NewString()))

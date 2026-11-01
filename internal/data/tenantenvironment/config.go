@@ -56,10 +56,6 @@ type Config struct {
 	Profiles                              []projection.Profile         `json:"profiles"`
 	ControllerPrincipals                  []string                     `json:"controller_principals"`
 	KFPAPIServiceAccount                  Subject                      `json:"kfp_api_service_account"`
-	AuthorizationModes                    []string                     `json:"authorization_modes"`
-	AuthorizationModesEvidenceSHA256      string                       `json:"authorization_modes_evidence_sha256"`
-	TrustedPrincipals                     []Subject                    `json:"trusted_principals"`
-	TrustedPrincipalsEvidenceSHA256       string                       `json:"trusted_principals_evidence_sha256"`
 	Bootstrap                             []BootstrapObject            `json:"bootstrap"`
 	AnonymousImages                       []AnonymousImage             `json:"anonymous_images"`
 	IRSources                             []IRSource                   `json:"ir_sources"`
@@ -156,7 +152,7 @@ func (c Config) validate() error {
 	if c.SchemaVersion != "ani.modeldev.tenant-environment-platform.v1" || !biz.CanonicalEnvironmentUUID(c.ClusterID) || c.KFPConnectionRef == "" || !strings.HasPrefix(c.KFPEndpoint, "https://") || !strings.HasPrefix(c.ArtifactEndpoint, "https://") || c.KFPTokenFile == "" || c.KFPCAFile == "" || c.ArtifactAccessKeyFile == "" || c.ArtifactSecretKeyFile == "" || c.ArtifactBucket == "" || c.ArtifactRegion == "" || c.KFPCAKey == "" || c.KFPPublicCA == "" || c.MetadataHost == "" || c.MetadataPort == "" || c.RegistryAuthority == "" || cpup01.NormalizeRegistryAuthority(c.RegistryAuthority) != c.RegistryAuthority || c.PlatformProject == "" || strings.Contains(c.PlatformProject, "/") || !validDigest(c.MaterialBundleDigest) || len(c.Profiles) != 4 || len(c.ControllerPrincipals) == 0 {
 		return biz.ErrTenantEnvironmentInvalid
 	}
-	if !validDigest(c.ArtifactBucketIsolationEvidenceSHA256) || !validDigest(c.AuthorizationModesEvidenceSHA256) || !validDigest(c.TrustedPrincipalsEvidenceSHA256) || len(c.AuthorizationModes) != 2 || c.AuthorizationModes[0] != "Node" || c.AuthorizationModes[1] != "RBAC" || len(c.TrustedPrincipals) == 0 || len(c.Bootstrap) != 12 {
+	if !validDigest(c.ArtifactBucketIsolationEvidenceSHA256) || len(c.Bootstrap) != 12 {
 		return biz.EnvironmentError("ENVIRONMENT_AUTHORIZATION_UNVERIFIED")
 	}
 	if c.ExperimentUniquenessVerified && !validDigest(c.ExperimentUniquenessEvidenceSHA256) {
@@ -184,11 +180,6 @@ func (c Config) validate() error {
 			return biz.ErrTenantEnvironmentInvalid
 		}
 		seenIR[source.ProfileID] = true
-	}
-	for _, s := range c.TrustedPrincipals {
-		if _, e := subjectIdentity(s, ""); e != nil || s.Kind == "Group" && (s.Name == "system:authenticated" || s.Name == "system:serviceaccounts" || strings.HasPrefix(s.Name, "system:serviceaccounts:")) {
-			return biz.EnvironmentError("ENVIRONMENT_AUTHORIZATION_UNVERIFIED")
-		}
 	}
 	if c.KFPAPIServiceAccount.Kind != "ServiceAccount" || c.KFPAPIServiceAccount.Name == "" || c.KFPAPIServiceAccount.Namespace == "" {
 		return biz.ErrTenantEnvironmentInvalid

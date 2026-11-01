@@ -14,8 +14,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/testsupport/postgres"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ktesting "k8s.io/client-go/testing"
 )
@@ -202,5 +204,41 @@ func TestEnvironmentPostgresVerticalEnsureSealPublishAndBusyRead(t *testing.T) {
 	again, e := usecase.Ensure(ctx, testTenant, "governance:user:44", uuid.NewString())
 	if e != nil || again.State != biz.EnvironmentReady || again.ID != first.ID || again.BindingDigest != first.BindingDigest || posts != 1 {
 		t.Fatalf("explicit retry rebound environment: %v %s/%s", e, again.State, again.ReasonCode)
+	}
+}
+
+func TestEnvironmentPostgresNativeDenialKeepsBlockedWithoutExperiment(t *testing.T) {
+	pool := postgres.Prepare(t)()
+	repository := NewRepository(pool)
+	platform, _, kube := fixture(t)
+	kfpRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		kfpRequests++
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	platform.kfp = &experimentClient{endpoint: server.URL, token: PlatformTokenSource{File: platform.config.KFPTokenFile}, http: server.Client()}
+	kube.PrependReactor("create", "rolebindings", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewForbidden(schema.GroupResource{Group: "rbac.authorization.k8s.io", Resource: "rolebindings"}, "modeldev-runtime", nil)
+	})
+	usecase, err := biz.NewTenantEnvironment(repository, platform, testCluster, platform.config.KFPConnectionRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := usecase.Ensure(context.Background(), testTenant, "governance:user:42", uuid.NewString())
+	if err != nil || row.State != biz.EnvironmentBlocked || row.Phase != biz.EnvironmentResources || row.ReasonCode != "ENVIRONMENT_AUTHORIZATION_UNVERIFIED" {
+		t.Fatalf("native refusal did not persist finite BLOCKED: state=%s phase=%s reason=%s error=%v", row.State, row.Phase, row.ReasonCode, err)
+	}
+	read, err := usecase.Get(context.Background(), testTenant)
+	if err != nil || read.ID != row.ID || read.State != biz.EnvironmentBlocked || read.ReasonCode != row.ReasonCode || len(read.BindingCanonical) != 0 || read.ExperimentID != "" || kfpRequests != 0 {
+		t.Fatalf("denied Ensure exposed a binding or advanced to KFP: state=%s requests=%d error=%v", read.State, kfpRequests, err)
+	}
+	if _, err = repository.ReadReadyBinding(context.Background(), testTenant, testCluster); err == nil {
+		t.Fatal("native-denied environment exposed a READY binding")
+	}
+	for _, action := range kube.Actions() {
+		if action.GetResource().Resource == "secrets" && action.GetVerb() != "get" {
+			t.Fatal("native refusal was followed by an artifact credential write")
+		}
 	}
 }

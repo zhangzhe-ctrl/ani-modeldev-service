@@ -258,9 +258,6 @@ func (p *Platform) Experiment(ctx context.Context, row *biz.TenantExecutionEnvir
 	return biz.EnvironmentUncertain()
 }
 func (p *Platform) Verify(ctx context.Context, row *biz.TenantExecutionEnvironment, checkpoint func() error) error {
-	if err := p.validProof(row); err != nil {
-		return err
-	}
 	if err := p.VerifyNamespace(ctx, row); err != nil {
 		return err
 	}
@@ -271,7 +268,10 @@ func (p *Platform) Verify(ctx context.Context, row *biz.TenantExecutionEnvironme
 	for _, expected := range objects {
 		actual, e := p.get(ctx, resource(expected.GetKind()), row.NamespaceName, expected.GetName())
 		r := receipt(row, expected.GetKind(), expected.GetName())
-		if e != nil || r == nil || r.UID != string(actual.GetUID()) || !sameManaged(actual, expected) {
+		if e != nil {
+			return originalObjectFailure(e)
+		}
+		if r == nil || r.UID != string(actual.GetUID()) || !sameManaged(actual, expected) {
 			return biz.EnvironmentConflict("ENVIRONMENT_OBJECT_CONFLICT")
 		}
 		r.CheckedAt = time.Now().UTC()

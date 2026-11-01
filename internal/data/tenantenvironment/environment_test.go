@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01"
@@ -20,7 +19,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic/fake"
 	ktesting "k8s.io/client-go/testing"
@@ -47,7 +45,7 @@ func fixture(t *testing.T) (*Platform, *biz.TenantExecutionEnvironment, *fake.Fa
 			t.Fatal(e)
 		}
 	}
-	c := Config{ClusterID: testCluster, RegistryAuthority: "registry.example.test", PlatformProject: "platform", ArtifactEndpoint: "https://s3.example.test", ArtifactRegion: "region", ArtifactBucket: "internal-artifacts", ArtifactAccessKeyFile: ak, ArtifactSecretKeyFile: sk, KFPTokenFile: token, KFPConnectionRef: "managed-kfp", KFPCAKey: "ca.crt", KFPPublicCA: "public-ca", MetadataHost: "metadata.kubeflow", MetadataPort: "8080", InputScope: snapshot.PublicationScope, PublicationScope: snapshot.PublicationScope, ModelScope: snapshot.PublicationScope, Workspace: snapshot.Workspace, Timing: cpup01.TimingConfiguration{ExecutionTimeoutDefaultSeconds: 1800, ExecutionTimeoutMaxSeconds: 3600, StepTimeoutSeconds: 300}, InputFilePath: "/inputs/dataset-manifest.json", OutputDirectoryPath: "/workspace/training", TargetPlatform: cpup01.TrainingPlatform{OS: "linux", Architecture: "amd64"}, DispatchOwner: cpup01.DispatchOwnerSnapshot{Reference: "managed-owner", RevisionSHA256: strings.Repeat("a", 64)}, MaterialBundleDigest: strings.Repeat("b", 64), ControllerPrincipals: []string{"system:serviceaccount:kubeflow:argo"}, KFPAPIServiceAccount: Subject{Kind: "ServiceAccount", Name: "ml-pipeline", Namespace: "kubeflow"}, AuthorizationModes: []string{"Node", "RBAC"}, AuthorizationModesEvidenceSHA256: strings.Repeat("c", 64), TrustedPrincipals: []Subject{{Kind: "ServiceAccount", Name: "modeldev-control", Namespace: "ani-system"}, {Kind: "ServiceAccount", Name: "ani-modeldev-webhook", Namespace: "ani-system"}, {Kind: "ServiceAccount", Name: "ml-pipeline", Namespace: "kubeflow"}}, StepOwner: StepOwnerConfig{Target: "modeldev:443"}}
+	c := Config{ClusterID: testCluster, RegistryAuthority: "registry.example.test", PlatformProject: "platform", ArtifactEndpoint: "https://s3.example.test", ArtifactRegion: "region", ArtifactBucket: "internal-artifacts", ArtifactAccessKeyFile: ak, ArtifactSecretKeyFile: sk, KFPTokenFile: token, KFPConnectionRef: "managed-kfp", KFPCAKey: "ca.crt", KFPPublicCA: "public-ca", MetadataHost: "metadata.kubeflow", MetadataPort: "8080", InputScope: snapshot.PublicationScope, PublicationScope: snapshot.PublicationScope, ModelScope: snapshot.PublicationScope, Workspace: snapshot.Workspace, Timing: cpup01.TimingConfiguration{ExecutionTimeoutDefaultSeconds: 1800, ExecutionTimeoutMaxSeconds: 3600, StepTimeoutSeconds: 300}, InputFilePath: "/inputs/dataset-manifest.json", OutputDirectoryPath: "/workspace/training", TargetPlatform: cpup01.TrainingPlatform{OS: "linux", Architecture: "amd64"}, DispatchOwner: cpup01.DispatchOwnerSnapshot{Reference: "managed-owner", RevisionSHA256: strings.Repeat("a", 64)}, MaterialBundleDigest: strings.Repeat("b", 64), ControllerPrincipals: []string{"system:serviceaccount:kubeflow:argo"}, KFPAPIServiceAccount: Subject{Kind: "ServiceAccount", Name: "ml-pipeline", Namespace: "kubeflow"}, StepOwner: StepOwnerConfig{Target: "modeldev:443"}}
 	for _, name := range []string{"modeldev-mlp-cpu", "modeldev-mlp-gpu", "modeldev-sft-lora-cpu", "modeldev-sft-lora-gpu"} {
 		raw := []byte(`{"root":{}}`)
 		file := filepath.Join(dir, name+".json")
@@ -100,7 +98,7 @@ func fixture(t *testing.T) (*Platform, *biz.TenantExecutionEnvironment, *fake.Fa
 		}
 	}
 	add("MutatingWebhookConfiguration", "ani-modeldev-webhook", map[string]any{"webhooks": []any{}})
-	client := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{resource("RoleBinding"): "RoleBindingList", resource("ClusterRoleBinding"): "ClusterRoleBindingList"}, objects...)
+	client := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), nil, objects...)
 	client.PrependReactor("create", "*", func(a ktesting.Action) (bool, runtime.Object, error) {
 		create := a.(ktesting.CreateAction)
 		o := create.GetObject().(*unstructured.Unstructured)
@@ -193,60 +191,6 @@ func TestEnvironmentWrongNamespaceHasZeroChildWrites(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-func TestEnvironmentDangerousGrantBlocksBeforeArtifactSecret(t *testing.T) {
-	for _, tc := range []struct {
-		name, group, resource, verb string
-		global                      bool
-	}{{"secrets-list", "", "secrets", "list", false}, {"exec-get", "", "pods/exec", "get", false}, {"wild-exec", "", "*/exec", "create", true}, {"token", "", "serviceaccounts/token", "create", false}, {"impersonate", "authentication.k8s.io", "users", "impersonate", true}, {"bind", "rbac.authorization.k8s.io", "roles", "bind", false}} {
-		t.Run(tc.name, func(t *testing.T) {
-			p, row, kube := fixture(t)
-			role := &unstructured.Unstructured{Object: map[string]any{"kind": "ClusterRole", "apiVersion": "rbac.authorization.k8s.io/v1", "rules": []any{map[string]any{"apiGroups": []any{tc.group}, "resources": []any{tc.resource}, "verbs": []any{tc.verb}}}}}
-			role.SetName("danger")
-			role.SetUID(types.UID(uuid.NewString()))
-			role.SetResourceVersion("1")
-			_ = kube.Tracker().Create(resource("ClusterRole"), role, "")
-			kind := "RoleBinding"
-			namespace := row.NamespaceName
-			if tc.global {
-				kind = "ClusterRoleBinding"
-				namespace = ""
-			}
-			binding := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "rbac.authorization.k8s.io/v1", "kind": kind, "roleRef": map[string]any{"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": "danger"}, "subjects": []any{map[string]any{"kind": "Group", "name": "ordinary-unknown-users"}}}}
-			binding.SetNamespace(namespace)
-			binding.SetName("danger")
-			binding.SetUID(types.UID(uuid.NewString()))
-			binding.SetResourceVersion("1")
-			_ = kube.Tracker().Create(resource(kind), binding, namespace)
-			e := p.Resources(context.Background(), row, func() error { return nil })
-			var f *biz.EnvironmentFailure
-			if !errors.As(e, &f) || f.Reason != "KFP_ARTIFACT_ACCESS_NOT_ISOLATED" {
-				t.Fatalf("danger not detected: %v", e)
-			}
-			for _, a := range kube.Actions() {
-				if a.GetResource().Resource == "secrets" && a.GetVerb() != "get" {
-					t.Fatal("artifact Secret written before authorization proof")
-				}
-			}
-		})
-	}
-}
-func TestEnvironmentIncompleteAuthorizationAndExpiredProofDenySecret(t *testing.T) {
-	p, row, kube := fixture(t)
-	kube.PrependReactor("list", "clusterrolebindings", func(ktesting.Action) (bool, runtime.Object, error) { return true, nil, errors.New("unavailable") })
-	e := p.Resources(context.Background(), row, func() error { return nil })
-	if e == nil || e.Error() != "ENVIRONMENT_AUTHORIZATION_UNVERIFIED" {
-		t.Fatal(e)
-	}
-	for _, a := range kube.Actions() {
-		if a.GetResource().Resource == "secrets" && a.GetVerb() == "create" {
-			t.Fatal("Secret write on incomplete inventory")
-		}
-	}
-	row.Receipts.Authorization = &biz.EnvironmentAuthorizationProof{OperationID: row.LastOperationID, NamespaceUID: row.NamespaceUID, ExpiresAt: time.Now().Add(-time.Second)}
-	if p.Publish(context.Background(), row, func() error { return nil }) == nil {
-		t.Fatal("expired proof published")
 	}
 }
 func TestEnvironmentExperimentRecoversUnknownPostAndReadsRotatingToken(t *testing.T) {
