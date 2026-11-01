@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,6 +13,21 @@ import (
 
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 )
+
+func TestLegacyRetirementSafeReasonRetainsOnlyFixedQualificationLocations(t *testing.T) {
+	for _, tc := range []struct{ detail, code string }{
+		{"owner workflow completion", "ARCHIVE_GRAPH_COMPLETION"},
+		{"unprepared workspace request", "UNPREPARED_WORKSPACE_REQUEST"},
+		{"owner pod exits 1/9", "HISTORICAL_POD_EXITS"},
+		{"owner remaining managed tasks", "REMAINING_MANAGED_TASKS"},
+	} {
+		err := fmt.Errorf("CURRENT_OWNER_WRITER_PROOF: %s: private-external-value: %w", tc.detail, biz.ErrRuntimeNotReady)
+		want := "CURRENT_OWNER_WRITER_PROOF:" + tc.code + ":" + biz.ErrRuntimeNotReady.Error()
+		if got := safeReason(err); got != want || strings.Contains(got, "private-external-value") {
+			t.Fatalf("unsafe or incomplete qualification reason: %q", got)
+		}
+	}
+}
 
 type countingTransport struct{ calls int }
 

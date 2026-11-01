@@ -333,6 +333,19 @@ func safeReason(err error) string {
 			break
 		}
 	}
+	// Preserve only fixed, non-sensitive qualification locations already
+	// supplied by the verifier, never arbitrary external error text.
+	for _, detail := range []struct{ prefix, code string }{
+		{"owner workflow completion:", "ARCHIVE_GRAPH_COMPLETION"},
+		{"unprepared workspace request:", "UNPREPARED_WORKSPACE_REQUEST"},
+		{"owner pod exits ", "HISTORICAL_POD_EXITS"},
+		{"owner remaining managed tasks:", "REMAINING_MANAGED_TASKS"},
+	} {
+		if strings.Contains(err.Error(), detail.prefix) {
+			stage += detail.code + ":"
+			break
+		}
+	}
 	for _, sentinel := range []error{biz.ErrRuntimeConflict, biz.ErrRuntimeNotReady, biz.ErrCleanupBlocked, biz.ErrCleanupConflict, biz.ErrCleanupUncertain, biz.ErrTrainingLogsUnavailable, biz.ErrRunAuthorityConflict, biz.ErrPersistence, biz.ErrInvalidAdmission} {
 		if errors.Is(err, sentinel) {
 			return stage + sentinel.Error()
