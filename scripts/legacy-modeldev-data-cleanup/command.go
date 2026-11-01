@@ -21,6 +21,9 @@ type OriginalScope struct {
 	GovernanceTenantID                                                    int64
 	Executions                                                            []ExecutionIdentity
 	InputIDs, UnknownExecutionIDs                                         []string
+	SyncIDs                                                               []int64
+	OriginalSync                                                          []OriginalSyncIdentity
+	SyncInventorySHA256                                                   string
 	AcceptanceIDs, OperationIDs, ChargeIDs                                []int64
 	ReceiptIDs                                                            []string
 	OriginalOperations, OriginalCharges, OriginalReceipts                 []json.RawMessage
@@ -44,7 +47,9 @@ type RootEvidence struct {
 	StopRecords                                       []StoppedSource
 	Probe                                             HTTPProbe
 	Databases                                         map[string]DatabaseIdentity
+	DeleteOwners                                      map[string]DeleteOwnerProof
 	OriginalC99Qualification, OriginalC99Build        *SourceProof
+	OriginalF216Settlement                            *SourceProof
 }
 type StoppedSource struct {
 	Component, SourceUID, SourceRevision, State string
@@ -74,14 +79,18 @@ type TableSummary struct {
 	Rows  []RowSummary
 }
 type DatabaseSnapshot struct {
-	Identity       DatabaseIdentity
-	CatalogSHA256  string
-	Tables         []TableSummary
-	AccountsSHA256 string
-	Catalog        *actualCatalog
-	Refusal        string
+	AuthenticatedRole            string
+	Identity                     DatabaseIdentity
+	CatalogSHA256                string
+	Tables                       []TableSummary
+	AccountsSHA256               string
+	Catalog                      *actualCatalog
+	Refusal                      string
+	IncomingOperationScopeSHA256 string
+	IncomingReferences           []TableSummary
 }
 type CleanupPlan struct {
+	GovernanceSyncInventorySHA256                                                                           string
 	Schema, Phase, InventorySHA256, GovernanceInventorySHA256, RootEvidenceSHA256, GovernanceDeletionSHA256 string
 	ModelDev, Governance                                                                                    DatabaseSnapshot
 	Blockers                                                                                                []string
@@ -139,7 +148,7 @@ func (c *CleanupCommand) Plan(ctx context.Context, phase string, prior *Deletion
 	return p, err
 }
 func (c *CleanupCommand) planInTransactions(ctx context.Context, md, gov pgx.Tx, phase string, prior *DeletionReceipt) (CleanupPlan, databaseView, databaseView, error) {
-	p := CleanupPlan{Schema: cleanupPlanSchema, Phase: phase, InventorySHA256: c.Original.InventorySHA256, GovernanceInventorySHA256: c.Original.GovernanceInventorySHA256, RootEvidenceSHA256: c.RootSHA256, Blockers: []string{}}
+	p := CleanupPlan{Schema: cleanupPlanSchema, Phase: phase, InventorySHA256: c.Original.InventorySHA256, GovernanceInventorySHA256: c.Original.GovernanceInventorySHA256, RootEvidenceSHA256: c.RootSHA256, GovernanceSyncInventorySHA256: c.Original.SyncInventorySHA256, Blockers: []string{}}
 	if phase != "governance" && phase != "modeldev" {
 		return p, databaseView{}, databaseView{}, fmt.Errorf("phase must be governance or modeldev")
 	}
@@ -147,7 +156,7 @@ func (c *CleanupCommand) planInTransactions(ctx context.Context, md, gov pgx.Tx,
 	gv, ge := snapshotDatabase(ctx, gov, c.Original, false)
 	p.ModelDev = mv.Snapshot
 	p.Governance = gv.Snapshot
-	p.Blockers = append(p.Blockers, c.rootBlockers(mv.Snapshot.Identity, gv.Snapshot.Identity)...)
+	p.Blockers = append(p.Blockers, c.rootBlockers(mv.Snapshot, gv.Snapshot)...)
 	if me != nil {
 		p.Blockers = append(p.Blockers, "MODELDEV_SCHEMA_OR_ROW_SNAPSHOT_UNVERIFIED")
 	} else {

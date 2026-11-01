@@ -1,10 +1,12 @@
 # Fixed legacy ModelDev database cleanup
 
 This one-time command implements specification13.4's database phase after the
-external retirement/cleanup sequence. Its only write is exact DELETE in the two
-existing databases. It does not stop workers, call Create/Stop/release RPCs,
-delete Kubernetes/KFP/S3 objects, change permissions, migrate schemas or write
-quota accounts. No live invocation has been run by this implementation task.
+external retirement/cleanup sequence. The DB deletion mode only issues exact DELETE in the two existing databases.
+A separate finite `-original-f216` maintenance mode can replay only the one
+original release event described below; it never changes an aggregate/outbox.
+Neither mode stops workers, creates work, deletes Kubernetes/KFP/S3 objects,
+changes permissions, migrates schemas or writes quota accounts. Read-only live
+plans and component integration are separate from actual apply evidence.
 
 The sole CLI accepts the actual original task09 inventory bytes:
 
@@ -25,12 +27,13 @@ original Governance commands55/57/59/60. Those exact original commands were
 stopped through the ordinary BFF, durably fenced, delivered once using the
 corrected original21bf codec and closed by the original native NoDispatch path.
 They retain their original operation/spec/intent bytes, actor and accepted_at.
-Governance deletion remains exactly54 acceptances,23 operations,23 charges and
-23 original receipts. No user/tenant/role/policy table is added to the deletion
+Governance deletion is exactly54 acceptances,23 operations,23 charges,23
+original receipts and the23 explicitly fixed original GPU usage-sync rows
+referencing those same operations. No user/tenant/role/policy table is added to the deletion
 or compared as a whole-table historical row-count baseline.
 
 This explicit maintenance revision emits
-`ani.modeldev.legacy-db-cleanup.plan.v2`. Old v1 plans and prior receipts are
+`ani.modeldev.legacy-db-cleanup.plan.v3`. Old v1/v2 plans and prior receipts are
 refused, even when their own hash is internally consistent. A fresh complete
 manifest/hash and actual54-row snapshot are required; an old50/zero-MD-row
 qualification cannot authorize the four newly durable records.
@@ -71,6 +74,8 @@ legacy-modeldev-data-cleanup \
   -governance-dsn-file /private/gov-owner-dsn \
   -original-inventory-file /evidence/09/old-inventory.json \
   -original-governance-inventory-file /evidence/09/old-gov-inventory.json \
+  -original-governance-sync-file /private/original23-sync-manifest.json \
+  -original-governance-sync-sha256 <root-reviewed-manifest-byte-SHA256> \
   -phase governance > /private/gov-delete-plan.json
 ```
 
@@ -398,3 +403,127 @@ native c99 qualifier binary remains unchanged. Raw receipts are
 `fixed54-final-vet.log`, `fixed54-final-build.log` and
 `fixed54-tool-source.sha256` in task09 `legacy-data-cleanup/`. No live DELETE
 was executed by these checks.
+
+现场入向 FK 核对包括原清单按 child 名称漏列的既有约束：Gov
+`20260923130000_gpu_sqlc.sql` 的 GPU delete 两个 operation FK、
+`20260923130200_gpu_sync_ref.sql` 的五列 GPU usage FK，以及
+`20260922190100_quota_constraints.sql` 的 PlanQuota → quota definition FK。
+这些约束完整固定到维护 schema 合同；未知或改变的 FK 仍拒绝。GPU-delete 表不进入删除范围；
+GPU usage-sync 仅下文固定23原行进入范围，plan 按原 tenant + 精确原 operation IDs
+读取每个匹配行的原 PK/字节 SHA。清单外引用即 BLOCKED；apply 短事务锁住引用表，
+防止计划后产生引用；其他 owner 行保留。PlanQuota 和 quota definitions 均保留，不沿其 FK 扩大删除。
+
+The original task inventory missed incoming references from
+`sys_gpu_usage_sync`. The explicitly reviewed23 original PKs are
+`3,5,7,9,10,13,15,16,20,37,39,41,49,50,51,53,56,58,59,61,63,66,67`.
+The third manifest schema is `ani.modeldev.original23-usage-sync-manifest.v1`,
+with the original Governance inventory hash and exactly23 `Rows` containing
+`ID,TenantID,OperationID,ResourceTenantID,OwnerService,ResourceID,PayloadSHA256,RowSHA256`.
+The file byte hash is mandatory, every operation must be one of the original23,
+and each entire current PostgreSQL row must match its frozen hash. Every row
+must be native ENDED/revision2/acked_revision2, not deleted or retry-blocked,
+with NULL lease_until/next_attempt_at/last_error_code. The normal existing
+`quota_gpu_sync_repo.go` ACK clears lease_until while retaining lease_owner;
+this historical worker label is preserved in the row hash, never cleared here.
+Missing manifest, unACKed or changed rows block deletion. The same transaction
+deletes these23 sync rows before operations. Other sync rows, GPU-delete rows,
+PlanQuota, definitions and accounts remain protected. Unknown FK shapes or
+references outside this exact set still block. This is the bounded §13.4
+correction for the incomplete original incoming-FK inventory.
+
+## One original f216 event and independent cutover journal
+
+The optional `-original-f216 plan` mode is read-only. It fixes only execution
+`f2168fbf-d7c9-4e96-8cc6-784bb1546083`, original operation
+`49a62211-703b-4adf-abae-70cf2af78e7e`, normal native CLOSED/STEP_FAILED/gen1/rev7,
+and the original runtimeNeverMaterialized branch. It reads the complete
+ordinary admission/lifecycle readers, original row hashes and SQL NULL GPU
+anchors. No LegacyRetirement marker, alternate codec or scope is accepted.
+
+Use the two original DSN references and original inventory arguments above plus:
+
+```sh
+-original-f216 plan > /private/original-f216-plan.json
+```
+
+After root reviews those exact plan bytes and a fresh complete cluster identity,
+real authenticated maintenance503, stopped MD workers/Create publisher/replay
+sources and zero original leases, the independent mode requires:
+
+```sh
+-original-f216 apply \
+-manifest-file /private/original-f216-plan.json \
+-manifest-byte-sha256 <root-reviewed-plan-byte-SHA256> \
+-root-evidence-file /private/original-f216-fresh-stop-gate.json \
+-root-evidence-sha256 <root-reviewed-gate-byte-SHA256> \
+-f216-owner-config-file /private/original-owner-mtls.json \
+-f216-journal-file /private/new-original-f216-journal.json
+```
+
+This mode cannot be combined with DB `-apply`. The mode0600 owner configuration
+uses the existing `accelerator.Config` fields, original Governance endpoint
+`ani-governance-quota.ani-system.svc:9002`, server SAN `ani-governance`, original
+ModelDev client SAN `ani-modeldev-service`, and a positive timeout ≤10 seconds.
+Only existing original owner certificate/key/CA file references are allowed;
+the adapter performs actual mTLS and forwards no user metadata. The stop gate
+schema `ani.modeldev.original-f216-stop-gate.v1` binds `PlanByteSHA256`, full
+SSH/context/API/cluster/kube-system identity, `ObservedAt/ExpiresAt` (≤5 minutes),
+three `StoppedSources` and the real503 `Probe`. Every proof uses an absolute
+source path plus actual byte SHA; root review is an explicit external trust
+boundary, never a tool-created success boolean. The binary also independently
+checks the sole node/full live cluster and exact original database identities.
+
+The command locks/rechecks the original native MD rows, durably writes an intent
+journal, and invokes the real existing release client only with original event
+`9aff1a0e-5c66-4ba1-88cc-3470db8388a5` and original `RESOURCE_RELEASED` reason.
+It requires actual `ALREADY_APPLIED`, original receipt
+`be5d029e-ccab-5463-9678-f370890c0702`, payload SHA
+`65034ab014827a45ac1b74c55128ca2f26ae7aee92ccce7a8678ba87898fdca4`,
+the one original24570/24570 charge and identical before/after all-owner account
+invariants and whole ledger hashes. It never calls normal SealGPURelease,
+generates another event/reason, edits runtime facts/anchors, or SQL-writes ACKs.
+A reused journal path refuses before RPC; an unknown request remains
+RESULT_UNKNOWN with the same event, requiring explicit root reconciliation.
+
+For later DB deletion, root can attach a SourceProof
+`OriginalF216Settlement` of Kind `ORIGINAL_F216_PRIOR_GPU_RELEASE` to the normal
+cleanup root evidence. The DB command verifies its complete journal shape,
+actual ALREADY_APPLIED/zero-delta event, exact MD row hashes/native reader and
+original database identity. The ordinary reader remains unchanged; this is one
+fixed ADR0002 prior-event cutover receipt, not an expansion of the three approved
+retirement/log exceptions. Normal Governance first-phase receipt retention
+keeps the original charge/account/release proof after the first DB commit.
+
+## Existing read identity and physical deletion authority
+
+The actual original runtime roles cannot delete all historical aggregates:
+`modeldev_v21_runtime` has no DELETE on the nine MD tables, and `gov_runtime`
+has no DELETE on acceptances. Do not add grants. Read/ACK journals retain those
+original runtime role identities unchanged. The deletion connection explicitly
+selects only the existing `modeldev_v21_migrate` / `gov_migrate` effective owners:
+
+```sh
+-modeldev-effective-delete-owner modeldev_v21_migrate \
+-governance-effective-delete-owner gov_migrate
+```
+
+The authenticated connection must be that same existing owner, or the original
+`postgres` maintenance connection followed by explicit SET ROLE to that exact
+owner. The tool creates no role and accepts no arbitrary principal or SET ROLE
+target. The snapshot independently records `AuthenticatedRole` and effective
+`Identity.Role`. Production cleanup root evidence additionally requires
+`DeleteOwners.modeldev` and `.governance`, each with `AuthenticatedRole`,
+`EffectiveRole`, the exact original PostgreSQL StatefulSet/Pod/Service/AdminSecret
+UIDs and a byte-hash-bound SourceProof of Kind `ORIGINAL_POSTGRES_DELETE_OWNER`.
+The fixed source UIDs are StatefulSet `3ab646a6-9c8d-488c-9f8b-9ce659aa4d37`,
+Pod `333fe87e-4a47-4e99-b5ea-33ef48be2e27`, Service
+`a211aa89-9521-4570-836f-b9dbb1755e79`, AdminSecret
+`c0f61772-2154-46cd-88fc-4018ce43a9f2`. Secret values never enter this evidence.
+
+Historical c99 and f216 read qualifications may be consumed by those explicitly
+attested existing deletion owners only at the identical database/schema/server/
+port/OID with every original row SHA and complete native close/cleanup/event/ACK
+qualification unchanged. Runtime role names in those journals are not rewritten.
+Wrong principal, different physical database/OID, missing original source proof,
+row drift or arbitrary owner still blocks. The independently reviewed root
+receipt is the explicit boundary for original connection-source attestation.

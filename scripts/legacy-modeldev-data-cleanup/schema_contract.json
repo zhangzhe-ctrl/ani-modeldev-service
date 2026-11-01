@@ -1115,9 +1115,132 @@
       "table_name": "sys_quota_release_receipts",
       "column_name": "payload_json",
       "data_type": "text"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "id",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "deleted_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "tenant_id",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "operation_id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "revision",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "state",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "payload_json",
+      "data_type": "text"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "payload_hash",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "acked_revision",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "lease_generation",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "lease_owner",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "lease_until",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "attempt_count",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "next_attempt_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "last_error_code",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "resource_tenant_id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "owner_service",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "resource_id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_gpu_usage_sync",
+      "column_name": "retry_blocked",
+      "data_type": "boolean"
     }
   ],
   "governance_foreign_keys": [
+    {
+      "conname": "sys_gpu_delete_acceptances_create_operation_id_fkey",
+      "child": "sys_gpu_delete_acceptances",
+      "parent": "sys_quota_operations",
+      "definition": "FOREIGN KEY (tenant_id, create_operation_id) REFERENCES sys_quota_operations(tenant_id, operation_id) ON DELETE RESTRICT"
+    },
+    {
+      "conname": "sys_gpu_delete_acceptances_delete_operation_id_fkey",
+      "child": "sys_gpu_delete_acceptances",
+      "parent": "sys_quota_operations",
+      "definition": "FOREIGN KEY (tenant_id, delete_operation_id) REFERENCES sys_quota_operations(tenant_id, operation_id) ON DELETE RESTRICT"
+    },
+    {
+      "conname": "sys_gpu_usage_sync_tenant_operation_fkey",
+      "child": "sys_gpu_usage_sync",
+      "parent": "sys_quota_operations",
+      "definition": "FOREIGN KEY (tenant_id, operation_id, resource_tenant_id, owner_service, resource_id) REFERENCES sys_quota_operations(tenant_id, operation_id, resource_tenant_id, owner_service, resource_id) ON DELETE RESTRICT"
+    },
     {
       "conname": "sys_modeldev_acceptances_tenant_resource_mapping_fkey",
       "child": "sys_modeldev_acceptances",
@@ -1129,6 +1252,12 @@
       "child": "sys_modeldev_release_bindings",
       "parent": "sys_tenants",
       "definition": "FOREIGN KEY (tenant_id, resource_tenant_id) REFERENCES sys_tenants(id, resource_tenant_id) ON DELETE RESTRICT"
+    },
+    {
+      "conname": "sys_plan_quotas_quota_code_fkey",
+      "child": "sys_plan_quotas",
+      "parent": "sys_quota_definitions",
+      "definition": "FOREIGN KEY (quota_code) REFERENCES sys_quota_definitions(code) ON DELETE RESTRICT"
     },
     {
       "conname": "sys_quota_accounts_tenant_fkey",

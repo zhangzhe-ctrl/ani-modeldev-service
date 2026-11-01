@@ -10,7 +10,7 @@ import (
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 )
 
-const cleanupPlanSchema = "ani.modeldev.legacy-db-cleanup.plan.v2"
+const cleanupPlanSchema = "ani.modeldev.legacy-db-cleanup.plan.v3"
 
 type originalFourIdentity struct {
 	AcceptanceID int64

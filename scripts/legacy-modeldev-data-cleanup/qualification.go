@@ -159,7 +159,9 @@ func (c *CleanupCommand) qualifyMD(ctx context.Context, tx pgx.Tx, v databaseVie
 			if execution.Snapshot.ComputeOrigin.DeviceMode == "gpu" {
 				fact := state.GPURelease
 				if fact == nil || fact.Outbox == nil || fact.Outbox.ACK == nil || fact.Outbox.DeliveredAt == nil {
-					blockers = append(blockers, "MD_ORIGINAL_GPU_OUTBOX_ACK_MISSING:"+wanted.ExecutionID)
+					if !c.originalF216JournalValid(ctx, tx, execution, state, runtime) {
+						blockers = append(blockers, "MD_ORIGINAL_GPU_OUTBOX_ACK_MISSING:"+wanted.ExecutionID)
+					}
 				} else {
 					e, a := fact.Outbox.Event, *fact.Outbox.ACK
 					if e.CreateOperationID != wanted.OperationID || e.ResourceID != wanted.ExecutionID || a.CreateOperationID != e.CreateOperationID || a.ResourceID != e.ResourceID || a.ReleaseEventID != e.ReleaseEventID || (a.Status != "APPLIED" && a.Status != "ALREADY_APPLIED") {
@@ -237,7 +239,21 @@ func (c *CleanupCommand) qualifyMD(ctx context.Context, tx pgx.Tx, v databaseVie
 func qualifyGov(ctx context.Context, tx pgx.Tx, v databaseView, s OriginalScope, deleted bool) []string {
 	blockers := []string{}
 	schema := v.Snapshot.Identity.Schema
-	expected := map[string]int{"sys_modeldev_acceptances": len(s.AcceptanceIDs), "sys_quota_charges": len(s.ChargeIDs), "sys_quota_operations": len(s.OperationIDs), "sys_quota_release_receipts": len(s.ReceiptIDs)}
+	if len(v.Snapshot.IncomingReferences) != 2 || v.Snapshot.IncomingOperationScopeSHA256 == "" {
+		blockers = append(blockers, "GOV_INCOMING_REFERENCE_PROOF_UNKNOWN")
+	}
+	for _, references := range v.Snapshot.IncomingReferences {
+		if references.Table == "sys_gpu_usage_sync" {
+			for _, ref := range references.Rows {
+				if !originalSyncKeyAllowed(s, ref.Key) {
+					blockers = append(blockers, "GOV_INCOMING_OPERATION_REFERENCE:"+references.Table)
+				}
+			}
+		} else if len(references.Rows) != 0 {
+			blockers = append(blockers, "GOV_INCOMING_OPERATION_REFERENCE:"+references.Table)
+		}
+	}
+	expected := map[string]int{"sys_modeldev_acceptances": len(s.AcceptanceIDs), "sys_quota_charges": len(s.ChargeIDs), "sys_gpu_usage_sync": len(s.SyncIDs), "sys_quota_operations": len(s.OperationIDs), "sys_quota_release_receipts": len(s.ReceiptIDs)}
 	for tableName, count := range expected {
 		if deleted {
 			count = 0
@@ -246,6 +262,7 @@ func qualifyGov(ctx context.Context, tx pgx.Tx, v databaseView, s OriginalScope,
 			blockers = append(blockers, "GOV_EXACT_ROWCOUNT_DIFFERS:"+tableName)
 		}
 	}
+	blockers = append(blockers, qualifyOriginalSync(v, s, deleted)...)
 	operations := table(v, "sys_quota_operations").rows
 	charges := table(v, "sys_quota_charges").rows
 	receipts := table(v, "sys_quota_release_receipts").rows

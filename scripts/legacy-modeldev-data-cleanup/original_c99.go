@@ -67,7 +67,7 @@ func (c *CleanupCommand) qualifyOriginalC99(w ExecutionIdentity, v databaseView)
 		return "MD_ORIGINAL_C99_PROOF_SHAPE_INVALID"
 	}
 	now := time.Now().UTC()
-	if q.Schema != "ani.modeldev.original-c99-db-qualification.v1" || q.CodecCommit != originalC99Commit || q.ObservedAt.IsZero() || q.ObservedAt.After(now) || !now.Before(q.ExpiresAt) || q.ExpiresAt.After(q.ObservedAt.Add(5*time.Minute)) || c.Root.ExpiresAt.After(q.ExpiresAt) || q.Database != v.Snapshot.Identity || len(q.Records) != 7 {
+	if q.Schema != "ani.modeldev.original-c99-db-qualification.v1" || q.CodecCommit != originalC99Commit || q.ObservedAt.IsZero() || q.ObservedAt.After(now) || !now.Before(q.ExpiresAt) || q.ExpiresAt.After(q.ObservedAt.Add(5*time.Minute)) || c.Root.ExpiresAt.After(q.ExpiresAt) || !c.readQualificationIdentityMatches(q.Database, v.Snapshot.Identity, "modeldev") || len(q.Records) != 7 {
 		return "MD_ORIGINAL_C99_FRESH_DATABASE_PROOF_REQUIRED"
 	}
 	if build.Schema != "ani.modeldev.original-c99-qualifier-build.v1" || build.CodecCommit != originalC99Commit || build.ExitCode != 0 || !originalC99SHA(build.BinarySHA256) || build.BinarySHA256 != q.QualifierBinarySHA256 || !originalC99SHA(build.SourceSHA256) || build.GoVersion != "go1.26.10" {

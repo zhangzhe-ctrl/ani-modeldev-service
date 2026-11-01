@@ -81,6 +81,11 @@ func newCleanupFixture(t *testing.T, gpu ...bool) *cleanupFixture {
 	if _, err = gov.Exec(ctx, `CREATE TABLE sys_tenants(id bigint PRIMARY KEY,resource_tenant_id varchar NOT NULL,UNIQUE(id,resource_tenant_id));ALTER TABLE sys_quota_accounts ADD UNIQUE(tenant_id,quota_code);ALTER TABLE sys_quota_operations ADD UNIQUE(tenant_id,operation_id)`); err != nil {
 		t.Fatal(err)
 	}
+	// These retained tables own the fixed incoming FKs present in the existing
+	// Governance migrations; they are outside every deletion target.
+	if _, err = gov.Exec(ctx, `ALTER TABLE sys_quota_operations ADD UNIQUE(tenant_id,operation_id,resource_tenant_id,owner_service,resource_id);ALTER TABLE sys_quota_definitions ADD UNIQUE(code);CREATE TABLE sys_gpu_delete_acceptances(id bigint PRIMARY KEY,tenant_id bigint NOT NULL,create_operation_id varchar NOT NULL,delete_operation_id varchar NOT NULL);CREATE TABLE sys_plan_quotas(id bigint PRIMARY KEY,quota_code varchar NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
 	for _, fk := range contract.GovKeys {
 		if _, err = gov.Exec(ctx, "ALTER TABLE "+pgx.Identifier{fk.Child}.Sanitize()+" ADD CONSTRAINT "+pgx.Identifier{fk.Name}.Sanitize()+" "+fk.Definition); err != nil {
 			t.Fatal(err)

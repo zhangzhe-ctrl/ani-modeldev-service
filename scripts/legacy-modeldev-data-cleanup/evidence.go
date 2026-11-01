@@ -15,7 +15,8 @@ func proofValid(p SourceProof) bool {
 	raw, err := readBounded(p.Path, 8<<20, false)
 	return err == nil && bytesSHA(raw) == p.SHA256
 }
-func (c *CleanupCommand) rootBlockers(md, gov DatabaseIdentity) []string {
+func (c *CleanupCommand) rootBlockers(mdSnapshot, govSnapshot DatabaseSnapshot) []string {
+	md, gov := mdSnapshot.Identity, govSnapshot.Identity
 	r := c.Root
 	if r == nil || c.RootSHA256 == "" {
 		return []string{"ROOT_EVIDENCE_UNKNOWN"}
@@ -46,7 +47,7 @@ func (c *CleanupCommand) rootBlockers(md, gov DatabaseIdentity) []string {
 		cache[p.Path] = bytesSHA(raw)
 		return cache[p.Path] == p.SHA256
 	}
-	for _, proof := range []*SourceProof{r.OriginalC99Qualification, r.OriginalC99Build} {
+	for _, proof := range []*SourceProof{r.OriginalC99Qualification, r.OriginalC99Build, r.OriginalF216Settlement} {
 		if proof != nil && !verifyProof(*proof) {
 			out = append(out, "ROOT_ORIGINAL_C99_SOURCE_PROOF_INVALID")
 		}
@@ -62,6 +63,15 @@ func (c *CleanupCommand) rootBlockers(md, gov DatabaseIdentity) []string {
 	}
 	if r.Databases["modeldev"] != md || r.Databases["governance"] != gov {
 		out = append(out, "ROOT_DATABASE_IDENTITIES_DIFFER")
+	}
+
+	if c.Original.InventorySHA256 == originalInventorySHA {
+		if !deleteOwnerValid(r.DeleteOwners["modeldev"], mdSnapshot, "modeldev_v21_migrate") {
+			out = append(out, "ROOT_ORIGINAL_MODELDEV_DELETE_OWNER_UNVERIFIED")
+		}
+		if !deleteOwnerValid(r.DeleteOwners["governance"], govSnapshot, "gov_migrate") {
+			out = append(out, "ROOT_ORIGINAL_GOVERNANCE_DELETE_OWNER_UNVERIFIED")
+		}
 	}
 	components := map[string]bool{}
 	for _, stop := range r.StopRecords {
@@ -152,7 +162,7 @@ func (c *CleanupCommand) rootBlockers(md, gov DatabaseIdentity) []string {
 	return out
 }
 func validatePriorReceipt(prior *DeletionReceipt, s OriginalScope) error {
-	if prior == nil || !prior.Applied || prior.Phase != "governance" || prior.Schema != "ani.modeldev.legacy-db-cleanup.receipt.v1" || prior.CompletedAt.IsZero() || prior.CompletedAt.After(time.Now().UTC()) || prior.Plan.InventorySHA256 != s.InventorySHA256 || prior.Plan.GovernanceInventorySHA256 != s.GovernanceInventorySHA256 || len(prior.Plan.Blockers) != 0 {
+	if prior == nil || !prior.Applied || prior.Phase != "governance" || prior.Schema != "ani.modeldev.legacy-db-cleanup.receipt.v1" || prior.CompletedAt.IsZero() || prior.CompletedAt.After(time.Now().UTC()) || prior.Plan.InventorySHA256 != s.InventorySHA256 || prior.Plan.GovernanceInventorySHA256 != s.GovernanceInventorySHA256 || prior.Plan.GovernanceSyncInventorySHA256 != s.SyncInventorySHA256 || len(prior.Plan.Blockers) != 0 {
 		return fmt.Errorf("successful original Governance deletion receipt required")
 	}
 	plan := prior.Plan
@@ -164,7 +174,7 @@ func validatePriorReceipt(prior *DeletionReceipt, s OriginalScope) error {
 	if sha == "" || digest(plan) != sha {
 		return fmt.Errorf("original Governance plan digest differs")
 	}
-	expected := map[string]int64{"sys_modeldev_acceptances": int64(len(s.AcceptanceIDs)), "sys_quota_operations": int64(len(s.OperationIDs)), "sys_quota_charges": int64(len(s.ChargeIDs)), "sys_quota_release_receipts": int64(len(s.ReceiptIDs))}
+	expected := map[string]int64{"sys_modeldev_acceptances": int64(len(s.AcceptanceIDs)), "sys_quota_operations": int64(len(s.OperationIDs)), "sys_quota_charges": int64(len(s.ChargeIDs)), "sys_gpu_usage_sync": int64(len(s.SyncIDs)), "sys_quota_release_receipts": int64(len(s.ReceiptIDs))}
 	if digest(prior.Deleted) != digest(expected) || len(prior.RetainedCharges) != len(s.ChargeIDs) || len(prior.RetainedReleaseReceipts) != len(s.ReceiptIDs) || digest(prior.AccountsBefore) != digest(prior.AccountsAfter) {
 		return fmt.Errorf("original Governance deletion counts or retained ledger evidence differ")
 	}

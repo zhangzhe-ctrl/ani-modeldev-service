@@ -31,7 +31,7 @@ func readBounded(path string, limit int64, private bool) ([]byte, error) {
 	return os.ReadFile(path)
 }
 func loadOriginal(mdPath, govPath string) (OriginalScope, error) {
-	s := OriginalScope{TenantID: legacyTenant, GovernanceTenantID: 2, InventorySHA256: originalInventorySHA, GovernanceInventorySHA256: originalGovInventorySHA}
+	s := OriginalScope{TenantID: legacyTenant, GovernanceTenantID: 2, InventorySHA256: originalInventorySHA, GovernanceInventorySHA256: originalGovInventorySHA, SyncIDs: append([]int64{}, originalSyncIDs...)}
 	md, err := readBounded(mdPath, 16<<20, false)
 	if err != nil {
 		return s, err

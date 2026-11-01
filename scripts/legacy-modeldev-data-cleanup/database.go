@@ -11,7 +11,7 @@ import (
 )
 
 var mdOrder = []string{"modeldev_execution_cleanup_audits", "modeldev_close_intents", "modeldev_execution_runtimes", "modeldev_run_authorities", "modeldev_pipeline_confirmed_runs", "modeldev_pipeline_dispatches", "modeldev_executions", "modeldev_execution_identities", "modeldev_input_versions"}
-var govOrder = []string{"sys_modeldev_acceptances", "sys_quota_charges", "sys_quota_operations", "sys_quota_release_receipts"}
+var govOrder = []string{"sys_modeldev_acceptances", "sys_quota_charges", "sys_gpu_usage_sync", "sys_quota_operations", "sys_quota_release_receipts"}
 
 type tableRows struct {
 	table string
@@ -285,6 +285,9 @@ func snapshotDatabase(ctx context.Context, tx pgx.Tx, s OriginalScope, md bool) 
 	if err != nil {
 		return v, err
 	}
+	if err = tx.QueryRow(ctx, "SELECT session_user").Scan(&v.Snapshot.AuthenticatedRole); err != nil {
+		return v, err
+	}
 	schema := v.Snapshot.Identity.Schema
 	tables := append(append([]string{}, govOrder...), "sys_quota_accounts", "sys_quota_definitions", "sys_modeldev_release_bindings")
 	if md {
@@ -327,6 +330,8 @@ func snapshotDatabase(ctx context.Context, tx pgx.Tx, s OriginalScope, md bool) 
 				ids = s.OperationIDs
 			case "sys_quota_charges":
 				ids = s.ChargeIDs
+			case "sys_gpu_usage_sync":
+				ids = s.SyncIDs
 			case "sys_quota_release_receipts":
 				where = "tenant_id=$1 AND receipt_id=ANY($2::text[])"
 				args = []any{s.GovernanceTenantID, s.ReceiptIDs}
@@ -358,6 +363,32 @@ func snapshotDatabase(ctx context.Context, tx pgx.Tx, s OriginalScope, md bool) 
 			return v, err
 		}
 		v.Snapshot.AccountsSHA256 = digest(v.Accounts)
+		// Existing GPU-owner incoming FKs are retained, never recursively deleted.
+		// Bind zero-reference proofs to the exact original operation IDs, not to
+		// global row counts or an owner label.
+		ids := []string{}
+		for _, original := range originalRows(s.OriginalOperations) {
+			ids = append(ids, text(original, "operation_id"))
+		}
+		sort.Strings(ids)
+		v.Snapshot.IncomingOperationScopeSHA256 = digest(struct {
+			TenantID     int64
+			OperationIDs []string
+		}{s.GovernanceTenantID, ids})
+		for _, check := range []struct{ Table, Predicate string }{
+			{"sys_gpu_delete_acceptances", "create_operation_id=ANY($2::text[]) OR delete_operation_id=ANY($2::text[])"},
+			{"sys_gpu_usage_sync", "operation_id=ANY($2::text[])"},
+		} {
+			references, raw, queryErr := queryRows(ctx, tx, "SELECT to_jsonb(t) FROM "+quoted(schema, check.Table)+" t WHERE tenant_id=$1 AND ("+check.Predicate+") ORDER BY id", s.GovernanceTenantID, ids)
+			if queryErr != nil {
+				return v, queryErr
+			}
+			summary := TableSummary{Table: check.Table, Rows: []RowSummary{}}
+			for i, reference := range references {
+				summary.Rows = append(summary.Rows, RowSummary{Key: "id=" + text(reference, "id"), SHA256: bytesSHA(raw[i])})
+			}
+			v.Snapshot.IncomingReferences = append(v.Snapshot.IncomingReferences, summary)
+		}
 	}
 	return v, nil
 }
@@ -366,7 +397,7 @@ func lockTables(ctx context.Context, tx pgx.Tx, md bool) error {
 	if err != nil {
 		return err
 	}
-	tables := append(append([]string{}, govOrder...), "sys_quota_accounts", "sys_modeldev_release_bindings")
+	tables := append(append([]string{}, govOrder...), "sys_quota_accounts", "sys_modeldev_release_bindings", "sys_gpu_delete_acceptances")
 	if md {
 		tables = append([]string{}, mdOrder...)
 	}
