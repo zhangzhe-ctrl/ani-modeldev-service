@@ -160,6 +160,8 @@ class Publication(unittest.TestCase):
         self.assertTrue(objects["materials.configmap.json"]["immutable"])
         service = objects["service.patch.json"]["spec"]["template"]
         webhook = objects["webhook-materials.patch.json"]["spec"]["template"]
+        self.assertIs(service["spec"]["enableServiceLinks"], False)
+        self.assertNotIn("enableServiceLinks", webhook["spec"])
         self.assertEqual(service["metadata"]["annotations"], webhook["metadata"]["annotations"])
         self.assertEqual(service["metadata"]["annotations"], {"app.kubernetes.io/material-bundle-sha256": digest})
         for template in (service, webhook):
