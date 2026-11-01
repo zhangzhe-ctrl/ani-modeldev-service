@@ -160,7 +160,7 @@ func fixtureConfig(t *testing.T) (modeldevwebhook.Config, *identities) {
 		t.Fatal(err)
 	}
 	bundleHash := sha256.Sum256(bundle)
-	config := modeldevwebhook.Config{SchemaVersion: modeldevwebhook.ConfigSchemaVersion, Profiles: profiles, ClusterID: "22222222-2222-4222-8222-222222222222", MaterialBundleFile: bundleFile, MaterialBundleDigest: hex.EncodeToString(bundleHash[:]), StepImage: profiles[0].ComponentImage, ArgoCreator: "system:serviceaccount:kubeflow:argo", Training: &modeldevwebhook.TrainingBinding{ServiceAccount: "trainer-workload", Creator: "system:serviceaccount:kube-system:job-controller"}, Driver: &modeldevwebhook.DriverBinding{Image: "example.invalid/driver@sha256:" + strings.Repeat("b", 64), Command: []string{"driver"}, AllowedSupportImages: []string{supportImage}}, ControllerPrincipals: []string{"system:serviceaccount:kube-system:job-controller", "system:serviceaccount:kubeflow:argo"}}
+	config := modeldevwebhook.Config{SchemaVersion: modeldevwebhook.ConfigSchemaVersion, Profiles: profiles, ClusterID: "22222222-2222-4222-8222-222222222222", MaterialBundleFile: bundleFile, MaterialBundleDigest: hex.EncodeToString(bundleHash[:]), ArgoCreator: "system:serviceaccount:kubeflow:argo", Training: &modeldevwebhook.TrainingBinding{ServiceAccount: "trainer-workload", Creator: "system:serviceaccount:kube-system:job-controller"}, Driver: &modeldevwebhook.DriverBinding{Image: "example.invalid/driver@sha256:" + strings.Repeat("b", 64), Command: []string{"driver"}, AllowedSupportImages: []string{supportImage}}, ControllerPrincipals: []string{"system:serviceaccount:kube-system:job-controller", "system:serviceaccount:kubeflow:argo"}}
 	namespace := "tenant-" + namespaceTenant
 	reader := &identities{namespace: &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace, UID: types.UID(namespaceUID), Labels: map[string]string{"network.ani.io/managed-by": "ani-network-service", modeldevwebhook.NamespaceTenantLabel: namespaceTenant}}, Status: corev1.NamespaceStatus{Phase: corev1.NamespaceActive}}, workflow: &unstructured.Unstructured{Object: map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "Workflow", "metadata": map[string]any{"name": "main-flow", "namespace": namespace, "uid": workflowUID, "labels": map[string]any{"pipeline/runid": runID}}}}}
 	snapshot := conformance.SnapshotV1()
@@ -218,7 +218,7 @@ func fixtureConfig(t *testing.T) (modeldevwebhook.Config, *identities) {
 
 func request(t *testing.T, config modeldevwebhook.Config, profile, role string) admissionv1.AdmissionReview {
 	t.Helper()
-	image := config.StepImage
+	image := config.Profiles[0].ComponentImage
 	resourceDigest := ""
 	ephemeralLimit := ""
 	for _, candidate := range config.Profiles {
@@ -240,6 +240,9 @@ func request(t *testing.T, config modeldevwebhook.Config, profile, role string) 
 				t.Fatal(err)
 			}
 		}
+	}
+	if profile == "modeldev-sft-lora-cpu" {
+		image = config.Profiles[1].ComponentImage
 	}
 	mounts := map[string]string{}
 	switch role {

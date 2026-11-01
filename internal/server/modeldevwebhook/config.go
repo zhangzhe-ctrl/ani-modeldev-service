@@ -101,7 +101,6 @@ type Config struct {
 	ClusterID                     string           `json:"cluster_id"`
 	MaterialBundleDigest          string           `json:"material_bundle_digest"`
 	MaterialBundleFile            string           `json:"material_bundle_file"`
-	StepImage                     string           `json:"step_image"`
 	ArgoCreator                   string           `json:"argo_creator"`
 	Training                      *TrainingBinding `json:"training"`
 	Driver                        *DriverBinding   `json:"driver"`
@@ -174,7 +173,7 @@ func (config Config) Validate() error { _, err := config.freeze(); return err }
 
 func (config Config) freeze() (map[string]frozenProfile, error) {
 	config.defaults()
-	if config.SchemaVersion != ConfigSchemaVersion || !canonicalUUID(config.ClusterID) || !sha256Pattern.MatchString(config.MaterialBundleDigest) || !imagePattern.MatchString(config.StepImage) || !creatorPattern.MatchString(config.ArgoCreator) || config.Training == nil || config.Training.ServiceAccount != "trainer-workload" || !creatorPattern.MatchString(config.Training.Creator) || config.Driver == nil || len(config.ControllerPrincipals) == 0 || len(config.Profiles) != 4 ||
+	if config.SchemaVersion != ConfigSchemaVersion || !canonicalUUID(config.ClusterID) || !sha256Pattern.MatchString(config.MaterialBundleDigest) || !creatorPattern.MatchString(config.ArgoCreator) || config.Training == nil || config.Training.ServiceAccount != "trainer-workload" || !creatorPattern.MatchString(config.Training.Creator) || config.Driver == nil || len(config.ControllerPrincipals) == 0 || len(config.Profiles) != 4 ||
 		config.MaxBodyBytes < 1024 || config.MaxBodyBytes > 1<<20 || config.MaxConcurrentRequests < 1 || config.MaxConcurrentRequests > 128 ||
 		config.RequestTimeoutMilliseconds < 100 || config.RequestTimeoutMilliseconds > 8000 || config.DependencyTimeoutMilliseconds < 50 || config.DependencyTimeoutMilliseconds > 3000 || config.DependencyTimeoutMilliseconds >= config.RequestTimeoutMilliseconds {
 		return nil, ErrConfiguration
@@ -227,9 +226,6 @@ func (config Config) freeze() (map[string]frozenProfile, error) {
 			return nil, ErrConfiguration
 		}
 		if profile.Kind == "FINETUNING" && (material.Finetuning == nil || material.Finetuning.ExportProgram.ImageDigest != profile.ComponentImage || material.Finetuning.VerifyProgram.ImageDigest != profile.ComponentImage) {
-			return nil, ErrConfiguration
-		}
-		if profile.Kind == "GENERAL_TRAINING" && profile.ComponentImage != config.StepImage {
 			return nil, ErrConfiguration
 		}
 		profile.AllowedSupportImages = append([]string(nil), profile.AllowedSupportImages...)
