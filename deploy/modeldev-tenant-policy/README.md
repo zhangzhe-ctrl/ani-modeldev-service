@@ -5,8 +5,8 @@
 their `-binding` bindings, and the finite platform bootstrap roles. It performs
 no cluster operation and accepts no tenant list or Namespace UID label.
 
-Input has exactly `principals`, `node_principals`, `kfp_ca_key`, and
-`network_metadata_writer`, and `network_status_writer`.
+Input has exactly `principals`, `node_principals`, `kfp_ca_key`,
+`network_metadata_writer`, `network_status_writer`, and `gc_finalizer_writer`.
 The principals map contains the verified control, webhook, kfp_api, argo,
 trainer, jobset, job_controller, persistence_agent, and maintenance usernames.
 Node usernames are exact `system:node:NAME` identities; the renderer adds no
@@ -21,6 +21,13 @@ Pod status subresource to set `k8s.v1.cni.cncf.io/network-status`, preserving th
 current status as well as spec/identity metadata. This follows its pinned native
 UpdateStatus call. Neither network identity may alter the other's annotation or
 any other Pod metadata/spec through these branches.
+The separate `gc_finalizer_writer` contains the existing
+`system:serviceaccount:kube-system:generic-garbage-collector` username and its
+verified live ServiceAccount `uid`. It may only UPDATE a deleting Pod through
+the main resource to remove exactly `orphan`, preserving spec, status, labels,
+annotations, owner references, deletion timestamp and every other finalizer.
+It is excluded from the general controller update set and receives no new RBAC
+or workload creation permission.
 
 Install and verify the native policies before granting bootstrap CREATE/bind.
 Do not replace an old running environment's policies before its ordered close,
