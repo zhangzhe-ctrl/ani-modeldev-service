@@ -5,11 +5,17 @@
 their `-binding` bindings, and the finite platform bootstrap roles. It performs
 no cluster operation and accepts no tenant list or Namespace UID label.
 
-Input has exactly `principals`, `node_principals`, and `kfp_ca_key`.
+Input has exactly `principals`, `node_principals`, `kfp_ca_key`, and
+`network_metadata_writer`.
 The principals map contains the verified control, webhook, kfp_api, argo,
 trainer, jobset, job_controller, persistence_agent, and maintenance usernames.
 Node usernames are exact `system:node:NAME` identities; the renderer adds no
 prefix or group exemption. `kfp_ca_key` is the actual CABUNDLE_KEY_NAME.
+The separate verified network ServiceAccount may only update an existing Pod's
+`networking.kubercloud.com/vnic` annotation through the main Pod resource. Its
+Pod spec, labels, owner references, finalizers, ModelDev identity markers and all
+other annotations must remain unchanged. This identity is not a workload creator
+or a general controller update exception, and receives no new RBAC permissions.
 
 Install and verify the native policies before granting bootstrap CREATE/bind.
 Do not replace an old running environment's policies before its ordered close,
