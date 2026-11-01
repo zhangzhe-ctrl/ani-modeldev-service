@@ -15,7 +15,7 @@ import subprocess
 NAME = "ani-modeldev-webhook"
 
 
-def render(config, namespace, image, issuer, issuer_kind, api_servers, kubernetes_service, api_server_port, kubernetes_service_port):
+def render(config, namespace, image, issuer, issuer_kind, api_servers, kubernetes_service, api_server_port, kubernetes_service_port, *, platform_principals):
     if not re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?", namespace) or not re.fullmatch(r"[^\s@]+@sha256:[0-9a-f]{64}", image):
         raise ValueError("explicit namespace and immutable webhook image required")
     if issuer_kind not in {"Issuer", "ClusterIssuer"} or not re.fullmatch(r"[a-z0-9]([-a-z0-9.]*[a-z0-9])?", issuer):
@@ -30,6 +30,8 @@ def render(config, namespace, image, issuer, issuer_kind, api_servers, kubernete
         raise ValueError("explicit observed API and Kubernetes Service ports required")
     if not config.get("driver") or config.get("schema_version") != "ani.modeldev.webhook.v2" or namespace != "ani-system":
         raise ValueError("production KFP scope requires frozen backend driver bindings")
+    if not isinstance(platform_principals, list) or not platform_principals or len(platform_principals) != len(set(platform_principals)) or any(not isinstance(p, str) or not re.fullmatch(r"system:(?:serviceaccount:[a-z0-9.-]+:[a-z0-9.-]+|node:[a-z0-9.-]+)", p) for p in platform_principals):
+        raise ValueError("explicit existing trusted platform usernames required")
     config = json.loads(json.dumps(config))
     files = {}
     bundle = Path(config["material_bundle_file"]).read_bytes()
@@ -74,7 +76,7 @@ def render(config, namespace, image, issuer, issuer_kind, api_servers, kubernete
     for field in ["containers","initContainers","ephemeralContainers"]:
         containers.append("(has(object.spec."+field+") && object.spec."+field+".exists(c,(has(c.env) && c.env.exists(e,has(e.valueFrom) && has(e.valueFrom.secretKeyRef) && e.valueFrom.secretKeyRef.name == 'modeldev-kfp-artifacts')) || (has(c.envFrom) && c.envFrom.exists(e,has(e.secretRef) && e.secretRef.name == 'modeldev-kfp-artifacts'))))")
     expression="(has(object.spec.serviceAccountName) && object.spec.serviceAccountName in "+json.dumps(reserved)+") || "+markers+" || ("+volumes+") || "+" || ".join(containers)
-    hook={"name":"dynamic.modeldev.ani.io","admissionReviewVersions":["v1"],"sideEffects":"None","failurePolicy":"Fail","matchPolicy":"Exact","reinvocationPolicy":"Never","timeoutSeconds":8,"matchConditions":[{"name":"modeldev-reserved-identity-or-reference","expression":expression}],"clientConfig":{"service":{"name":NAME,"namespace":namespace,"path":"/mutate","port":443}},"rules":[{"operations":["CREATE"],"apiGroups":[""],"apiVersions":["v1"],"resources":["pods"],"scope":"Namespaced"}]}
+    hook={"name":"dynamic.modeldev.ani.io","admissionReviewVersions":["v1"],"sideEffects":"None","failurePolicy":"Fail","matchPolicy":"Exact","reinvocationPolicy":"Never","timeoutSeconds":8,"matchConditions":[{"name":"platform-controller-trust","expression":"!(request.userInfo.username in "+json.dumps(sorted(platform_principals),separators=(",",":"))+")"},{"name":"modeldev-reserved-identity-or-reference","expression":expression}],"clientConfig":{"service":{"name":NAME,"namespace":namespace,"path":"/mutate","port":443}},"rules":[{"operations":["CREATE"],"apiGroups":[""],"apiVersions":["v1"],"resources":["pods"],"scope":"Namespaced"}]}
     registration=obj("admissionregistration.k8s.io/v1","MutatingWebhookConfiguration",ns=None,webhooks=[hook])
     registration["metadata"]["annotations"] = {"cert-manager.io/inject-ca-from": namespace+"/"+NAME+"-serving"}
     return {"apiVersion": "v1", "kind": "List", "items": rows}, registration
@@ -84,6 +86,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--webhook-binary", type=Path, required=True)
+    parser.add_argument("--platform-principals", type=Path, required=True, help="JSON array of the same trusted usernames as native policy")
     parser.add_argument("--webhook-image", required=True)
     parser.add_argument("--namespace", required=True)
     parser.add_argument("--issuer-name", required=True)
@@ -95,7 +98,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     subprocess.run([str(args.webhook_binary), "--check-config", "--config", str(args.config)], check=True, capture_output=True, timeout=15)
-    support, registration = render(json.loads(args.config.read_bytes()), args.namespace, args.webhook_image, args.issuer_name, args.issuer_kind, args.api_server_cidr, args.kubernetes_service_cidr, args.api_server_port, args.kubernetes_service_port)
+    support, registration = render(json.loads(args.config.read_bytes()), args.namespace, args.webhook_image, args.issuer_name, args.issuer_kind, args.api_server_cidr, args.kubernetes_service_cidr, args.api_server_port, args.kubernetes_service_port, platform_principals=json.loads(args.platform_principals.read_bytes()))
     args.output.mkdir(mode=0o700, parents=True, exist_ok=False)
     for name, value in (("service.json", support), ("registration.json", registration)):
         (args.output/name).write_text(json.dumps(value, indent=2)+"\n")

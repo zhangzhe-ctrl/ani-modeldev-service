@@ -20,7 +20,7 @@ class ManifestTests(unittest.TestCase):
         self.config = {"schema_version":"ani.modeldev.webhook.v2","driver":{"image":"frozen"},"material_bundle_file":str(manifest),"material_bundle_digest":hashlib.sha256(manifest.read_bytes()).hexdigest(),"profiles":[{"id":"modeldev-mlp-cpu","material_file":str(material),"material_sha256":hashlib.sha256(material.read_bytes()).hexdigest()}]}
 
     def call(self, config=None):
-        return render.render(config or self.config,"ani-system","registry.example.test/platform/webhook@sha256:"+"a"*64,"operator-issuer","Issuer",["172.16.101.10/32"],"10.96.0.1/32",6443,443)
+        return render.render(config or self.config,"ani-system","registry.example.test/platform/webhook@sha256:"+"a"*64,"operator-issuer","Issuer",["172.16.101.10/32"],"10.96.0.1/32",6443,443,platform_principals=["system:serviceaccount:kube-system:verified-platform"])
 
     def test_single_global_or_match_and_no_creator_skip(self):
         support, registration = self.call()

@@ -7,7 +7,7 @@ import render
 def config():
     p={name:"system:serviceaccount:platform:"+name.replace("_","-") for name in ["control","webhook","kfp_api","argo","trainer","jobset","job_controller","persistence_agent"]}
     p.update(control="system:serviceaccount:ani-system:modeldev-control",webhook="system:serviceaccount:ani-system:ani-modeldev-webhook",maintenance="verified-maintenance")
-    return {"principals":p,"node_principals":["system:node:verified-node"],"kfp_ca_key":"ca.crt","network_metadata_writer":"system:serviceaccount:kcn-system:kcn-controller","network_status_writer":"system:serviceaccount:kube-system:ani-multus","gc_finalizer_writer":{"username":"system:serviceaccount:kube-system:generic-garbage-collector","uid":"33333333-3333-4333-8333-333333333333"},"scheduler_writer":{"username":"system:serviceaccount:volcano-system:ani-volcano-scheduler","uid":"44444444-4444-4444-8444-444444444444"}}
+    return {"principals":p,"node_principals":["system:node:verified-node"],"kfp_ca_key":"ca.crt","network_metadata_writer":"system:serviceaccount:kcn-system:kcn-controller","network_status_writer":"system:serviceaccount:kube-system:ani-multus","gc_finalizer_writer":{"username":"system:serviceaccount:kube-system:generic-garbage-collector","uid":"33333333-3333-4333-8333-333333333333"},"scheduler_writer":{"username":"system:serviceaccount:volcano-system:ani-volcano-scheduler","uid":"44444444-4444-4444-8444-444444444444"},"device_plugin_writer":{"username":"system:serviceaccount:kube-system:volcano-device-plugin","uid":"55555555-5555-4555-8555-555555555555"}}
 
 
 class NativeTemplates(unittest.TestCase):

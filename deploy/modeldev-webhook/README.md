@@ -37,3 +37,9 @@ outside the material manifest because it contains the material bundle digest.
 Render, build, and component tests belong on Fedora. Actual server dry-run,
 ordinary workload coexistence with webhook unavailable, and A/B training remain
 separate deployment acceptance evidence.
+
+The registration renderer requires `--platform-principals`, a JSON array of the
+same existing trusted usernames used by the native workload guard. These actors
+skip the ModelDev Pod webhook through an API-server matchCondition. This does
+not change the Go service configuration, issue credentials or grant RBAC.
+Other creators retain the existing business validation and required mutation.

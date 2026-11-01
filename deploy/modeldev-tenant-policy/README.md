@@ -6,43 +6,25 @@ their `-binding` bindings, and the finite platform bootstrap roles. It performs
 no cluster operation and accepts no tenant list or Namespace UID label.
 
 Input has exactly `principals`, `node_principals`, `kfp_ca_key`,
-`network_metadata_writer`, `network_status_writer`, `gc_finalizer_writer`, and
-`scheduler_writer`.
+`network_metadata_writer`, `network_status_writer`, `gc_finalizer_writer`,
+`scheduler_writer`, and `device_plugin_writer`.
 The principals map contains the verified control, webhook, kfp_api, argo,
 trainer, jobset, job_controller, persistence_agent, and maintenance usernames.
 Node usernames are exact `system:node:NAME` identities; the renderer adds no
 prefix or group exemption. `kfp_ca_key` is the actual CABUNDLE_KEY_NAME.
-The separate verified network ServiceAccount may only update an existing Pod's
-`networking.kubercloud.com/vnic` annotation through the main Pod resource. Its
-Pod spec, labels, owner references, finalizers, ModelDev identity markers and all
-other annotations must remain unchanged. This identity is not a workload creator
-or a general controller update exception, and receives no new RBAC permissions.
-The separate verified Multus status ServiceAccount may only UPDATE the existing
-Pod status subresource to set `k8s.v1.cni.cncf.io/network-status`, preserving the
-current status as well as spec/identity metadata. This follows its pinned native
-UpdateStatus call. Neither network identity may alter the other's annotation or
-any other Pod metadata/spec through these branches.
-The separate `gc_finalizer_writer` contains the existing
-`system:serviceaccount:kube-system:generic-garbage-collector` username and its
-verified live ServiceAccount `uid`. It may only UPDATE a deleting Pod, Workflow,
-TrainJob, TrainingRuntime, JobSet, or Job through the main resource to remove
-exactly `orphan`, preserving spec, status, labels,
-annotations, owner references, deletion timestamp and every other finalizer.
-It is excluded from the general controller update set and receives no new RBAC
-or workload creation permission.
+Existing KCN, Multus, generic garbage collector, Volcano scheduler and device
+plugin, the explicit node usernames, Kubeflow Trainer and JobSet controllers are
+trusted platform actors. Their requests skip the workload guard as a whole via
+one matchCondition. There are no annotation, status-field, finalizer,
+ownerReference or ServiceAccount UID restrictions for those actors. The native
+input retains live UID receipts as deployment evidence, not admission locks.
+Persistence-agent UPDATE of status or metadata (unchanged spec) also skips the
+guard. Other actors retain the existing business checks.
 
-The same exact GC identity may remove the sole existing controller ownerReference
-from JobSet→TrainJob, Job→JobSet, and Pod→Job/Workflow dependents during native
-orphan deletion. It cannot add or replace an owner reference; spec, status,
-labels, annotations, finalizers and deletion timestamps remain unchanged.
-
-The separate `scheduler_writer` contains the existing Volcano scheduler username
-and live ServiceAccount UID. Main Pod UPDATE may change only the six pinned
-`volcano.sh/` vGPU allocation/release annotations. Pod status UPDATE may change
-only PodScheduled and nominatedNodeName; other conditions, status fields, spec,
-and identity metadata remain unchanged. Server-owned resourceVersion and
-managedFields bookkeeping remain API-server responsibilities. The scheduler is
-not included in general controller or creation sets and receives no new RBAC.
+This trust scope follows the user's explicit 2026-11-01 instructions and replaces
+the earlier per-field exceptions. It grants no RBAC permission or new identity.
+Argo, KFP API and Kubernetes Job controller CREATE still use the business Pod
+webhook, including its required configuration and retention injection.
 
 Install and verify the native policies before granting bootstrap CREATE/bind.
 Do not replace an old running environment's policies before its ordered close,
@@ -67,3 +49,4 @@ real principal kubeconfig. It verifies the username and complete original groups
 and only runs server dry-run. It issues no TokenRequest and uses no impersonation.
 An RBAC denial cannot satisfy a ModelDev admission-denial assertion. Rendering
 and component tests do not establish API-server enforcement or LIVE acceptance.
+
