@@ -1,0 +1,1226 @@
+{
+  "modeldev_columns": [
+    {
+      "table_name": "modeldev_close_intents",
+      "column_name": "tenant_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_close_intents",
+      "column_name": "execution_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_close_intents",
+      "column_name": "operation_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_close_intents",
+      "column_name": "spec_hash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_close_intents",
+      "column_name": "source_kind",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_close_intents",
+      "column_name": "source_generation",
+      "data_type": "numeric"
+    },
+    {
+      "table_name": "modeldev_close_intents",
+      "column_name": "owner_generation",
+      "data_type": "numeric"
+    },
+    {
+      "table_name": "modeldev_close_intents",
+      "column_name": "reason",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_close_intents",
+      "column_name": "requested_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "modeldev_close_intents",
+      "column_name": "requested_actor",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_close_intents",
+      "column_name": "close_state",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_execution_cleanup_audits",
+      "column_name": "tenant_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_execution_cleanup_audits",
+      "column_name": "execution_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_execution_cleanup_audits",
+      "column_name": "plan_sha256",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_execution_cleanup_audits",
+      "column_name": "actor",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_execution_cleanup_audits",
+      "column_name": "phase",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_execution_cleanup_audits",
+      "column_name": "plan",
+      "data_type": "jsonb"
+    },
+    {
+      "table_name": "modeldev_execution_cleanup_audits",
+      "column_name": "receipt",
+      "data_type": "jsonb"
+    },
+    {
+      "table_name": "modeldev_execution_cleanup_audits",
+      "column_name": "started_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "modeldev_execution_cleanup_audits",
+      "column_name": "completed_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "modeldev_execution_identities",
+      "column_name": "tenant_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_execution_identities",
+      "column_name": "execution_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_execution_identities",
+      "column_name": "operation_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_execution_identities",
+      "column_name": "spec_hash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_execution_identities",
+      "column_name": "close_generation",
+      "data_type": "numeric"
+    },
+    {
+      "table_name": "modeldev_execution_identities",
+      "column_name": "owner_revision",
+      "data_type": "numeric"
+    },
+    {
+      "table_name": "modeldev_execution_runtimes",
+      "column_name": "tenant_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_execution_runtimes",
+      "column_name": "execution_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_execution_runtimes",
+      "column_name": "operation_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_execution_runtimes",
+      "column_name": "spec_hash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_execution_runtimes",
+      "column_name": "facts",
+      "data_type": "jsonb"
+    },
+    {
+      "table_name": "modeldev_execution_runtimes",
+      "column_name": "training_name",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_execution_runtimes",
+      "column_name": "training_request_sha256",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_execution_runtimes",
+      "column_name": "training_uid",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_execution_runtimes",
+      "column_name": "publication_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_execution_runtimes",
+      "column_name": "close_generation",
+      "data_type": "numeric"
+    },
+    {
+      "table_name": "modeldev_execution_runtimes",
+      "column_name": "close_reason",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_execution_runtimes",
+      "column_name": "close_requested_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "modeldev_execution_runtimes",
+      "column_name": "closed_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "modeldev_execution_runtimes",
+      "column_name": "authority_execution_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_execution_runtimes",
+      "column_name": "gpu_release_sealed_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "modeldev_execution_runtimes",
+      "column_name": "gpu_release_scope_sha256",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_executions",
+      "column_name": "tenant_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_executions",
+      "column_name": "execution_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_executions",
+      "column_name": "operation_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_executions",
+      "column_name": "actor",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_executions",
+      "column_name": "intent_canonical",
+      "data_type": "bytea"
+    },
+    {
+      "table_name": "modeldev_executions",
+      "column_name": "intent_hash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_executions",
+      "column_name": "snapshot_canonical",
+      "data_type": "bytea"
+    },
+    {
+      "table_name": "modeldev_executions",
+      "column_name": "spec_hash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_executions",
+      "column_name": "accepted_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "tenant_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "input_version_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "request_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "actor",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "requested_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "storage_connection_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "bucket",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "approved_prefix",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "object_key",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "object_version_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "size_bytes",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "sha256",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "state",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "credential_reference",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "verified_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "verified_schema_version",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "verified_row_count",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "prepared_format",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "prepared_transform_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "prepared_size_bytes",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "prepared_sha256",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "prepared_row_count",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "verified_feature_count",
+      "data_type": "integer"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "failure_code",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "failure_observed_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "modeldev_input_versions",
+      "column_name": "format",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_pipeline_confirmed_runs",
+      "column_name": "tenant_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_pipeline_confirmed_runs",
+      "column_name": "execution_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_pipeline_confirmed_runs",
+      "column_name": "attempt_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_pipeline_confirmed_runs",
+      "column_name": "plan_hash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_pipeline_confirmed_runs",
+      "column_name": "run_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_pipeline_confirmed_runs",
+      "column_name": "first_observed_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "modeldev_pipeline_dispatches",
+      "column_name": "tenant_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_pipeline_dispatches",
+      "column_name": "execution_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_pipeline_dispatches",
+      "column_name": "operation_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_pipeline_dispatches",
+      "column_name": "spec_hash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_pipeline_dispatches",
+      "column_name": "attempt_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_pipeline_dispatches",
+      "column_name": "plan_canonical",
+      "data_type": "bytea"
+    },
+    {
+      "table_name": "modeldev_pipeline_dispatches",
+      "column_name": "plan_hash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_pipeline_dispatches",
+      "column_name": "state",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_pipeline_dispatches",
+      "column_name": "reserved_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "modeldev_pipeline_dispatches",
+      "column_name": "uncertain_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "modeldev_pipeline_dispatches",
+      "column_name": "not_sent_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "modeldev_run_authorities",
+      "column_name": "tenant_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_run_authorities",
+      "column_name": "execution_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_run_authorities",
+      "column_name": "operation_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_run_authorities",
+      "column_name": "spec_hash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_run_authorities",
+      "column_name": "attempt_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_run_authorities",
+      "column_name": "plan_hash",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_run_authorities",
+      "column_name": "run_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_run_authorities",
+      "column_name": "namespace_name",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_run_authorities",
+      "column_name": "namespace_uid",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "modeldev_run_authorities",
+      "column_name": "workflow_name",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_run_authorities",
+      "column_name": "workflow_uid",
+      "data_type": "text"
+    },
+    {
+      "table_name": "modeldev_run_authorities",
+      "column_name": "bound_at",
+      "data_type": "timestamp with time zone"
+    }
+  ],
+  "modeldev_foreign_keys": [
+    {
+      "conname": "modeldev_close_intents_tenant_id_execution_id_operation_id_fkey",
+      "child": "modeldev_close_intents",
+      "parent": "modeldev_execution_identities",
+      "definition": "FOREIGN KEY (tenant_id, execution_id, operation_id, spec_hash) REFERENCES modeldev_execution_identities(tenant_id, execution_id, operation_id, spec_hash)"
+    },
+    {
+      "conname": "modeldev_execution_cleanup_audits_tenant_id_execution_id_fkey",
+      "child": "modeldev_execution_cleanup_audits",
+      "parent": "modeldev_execution_identities",
+      "definition": "FOREIGN KEY (tenant_id, execution_id) REFERENCES modeldev_execution_identities(tenant_id, execution_id)"
+    },
+    {
+      "conname": "modeldev_execution_runtimes_tenant_id_execution_id_operati_fkey",
+      "child": "modeldev_execution_runtimes",
+      "parent": "modeldev_execution_identities",
+      "definition": "FOREIGN KEY (tenant_id, execution_id, operation_id, spec_hash) REFERENCES modeldev_execution_identities(tenant_id, execution_id, operation_id, spec_hash)"
+    },
+    {
+      "conname": "modeldev_executions_identity_fk",
+      "child": "modeldev_executions",
+      "parent": "modeldev_execution_identities",
+      "definition": "FOREIGN KEY (tenant_id, execution_id, operation_id, spec_hash) REFERENCES modeldev_execution_identities(tenant_id, execution_id, operation_id, spec_hash)"
+    },
+    {
+      "conname": "modeldev_pipeline_confirmed_r_tenant_id_execution_id_attem_fkey",
+      "child": "modeldev_pipeline_confirmed_runs",
+      "parent": "modeldev_pipeline_dispatches",
+      "definition": "FOREIGN KEY (tenant_id, execution_id, attempt_id, plan_hash) REFERENCES modeldev_pipeline_dispatches(tenant_id, execution_id, attempt_id, plan_hash)"
+    },
+    {
+      "conname": "modeldev_pipeline_dispatches_tenant_id_execution_id_fkey",
+      "child": "modeldev_pipeline_dispatches",
+      "parent": "modeldev_executions",
+      "definition": "FOREIGN KEY (tenant_id, execution_id) REFERENCES modeldev_executions(tenant_id, execution_id)"
+    },
+    {
+      "conname": "modeldev_pipeline_dispatches_tenant_id_execution_id_operat_fkey",
+      "child": "modeldev_pipeline_dispatches",
+      "parent": "modeldev_execution_identities",
+      "definition": "FOREIGN KEY (tenant_id, execution_id, operation_id, spec_hash) REFERENCES modeldev_execution_identities(tenant_id, execution_id, operation_id, spec_hash)"
+    },
+    {
+      "conname": "modeldev_run_authorities_tenant_id_execution_id_attempt_id_fkey",
+      "child": "modeldev_run_authorities",
+      "parent": "modeldev_pipeline_dispatches",
+      "definition": "FOREIGN KEY (tenant_id, execution_id, attempt_id, plan_hash) REFERENCES modeldev_pipeline_dispatches(tenant_id, execution_id, attempt_id, plan_hash)"
+    },
+    {
+      "conname": "modeldev_run_authorities_tenant_id_execution_id_operation__fkey",
+      "child": "modeldev_run_authorities",
+      "parent": "modeldev_execution_identities",
+      "definition": "FOREIGN KEY (tenant_id, execution_id, operation_id, spec_hash) REFERENCES modeldev_execution_identities(tenant_id, execution_id, operation_id, spec_hash)"
+    },
+    {
+      "conname": "modeldev_runtime_compute_authority_fkey",
+      "child": "modeldev_execution_runtimes",
+      "parent": "modeldev_run_authorities",
+      "definition": "FOREIGN KEY (tenant_id, authority_execution_id) REFERENCES modeldev_run_authorities(tenant_id, execution_id)"
+    }
+  ],
+  "modeldev_triggers": [
+    {
+      "tgname": "modeldev_gpu_release_scope_immutable",
+      "table_name": "modeldev_execution_runtimes",
+      "definition": "CREATE TRIGGER modeldev_gpu_release_scope_immutable BEFORE UPDATE ON public.modeldev_execution_runtimes FOR EACH ROW EXECUTE FUNCTION modeldev_gpu_release_scope_immutable()"
+    }
+  ],
+  "governance_columns": [
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "id",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "tenant_id",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "resource_tenant_id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "actor",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "action",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "idempotency_key",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "operation_id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "execution_id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "intent_hash",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "intent_canonical",
+      "data_type": "bytea"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "execution_spec_hash",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "snapshot_canonical",
+      "data_type": "bytea"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "accepted_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "dispatch_state",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "attempt_count",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "lease_generation",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "lease_owner",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "lease_until",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "next_attempt_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "retry_blocked",
+      "data_type": "boolean"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "last_error_code",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "owner_receipt_canonical",
+      "data_type": "bytea"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "stop_intent_generation",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "stop_requested_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "stop_requested_actor",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "close_dispatch_state",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "close_attempt_count",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "close_lease_generation",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "close_lease_owner",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "close_lease_until",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "close_next_attempt_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "close_retry_blocked",
+      "data_type": "boolean"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "close_last_error_code",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_acceptances",
+      "column_name": "close_receipt_canonical",
+      "data_type": "bytea"
+    },
+    {
+      "table_name": "sys_modeldev_release_bindings",
+      "column_name": "id",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_modeldev_release_bindings",
+      "column_name": "tenant_id",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_modeldev_release_bindings",
+      "column_name": "resource_tenant_id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_release_bindings",
+      "column_name": "preset_id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_release_bindings",
+      "column_name": "release_id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_release_bindings",
+      "column_name": "release_digest",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_release_bindings",
+      "column_name": "generation",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_modeldev_release_bindings",
+      "column_name": "new_submissions_enabled",
+      "data_type": "boolean"
+    },
+    {
+      "table_name": "sys_modeldev_release_bindings",
+      "column_name": "updated_by",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_release_bindings",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_modeldev_release_bindings",
+      "column_name": "reason",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_modeldev_release_bindings",
+      "column_name": "evidence_reference",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_accounts",
+      "column_name": "id",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_quota_accounts",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_quota_accounts",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_quota_accounts",
+      "column_name": "deleted_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_quota_accounts",
+      "column_name": "tenant_id",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_quota_accounts",
+      "column_name": "quota_code",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_accounts",
+      "column_name": "occupied_units",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_quota_accounts",
+      "column_name": "version",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_quota_charges",
+      "column_name": "id",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_quota_charges",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_quota_charges",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_quota_charges",
+      "column_name": "deleted_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_quota_charges",
+      "column_name": "tenant_id",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_quota_charges",
+      "column_name": "charge_id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_charges",
+      "column_name": "operation_id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_charges",
+      "column_name": "quota_code",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_charges",
+      "column_name": "original_units",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_quota_charges",
+      "column_name": "released_units",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_quota_definitions",
+      "column_name": "id",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_quota_definitions",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_quota_definitions",
+      "column_name": "code",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_definitions",
+      "column_name": "display_name",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_definitions",
+      "column_name": "unit",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_definitions",
+      "column_name": "accounting_kind",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "id",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "deleted_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "tenant_id",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "operation_id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "resource_tenant_id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "resource_id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "create_operation_id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "actor_type",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "actor_id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "owner_service",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "action",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "idempotency_key",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "request_hash",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "canonical_request",
+      "data_type": "text"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "dispatch_state",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "attempt_count",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "lease_generation",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "retry_blocked",
+      "data_type": "boolean"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "last_error_code",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "next_attempt_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "lease_owner",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "lease_until",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_quota_operations",
+      "column_name": "ack_json",
+      "data_type": "text"
+    },
+    {
+      "table_name": "sys_quota_release_receipts",
+      "column_name": "id",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_quota_release_receipts",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "table_name": "sys_quota_release_receipts",
+      "column_name": "tenant_id",
+      "data_type": "bigint"
+    },
+    {
+      "table_name": "sys_quota_release_receipts",
+      "column_name": "receipt_id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_release_receipts",
+      "column_name": "owner_service",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_release_receipts",
+      "column_name": "release_event_id",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_release_receipts",
+      "column_name": "payload_hash",
+      "data_type": "character varying"
+    },
+    {
+      "table_name": "sys_quota_release_receipts",
+      "column_name": "payload_json",
+      "data_type": "text"
+    }
+  ],
+  "governance_foreign_keys": [
+    {
+      "conname": "sys_modeldev_acceptances_tenant_resource_mapping_fkey",
+      "child": "sys_modeldev_acceptances",
+      "parent": "sys_tenants",
+      "definition": "FOREIGN KEY (tenant_id, resource_tenant_id) REFERENCES sys_tenants(id, resource_tenant_id) ON DELETE RESTRICT"
+    },
+    {
+      "conname": "sys_modeldev_release_bindings_tenant_resource_mapping_fkey",
+      "child": "sys_modeldev_release_bindings",
+      "parent": "sys_tenants",
+      "definition": "FOREIGN KEY (tenant_id, resource_tenant_id) REFERENCES sys_tenants(id, resource_tenant_id) ON DELETE RESTRICT"
+    },
+    {
+      "conname": "sys_quota_accounts_tenant_fkey",
+      "child": "sys_quota_accounts",
+      "parent": "sys_tenants",
+      "definition": "FOREIGN KEY (tenant_id) REFERENCES sys_tenants(id) ON DELETE RESTRICT"
+    },
+    {
+      "conname": "sys_quota_charges_tenant_account_fkey",
+      "child": "sys_quota_charges",
+      "parent": "sys_quota_accounts",
+      "definition": "FOREIGN KEY (tenant_id, quota_code) REFERENCES sys_quota_accounts(tenant_id, quota_code) ON DELETE RESTRICT"
+    },
+    {
+      "conname": "sys_quota_charges_tenant_fkey",
+      "child": "sys_quota_charges",
+      "parent": "sys_tenants",
+      "definition": "FOREIGN KEY (tenant_id) REFERENCES sys_tenants(id) ON DELETE RESTRICT"
+    },
+    {
+      "conname": "sys_quota_charges_tenant_operation_fkey",
+      "child": "sys_quota_charges",
+      "parent": "sys_quota_operations",
+      "definition": "FOREIGN KEY (tenant_id, operation_id) REFERENCES sys_quota_operations(tenant_id, operation_id) ON DELETE RESTRICT"
+    },
+    {
+      "conname": "sys_quota_operations_create_operation_fkey",
+      "child": "sys_quota_operations",
+      "parent": "sys_quota_operations",
+      "definition": "FOREIGN KEY (tenant_id, create_operation_id) REFERENCES sys_quota_operations(tenant_id, operation_id) ON DELETE RESTRICT"
+    },
+    {
+      "conname": "sys_quota_operations_tenant_fkey",
+      "child": "sys_quota_operations",
+      "parent": "sys_tenants",
+      "definition": "FOREIGN KEY (tenant_id) REFERENCES sys_tenants(id) ON DELETE RESTRICT"
+    },
+    {
+      "conname": "sys_quota_operations_tenant_resource_mapping_fkey",
+      "child": "sys_quota_operations",
+      "parent": "sys_tenants",
+      "definition": "FOREIGN KEY (tenant_id, resource_tenant_id) REFERENCES sys_tenants(id, resource_tenant_id) ON DELETE RESTRICT"
+    },
+    {
+      "conname": "sys_quota_release_receipts_tenant_fkey",
+      "child": "sys_quota_release_receipts",
+      "parent": "sys_tenants",
+      "definition": "FOREIGN KEY (tenant_id) REFERENCES sys_tenants(id) ON DELETE RESTRICT"
+    }
+  ],
+  "immutable_gpu_trigger_body_sha256": "eb35602cf8818724072abc764d17f60c34df027de6400a145f7c88ef2f885de5",
+  "modeldev_primary_keys": {
+    "modeldev_close_intents": [
+      "tenant_id",
+      "execution_id",
+      "source_kind",
+      "source_generation"
+    ],
+    "modeldev_execution_cleanup_audits": [
+      "tenant_id",
+      "execution_id",
+      "plan_sha256"
+    ],
+    "modeldev_execution_identities": [
+      "tenant_id",
+      "execution_id"
+    ],
+    "modeldev_execution_runtimes": [
+      "tenant_id",
+      "execution_id"
+    ],
+    "modeldev_executions": [
+      "tenant_id",
+      "execution_id"
+    ],
+    "modeldev_input_versions": [
+      "tenant_id",
+      "input_version_id"
+    ],
+    "modeldev_pipeline_confirmed_runs": [
+      "tenant_id",
+      "execution_id",
+      "attempt_id",
+      "run_id"
+    ],
+    "modeldev_pipeline_dispatches": [
+      "tenant_id",
+      "execution_id"
+    ],
+    "modeldev_run_authorities": [
+      "tenant_id",
+      "execution_id"
+    ]
+  }
+}
