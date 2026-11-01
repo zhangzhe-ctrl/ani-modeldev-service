@@ -28,6 +28,13 @@ resource cleanup, and original GPU release ACK have completed. Namespace
 ownership is read through the two network labels; live UID is verified by the
 ModelDev owner and webhook, because native namespaceObject has no UID.
 
+`modeldev-step-v1` includes namespaced `pods get`: the pinned KFP driver reads
+its own Pod when publishing its result, and the managed step CLI reads its own
+Pod during bootstrap. This adds no Pod list/watch/write, exec, TokenRequest or
+cluster-wide Namespace access. Each environment's existing RoleBinding limits
+the ClusterRole to that tenant Namespace. This is the actual step call required
+by `contracts/kfp-rbac.md` §4; the original spec §10.3 verb list omitted this read.
+
 The workload guard protects original templates/parameters and Pod specs, permits
 the exact KFP API terminate deadline of zero, and preserves status updates by
 verified controllers/nodes. Legacy token Secrets for all three reserved SAs are
