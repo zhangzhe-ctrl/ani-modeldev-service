@@ -16,9 +16,11 @@ The separate verified network ServiceAccount may only update an existing Pod's
 Pod spec, labels, owner references, finalizers, ModelDev identity markers and all
 other annotations must remain unchanged. This identity is not a workload creator
 or a general controller update exception, and receives no new RBAC permissions.
-The separate verified Multus status ServiceAccount has the same restriction for
-only `k8s.v1.cni.cncf.io/network-status`; neither network identity may alter the
-other's annotation or any other Pod metadata/spec through these branches.
+The separate verified Multus status ServiceAccount may only UPDATE the existing
+Pod status subresource to set `k8s.v1.cni.cncf.io/network-status`, preserving the
+current status as well as spec/identity metadata. This follows its pinned native
+UpdateStatus call. Neither network identity may alter the other's annotation or
+any other Pod metadata/spec through these branches.
 
 Install and verify the native policies before granting bootstrap CREATE/bind.
 Do not replace an old running environment's policies before its ordered close,
