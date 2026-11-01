@@ -90,6 +90,17 @@ func loadOriginal(mdPath, govPath string) (OriginalScope, error) {
 	if len(s.UnknownExecutionIDs) != 4 {
 		return s, fmt.Errorf("fixed four unknown acceptances differ")
 	}
+	for _, id := range s.UnknownExecutionIDs {
+		w, ok := originalFour[id]
+		original := find(s.OriginalAcceptances, "execution_id", id)
+		if !ok || original == nil || integer(original, "id") != w.AcceptanceID || text(original, "operation_id") != w.OperationID || text(original, "execution_spec_hash") != w.SpecHash {
+			return s, fmt.Errorf("only the four original reliably retired commands may extend the fixed fifty")
+		}
+		s.Executions = append(s.Executions, w.ExecutionIdentity)
+	}
+	if len(s.Executions) != 54 {
+		return s, fmt.Errorf("fixed original fifty plus four aggregate scope differs")
+	}
 	for _, r := range g.Operations {
 		if integer(r, "tenant_id") != 2 || text(r, "owner_service") != "ani-modeldev-service" || text(r, "action") != "modeldev.execution.create" {
 			return s, fmt.Errorf("original Governance operation owner/action differs")

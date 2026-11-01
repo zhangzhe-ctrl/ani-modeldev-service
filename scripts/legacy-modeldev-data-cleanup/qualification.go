@@ -106,6 +106,10 @@ func (c *CleanupCommand) qualifyMD(ctx context.Context, tx pgx.Tx, v databaseVie
 			blockers = append(blockers, "MD_ORIGINAL_CANONICAL_INVALID:"+wanted.ExecutionID)
 			continue
 		}
+		if _, finite := originalFour[wanted.ExecutionID]; finite && !qualifyOriginalFourAdmission(er, execution) {
+			blockers = append(blockers, "MD_ORIGINAL_FOUR_ADMISSION_IDENTITY_DIFFERS:"+wanted.ExecutionID)
+			continue
+		}
 		var state biz.ExecutionRuntime
 		_, retirement := biz.LookupLegacyRetirementScope(wanted.ExecutionID)
 		if retirement {
@@ -134,6 +138,10 @@ func (c *CleanupCommand) qualifyMD(ctx context.Context, tx pgx.Tx, v databaseVie
 			}
 			if state.LegacyRetirement != nil {
 				blockers = append(blockers, "MD_UNAPPROVED_RETIREMENT_MARKER:"+wanted.ExecutionID)
+				continue
+			}
+			if _, finite := originalFour[wanted.ExecutionID]; finite && !qualifyOriginalFourRuntime(wanted, state, v) {
+				blockers = append(blockers, "MD_ORIGINAL_FOUR_NATIVE_NODISPATCH_CLOSE_REQUIRED:"+wanted.ExecutionID)
 				continue
 			}
 			noResources := state.Workspace == nil && state.Training == nil && state.TrainingHandle == nil && state.Observation == nil && state.Publication == nil
@@ -190,7 +198,13 @@ func (c *CleanupCommand) qualifyMD(ctx context.Context, tx pgx.Tx, v databaseVie
 		executionIDs = append(executionIDs, e.ExecutionID)
 	}
 	var outside bool
-	if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM "+quoted(schema, "modeldev_execution_identities")+" WHERE tenant_id=$1::uuid AND execution_id=ANY($2::uuid[]))", s.TenantID, s.UnknownExecutionIDs).Scan(&outside); err != nil || outside {
+	unadmittedUnknownIDs := []string{}
+	for _, id := range s.UnknownExecutionIDs {
+		if _, finite := originalFour[id]; !finite {
+			unadmittedUnknownIDs = append(unadmittedUnknownIDs, id)
+		}
+	}
+	if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM "+quoted(schema, "modeldev_execution_identities")+" WHERE tenant_id=$1::uuid AND execution_id=ANY($2::uuid[]))", s.TenantID, unadmittedUnknownIDs).Scan(&outside); err != nil || outside {
 		blockers = append(blockers, "UNKNOWN_ACCEPTANCE_HAS_NEW_MD_ROWS_REQUIRES_NEW_MANIFEST")
 	}
 	// Input versions are metadata only. An execution outside this exact set may
@@ -247,6 +261,16 @@ func qualifyGov(ctx context.Context, tx pgx.Tx, v databaseView, s OriginalScope,
 			}
 			if text(r, "dispatch_state") != "ACKED" && text(original, "dispatch_state") != "UNKNOWN" {
 				blockers = append(blockers, "GOV_ACCEPTANCE_DISPATCH_UNRESOLVED:"+text(r, "id"))
+			}
+			if w, finite := originalFour[text(r, "execution_id")]; finite {
+				if !qualifyOriginalFourGov(r) {
+					blockers = append(blockers, "GOV_ORIGINAL_FOUR_NATIVE_ACK_REQUIRED:"+text(r, "id"))
+				}
+				var accounting bool
+				err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM "+quoted(schema, "sys_quota_operations")+" WHERE tenant_id=$1 AND (operation_id=$2 OR resource_id=$3 OR create_operation_id=$2)) OR EXISTS(SELECT 1 FROM "+quoted(schema, "sys_quota_charges")+" WHERE tenant_id=$1 AND operation_id=$2)", s.GovernanceTenantID, w.OperationID, w.ExecutionID).Scan(&accounting)
+				if err != nil || accounting {
+					blockers = append(blockers, "GOV_ORIGINAL_FOUR_ACCOUNTING_NOT_ABSENT:"+text(r, "id"))
+				}
 			}
 		}
 		for _, original := range originalRows(s.OriginalOperations) {

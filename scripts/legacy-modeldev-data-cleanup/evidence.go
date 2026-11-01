@@ -156,6 +156,9 @@ func validatePriorReceipt(prior *DeletionReceipt, s OriginalScope) error {
 		return fmt.Errorf("successful original Governance deletion receipt required")
 	}
 	plan := prior.Plan
+	if plan.Schema != cleanupPlanSchema {
+		return fmt.Errorf("current fixed54 deletion plan required")
+	}
 	sha := plan.ManifestSHA256
 	plan.ManifestSHA256 = ""
 	if sha == "" || digest(plan) != sha {

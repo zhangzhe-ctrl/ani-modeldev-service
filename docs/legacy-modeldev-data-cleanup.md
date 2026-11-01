@@ -20,6 +20,36 @@ inventories must remain as evidence after database deletion. Metadata cleanup
 never deletes original input bytes, base models or independently registered READY
 Model assets. Standard A/B Namespaces and all other owners remain outside scope.
 
+The current fixed DB scope is **54 MD aggregates**, the original50 plus the four
+original Governance commands55/57/59/60. Those exact original commands were
+stopped through the ordinary BFF, durably fenced, delivered once using the
+corrected original21bf codec and closed by the original native NoDispatch path.
+They retain their original operation/spec/intent bytes, actor and accepted_at.
+Governance deletion remains exactly54 acceptances,23 operations,23 charges and
+23 original receipts. No user/tenant/role/policy table is added to the deletion
+or compared as a whole-table historical row-count baseline.
+
+This explicit maintenance revision emits
+`ani.modeldev.legacy-db-cleanup.plan.v2`. Old v1 plans and prior receipts are
+refused, even when their own hash is internally consistent. A fresh complete
+manifest/hash and actual54-row snapshot are required; an old50/zero-MD-row
+qualification cannot authorize the four newly durable records.
+
+Only `27cf73a3-4107-4c07-86f7-862ce9fb413d`,
+`c9b470e0-d9cb-4989-a7f2-d1fbfbe72ab9`,
+`91e351e7-102e-4807-b0d2-9236c1426da9` and
+`f148135c-640f-47ed-b9b1-4b039d4709d1` are included by this correction. Their
+normal native canonical admission/runtime reader must pass. Their original
+CLOSED/USER_STOP/generation1/NoDispatch facts, absent dispatch/confirmed
+Run/authority and absent workspace/training/publication/runtime creation are
+required. StepExitCleanup, ComputeCleanup and GPURelease remain NULL; this tool
+never writes APPLIED or creates an outbox/journal for them. Governance requires
+their original canonical admission, matching original durable Create and Stop
+receipts, ACKED states, no retries/leases and no quota operation/charge for these
+four CPU commands. Every other UNKNOWN identity remains refused. Missing or
+changed original actor/time/canonical bytes, missing ACK or a newly materialized
+resource blocks this finite qualification.
+
 ## Read-only plans and two independent commits
 
 Build/run only on Fedora. Transfer source or individual tools with rsync;
@@ -279,12 +309,13 @@ baseline failures from its independent retirement validation; this task does
 not change those pins or fixtures, rerun an unrelated full suite, or report the
 whole old service gate as PASS. Actual targeted logs/receipts accompany delivery.
 
-External resource cleanup, collection/approval of fresh root evidence, the four
-UNKNOWN owner-closure proofs, f216 qualification, live DB deletion and final
+External resource cleanup, collection/approval of fresh root evidence,
+f216 qualification where still required by the current native reader/outbox,
+live DB deletion and final
 zero-old-data/deployment/A-B acceptance are **NOT_RUN / outside this tool**.
-If new owner-closure tombstones appear for the four UNKNOWN IDs, the current
-original scope is refused. They require a newly reviewed complete manifest and
-explicit implementation; the tool neither creates nor guesses those rows.
+The four original command correction above reads actual ordinary aggregates;
+the tool neither creates nor guesses closure rows. No identity outside the
+fixed54 can be silently adopted; it requires another explicit scope decision.
 
 ## Component validation receipt
 
@@ -345,3 +376,25 @@ third-DELETE cancellation rollback, missing successful prior Gov receipt and
 new non-FK acceptance/release-payload references. The three approved retirement
 markers remain qualified through the existing maintenance reader; this package
 does not duplicate its separate real retirement fixture suite.
+
+### Fixed54 component validation
+
+The final20-file tool source manifest is `f11acffd336dcae46c2f2c4c2b9047595829a03d9e141cfd875c59cb8e5f043c`; all local/Fedora hashes match.
+Fedora Go1.26.10 ran the affected isolated tool package against real PostgreSQL
+with `-race -count=1`:13 top-level tests PASS and the unchanged original-seven
+private-fixture test SKIP because those temporary raw bytes were already deleted
+after its prior PASS. The native actual-four admission/runtime/NoDispatch and
+Governance Create/Stop receipts pass; changed identity/canonical/actor/time/ACK
+and unclosed originals refuse. The fixed50+4 scope and old-v1-plan/prior-receipt
+refusal pass, as do both actual DB commits with other-owner/account retention,
+original missing-GPU-ACK, unknown-ID, reference drift, concurrency and rollback
+checks. `go vet` and `go build -trimpath` also exit0.
+
+The new fixed54 binary SHA256 is
+`ea9779597c06b2760eea2328ce86df0d8f718ff0d860df6d24a8c2b84b63a389`.
+It supersedes the earlier fixed50 deletion binary for this maintenance. The
+native c99 qualifier binary remains unchanged. Raw receipts are
+`fixed54-final-receipt.json`, `fixed54-final-pg-race.log`,
+`fixed54-final-vet.log`, `fixed54-final-build.log` and
+`fixed54-tool-source.sha256` in task09 `legacy-data-cleanup/`. No live DELETE
+was executed by these checks.

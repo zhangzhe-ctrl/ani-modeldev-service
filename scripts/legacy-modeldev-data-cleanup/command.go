@@ -139,7 +139,7 @@ func (c *CleanupCommand) Plan(ctx context.Context, phase string, prior *Deletion
 	return p, err
 }
 func (c *CleanupCommand) planInTransactions(ctx context.Context, md, gov pgx.Tx, phase string, prior *DeletionReceipt) (CleanupPlan, databaseView, databaseView, error) {
-	p := CleanupPlan{Schema: "ani.modeldev.legacy-db-cleanup.plan.v1", Phase: phase, InventorySHA256: c.Original.InventorySHA256, GovernanceInventorySHA256: c.Original.GovernanceInventorySHA256, RootEvidenceSHA256: c.RootSHA256, Blockers: []string{}}
+	p := CleanupPlan{Schema: cleanupPlanSchema, Phase: phase, InventorySHA256: c.Original.InventorySHA256, GovernanceInventorySHA256: c.Original.GovernanceInventorySHA256, RootEvidenceSHA256: c.RootSHA256, Blockers: []string{}}
 	if phase != "governance" && phase != "modeldev" {
 		return p, databaseView{}, databaseView{}, fmt.Errorf("phase must be governance or modeldev")
 	}
@@ -173,7 +173,7 @@ func (c *CleanupCommand) Apply(ctx context.Context, reviewed CleanupPlan, prior 
 	check := reviewed
 	sha := check.ManifestSHA256
 	check.ManifestSHA256 = ""
-	if sha == "" || digest(check) != sha || len(reviewed.Blockers) != 0 {
+	if reviewed.Schema != cleanupPlanSchema || sha == "" || digest(check) != sha || len(reviewed.Blockers) != 0 {
 		return result, fmt.Errorf("reviewed complete manifest without BLOCKED qualifications required")
 	}
 	md, err := beginCleanup(ctx, c.ModelDev, true)
