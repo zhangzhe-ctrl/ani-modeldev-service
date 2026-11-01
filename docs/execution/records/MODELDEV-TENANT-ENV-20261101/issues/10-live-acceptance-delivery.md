@@ -51,14 +51,23 @@ Blocked by: 09
 
 ## Result
 
-- Outcome: BLOCKED；19组件行PASS，AD01/02及LIVE01–11仍BLOCKED；新A/B真实训练/Stop/下载/隔离/轮换未完成。
-- Base / final commits: 三仓运行源d807/244780/67dcee及正式API pin不变；旧维护6c17/ca01/651/1464分别有独立固定来源与必要验证，见报告。
-- Changed files / generated artifacts: 验收表、部署输入、八节报告、原身份/保留资产清单及实际镜像发布/工具清理/维护503/原退休收据随进度回填。
-- Validation commands / exit codes / required gates: 复用固定源码必要组件、真实隔离PG和gate，无文档触发全量重跑。旧MD完整gate实际FAIL保留；Gov6c17/ca01完整gate PASS。指定集群新共享服务与全部A/B业务验收NOT_RUN。
-- Acceptance IDs / actual values / evidence paths: A Gov2/Resource64c5c35a-f554-432c-b4bc-7b4f36f08420、B Gov40/Resource207328fc-f08d-4dc4-b403-16ec86396ce2，原标准Namespace UID均核实。原3已CLOSED/cleanup APPLIED，原GPU ALREADY_APPLIED及账户零差；四原UNKNOWN正常Stop202/fenceACK已实证。全部四固定镜像已发布，新增构建工具已清理，均不替代LIVE06。
-- Deployment or cleanup effects / preserved assets: 旧API维护Gov已实际部署并验证503/drain；B新user50沿既有role26且实际登录200、专用plan10复制12模块/physical1并仅加shared49140、原plan2不变；尚未切换v4、Ensure A/B或新增A/B训练资产，标准及旧Namespace保留。完整其他owner UID/健康最终对比待历史清理后执行。
-- Remaining blockers / affected dependencies: 原四命令已native CLOSED/NoDispatch且旧worker精确scale0；7条历史资格/完整删除收敛、完整外部/DB清理、Res窗口、最终材料/策略/服务部署、B合法输入/基模/必要GPU政策，然后完成全部LIVE01–11。
-- Contract conflicts / evidence / minimal correction: route1及测试节点大镜像构建/撤销额外限额已获明确授权；唯一个集群入口、写前完整身份、固定权限方案、无新RPC/兼容、原Reserve-fence-release和Inference边界保持。
+### 本轮最终回填（2026-11-02 Asia/Shanghai）
+
+- 当前结果：**PARTIAL_MAIN_FLOW_ACCEPTED_GOAL_NOT_FULLY_ACCEPTED**。LIVE06/07/08已实际PASS，LIVE04/05固定进程轮换证据PASS；最终并发视图/新策略否定例等BLOCKED、STS/故障窗口等NOT_RUN逐项见验收表。
+- 实际证据：[本项回执](../evidence/10/resumed-mainflow/readback-B-1793548972071555495.json)；[完整报告](../implementation-report.md)、[验收表](../acceptance-results.tsv)。
+- 新测试/make verify按用户本轮指令NOT_RUN；不把下列历史固定源码PASS归给当前提交。
+
+### 历史固定源码与此前checkpoint（保留原事实，当前状态以上文为准）
+
+- Outcome: IN_PROGRESS。当前恢复原66真实A/B主线；A3 CPU成功与LIVE07运行中Stop已实际完成，B2失败已正常全退；B3真实训练/export成功但verify Begin409且已正常全退，B4八步骤/Model READY/原退额完成，下载SHA待回，不宣称Goal完成。
+- Target/runtime: kubercloud@100.64.128.12 / kubernetes-admin@ani-kcn-full / clusterf39bf6e2…；主服务1dfd6941e5780eca0d55dc4e5fbbd2f58e0710ab、imagefe944d52…、Podb98cfbef-fd6d-4a8f-99fe-d47b6ed2d6f9/15:53:50Z/0restart，配置保持。新10及其训练前停止要求仅作历史checkpoint。见 [当前实际部署](../evidence/10/main-verify-time-1dfd6941-19240-release/rollout-actual.json)。
+- Completed actual acceptance: 新A/B显式Ensure/Get READY；LIVE04/05同进程真实token访问/自然轮换及指定403/401；A3实际CPU loss下降、五步骤/模型发布/下载SHA一致并原owner清理APPLIED；LIVE07实际Running后正常Stop、writer退出、原Compute APPLIED；LIVE08已7项双向详情/日志/Stop及B→A artifact拒绝/0副作用，A→B成功artifact负例仍待B成功产物。证据见[验收表](../acceptance-results.tsv)、[A3](../evidence/10/resumed-mainflow/a3-original-owner-compute-cleanup-final.json)、[Stop/跨租户](../evidence/10/resumed-mainflow/live08-normal-jwt-negative-and-b-cpustop-1793539024651916679.json)。
+- B2: 原设备Allocate拒绝后终态失败/Python未启动事实保留；2ac使严格never-created证明正常读回，原ownerCLOSED/Step及Compute APPLIED，原event9c2cac54… ACK APPLIED、原charge24570全退/account44version4 occupied0=Σ0，无人工改账。见 [原最终收据](../evidence/10/main-admission-abort-19240-release/b2-original-close-release-1793540950210389961.json)。
+- User authorization/native: 用户明确以原平台SA/nativeRBAC信任方式覆盖§11.1–§11.3的平台逐字段限制；native源码4d6013/VAP10/MWC3已实际安装，其他租户身份/owner/spec/Secret边界保留，0新增RBAC/身份。见 [最终native](../evidence/10/trusted-platform-native-final/actual.json)。当前5b99仍pin7，追加5.4/pin维护按用户主线优先未执行；不得冒称§7冻结材料已更新。
+- Remaining: B4微调/19产物发布/Model READY及原24570全退已完成，实际下载SHA与Model正式GET/跨租户artifact否定收据待回；LIVE09/10剩余NOT_RUN不前置；LIVE08剩余成功artifact否定及最终旧入口/保护项/工具总账、pins收敛尚未全部完成。用户本轮禁止新tests/verify/扫描，历史组件PASS不移植到新源码；不新调查、备份或另写总结。
+- Delivery: 继续唯一[八节实施报告](../implementation-report.md)及[原验收表](../acceptance-results.tsv)回填；根docs正式promote等待主线结果。原任务正文与历史Comment保留。
+- B3/current repair: 原execution a3b48752…真实train loss7.0513/export exit0；verify Begin409，Python verify未运行。原owner自动7compute全gone/原event ACK APPLIED/24570全退/account44version6 occupied0=Σ0，见[B3收据](../evidence/10/resumed-mainflow/b3-original-close-and-release-final-1793547050096007731.json)（SHA256 2307f1a605c62d7e90dd0749c7023581c827dd4358da0d57cb5c60e18e152af4）。1dfd6941仅修runtimeproof/finetuning_steps.go中exportReportedFinishedAt纳秒与Pod main.finishedAt秒精度比较，见[实际Ready](../evidence/10/main-verify-time-1dfd6941-19240-release/rollout-actual.json)；原Pod native秒值未保留，不能宣称已完全证实唯一根因。B4已在修复后通过verify及全部8步骤；这不补造原B3 Pod已缺失的秒值。
+- B4 actual: execution59f92b91-5e86-4dd1-90ec-cb1037756758已SUCCEEDED/PUBLISHED/CLOSED，8steps SUCCEEDED/19产物PUBLISHED/loss7.05126428604126，Model454cef60-ca01-4dae-a4e6-b8881026c688/version6afb1f32-a0d4-4c92-8d82-7799e450f5ee登记READY。见[正常读回](../evidence/10/resumed-mainflow/readback-B-1793548972071555495.json)、[原生观察](../evidence/10/b4-real-finetuning/current.json)。原charge9249ff3e…24570全退/account44version8 occupied0=Σ0、原event ACK APPLIED/7compute gone，见[最终释放](../evidence/10/resumed-mainflow/b4-original-close-and-release-final-1793549008812487147.json)（SHA256 f3dbe26c3623f4a308e82833c98ef97e890ea9fa3d50beb57a2cfe73cedb8d4a）。下载SHA/Model正式GET及A→B artifact否定收据待Root/snapshot，LIVE06未提前PASS；原pins漂移/追加5.4未执行及剩余现场用例不被本次成功覆盖。
 
 ## Comments
 

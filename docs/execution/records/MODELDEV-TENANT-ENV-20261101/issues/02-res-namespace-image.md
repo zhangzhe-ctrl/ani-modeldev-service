@@ -51,6 +51,14 @@ Blocked by: 01
 
 ## Result
 
+### 本轮最终回填（2026-11-02 Asia/Shanghai）
+
+- 当前结果：**PASS_IMAGE_AND_NAMESPACE_MAIN_FLOW**。原标准Namespace未新建；两新CPU/GPU受管image tuple已实际消费，B4 GPU_SHARED全链成功。
+- 实际证据：[本项回执](../evidence/10/resumed-mainflow/readback-B-1793548972071555495.json)；[完整报告](../implementation-report.md)、[验收表](../acceptance-results.tsv)。
+- 新测试/make verify按用户本轮指令NOT_RUN；不把下列历史固定源码PASS归给当前提交。
+
+### 历史固定源码与此前checkpoint（保留原事实，当前状态以上文为准）
+
 - Outcome: PASS（02组件实现与必要验证）；现场回填/切换/A-B业务验收 NOT_RUN，归09/10，未提前记LIVE通过。
 - Base / final commits: `23e25b33ca02890231cd273ef7246b0fc415476c` → `71b3ad7a2a88ae531e5e7b80abde2f494ff28d9d`；分支 `codex/modeldev-dynamic-tenant-environment` 已通过SSH github:443推送。
 - Changed files / generated artifacts: Res纯 `internal/tenantnamespace`、Network事务Namespace UID及0025 migration、默认只读+reviewed SHA条件回填工具、KC/VM NAD原UID护栏、Sandbox只读无创建/无可选绕过、Storage replay与写前UID、VM/Instance标准目标、动态ModelDev Secret caller、旧prefix配置拒绝、RBAC示例、conf.pb.go/sqlcgen生成物；Inference静态caller保持。

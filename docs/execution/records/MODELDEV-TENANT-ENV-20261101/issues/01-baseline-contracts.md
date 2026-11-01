@@ -51,6 +51,14 @@ Blocked by: None
 
 ## Result
 
+### 本轮最终回填（2026-11-02 Asia/Shanghai）
+
+- 当前结果：**PASS_FIXED_CONTRACTS**。固定API/合同不变；当前main1dfd6941、native4d6013；用户明确授权的既有平台信任范围按报告第7节记录。
+- 实际证据：[本项回执](../evidence/09/final-switch/fixed-sources-api-pins.json)；[完整报告](../implementation-report.md)、[验收表](../acceptance-results.tsv)。
+- 新测试/make verify按用户本轮指令NOT_RUN；不把下列历史固定源码PASS归给当前提交。
+
+### 历史固定源码与此前checkpoint（保留原事实，当前状态以上文为准）
+
 - Outcome: PASS (source baseline and common contract freeze only).
 - Base / final commits: ModelDev 21bf4bd6540d462a61c91b629f26250899583223; Gov ddd98f4c79751ba848fa862bab6878dc7bc99bb7; Res 23e25b33ca02890231cd273ef7246b0fc415476c. ModelDev final source d807cbdbd5dd6664d61480acedc752e19cfca48a and Resource final source 71b3ad7a2a88ae531e5e7b80abde2f494ff28d9d; both required make verify exit0, SSH pushed. Gov final pin/gate recorded in07.
 - Changed files / generated artifacts: tenant_environment.proto/pb.go/grpc.pb.go, ErrorReason 38, v4 snapshot fields and current protobuf output; file ownership and tags in evidence/contract-freeze.md.

@@ -51,6 +51,14 @@ Blocked by: 03, 04
 
 ## Result
 
+### 本轮最终回填（2026-11-02 Asia/Shanghai）
+
+- 当前结果：**PASS_LIVE_MAIN_API_FLOW**。正常Ensure/Create/Get/运行中Stop、双向拒绝与原Gov ACK均已有实际证据，Model父/版本正式READY。
+- 实际证据：[本项回执](../evidence/10/resumed-mainflow/live08-normal-jwt-negative-and-b-cpustop-1793539024651916679.json)；[完整报告](../implementation-report.md)、[验收表](../acceptance-results.tsv)。
+- 新测试/make verify按用户本轮指令NOT_RUN；不把下列历史固定源码PASS归给当前提交。
+
+### 历史固定源码与此前checkpoint（保留原事实，当前状态以上文为准）
+
 - Outcome: PASS（本项源码/组件/必需gate）；Resolution: resolved。显式Ensure/Get及Prepare前置失败已在真实JWT/Redis/Casbin/PG授权与生产HTTP/service/client中验证；只有外部ModelDev mTLS及Resource服务边界为明确替身。指定集群A/B业务授权与实际平台连接仍由09/10负责，未记LIVE通过。
 - Base / final commits: Gov base `ddd98f4c79751ba848fa862bab6878dc7bc99bb7`；原运行/API提交 `fa80f886d022177173d7e9cf81ec51e54c2df4c8`、HTTP补测 `5cfa9065190b9585b799e428537a0019ca70e41a`、非秘密fixture分组说明 `f6a68ed7f89cca56b4ea97377a21e4146f4c6b62`、最终既有VM权限map同步 `02f4f71e743b4ffe08ef04e880f1c431b62d7213` 均已正常SSH推送。最终部署候选使用02f4，不把fa80旧快照当最终源树。原44文件manifest、两个独立补测hash和最终四文件hash按提交串联，见evidence/gov-final/fedora-round2-source-identity.json、environment-http-integration-source-and-coverage.json、gitleaks-fixture-grouping-source.json、vm-log-map-final-proof.json。
 - Changed files / generated artifacts: 官方API/OpenAPI、当前tenant显式Ensure/Get、精确权限/metadata/预算/Error38有限转换、Permission迁移/权威map及Create/publisher维护gate。正式ModelDev module `v0.0.0-20261031195825-d807cbdbd5dd` 和Resource `v0.0.0-20261031180451-71b3ad7a2a88`；没有replace或复制pb。最后四文件仅将已存在SQL的VM日志GET→vm:read补入capability TSV、固定生成capability_gen.go及维护两处覆盖计数测试；未改SQL/role/plan grants/VM runtime/Inference/扫描规则。

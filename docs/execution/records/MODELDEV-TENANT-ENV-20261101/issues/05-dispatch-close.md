@@ -51,6 +51,14 @@ Blocked by: 04
 
 ## Result
 
+### 本轮最终回填（2026-11-02 Asia/Shanghai）
+
+- 当前结果：**PASS_LIVE_MAIN_FLOW**。B4原dispatch/训练/发布成功，原owner自动正常CLOSED/Compute APPLIED7of7/原GPU事件ACK/24570全退；不引入ACC退额条件。
+- 实际证据：[本项回执](../evidence/10/resumed-mainflow/b4-original-close-and-release-final-1793549008812487147.json)；[完整报告](../implementation-report.md)、[验收表](../acceptance-results.tsv)。
+- 新测试/make verify按用户本轮指令NOT_RUN；不把下列历史固定源码PASS归给当前提交。
+
+### 历史固定源码与此前checkpoint（保留原事实，当前状态以上文为准）
+
 - Outcome: PASS（源码与真实PG/必要外部边界集成）；指定集群清理/切换/真实A-B验收仍由09/10报告，未记LIVE通过。
 - Base / final commits: base `21bf4bd6540d462a61c91b629f26250899583223`；最终源码提交 `d807cbdbd5dd6664d61480acedc752e19cfca48a`，已SSH推送；最终完整make verify exit0见evidence/modeldev-final-make-verify.log。
 - Changed files / generated artifacts: 原dispatch/close两个worker、共享WorkerCoordinator、submission/execution/lifecycle投影与sqlc、0003 migration、安全JSON helper、runtime实例接线、原UID关闭路径；无新队列/执行lease/发送状态机。

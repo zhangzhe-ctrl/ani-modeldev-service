@@ -51,6 +51,14 @@ Blocked by: none（03真实Ensure已集成并由真实PG纵向验证）
 
 ## Result
 
+### 本轮最终回填（2026-11-02 Asia/Shanghai）
+
+- 当前结果：**PARTIAL_LIVE_IO_STS_CROSS_SCOPE_NOT_RUN**。A/B业务artifact实际I/O和下载SHA、原token自然轮换已通过；STS跨scope真实否定仍NOT_RUN。
+- 实际证据：[本项回执](../evidence/10/resumed-mainflow/download-B-1793549202671540591.json)；[完整报告](../implementation-report.md)、[验收表](../acceptance-results.tsv)。
+- 新测试/make verify按用户本轮指令NOT_RUN；不把下列历史固定源码PASS归给当前提交。
+
+### 历史固定源码与此前checkpoint（保留原事实，当前状态以上文为准）
+
 - Outcome: PASS（04源码及必要关联行为证据；此处不代表09切换或10真实A/B验收PASS）。
 - Base / final commits: base 21bf4bd6540d462a61c91b629f26250899583223；最终源码提交 `d807cbdbd5dd6664d61480acedc752e19cfca48a` 已SSH推送；最终完整make verify exit0见evidence/modeldev-final-make-verify.log。
 - Changed files / generated artifacts: cpup01 单一 v4 Snapshot/codec、DispatchOwner/ManagedImageAccess/三 SA UID、严格 tenant/Namespace/storage scopes；删除 snapshot-v3 fixture，独立 Python 生成 snapshot-v4.json/vectors；AdmissionFactsReader 从 READY 登记及同一四材料目录只读合成并 live 验证原身份；Prepare/Finalize 冻结和重新核对原环境/Owner；STS 删除 tenant Bindings 数组，仅平台物理 store+原执行scope；source-only Readiness 使用 PlatformImplementation；基模 scope 按可信 tenant 派生；四 root IR/KFP/关闭 root config 严格解析；general/fine 显式精确 refs，删除 training 名字前缀放行。

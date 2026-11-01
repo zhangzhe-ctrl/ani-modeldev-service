@@ -51,14 +51,21 @@ Blocked by: 02, 05, 06, 07, 08
 
 ## Result
 
-- Outcome: BLOCKED；原3执行已真实完整退休，原GPU事件ACK与账户恒等式通过；其余原命令退休、完整历史删除、Res窗口与v4切换仍未完成。
-- Base / final commits: Gov旧API维护6c17f010、独立原命令辅助ca01cabf；旧MD原3退休651f5ea1、历史c99有限资格/DB工具1464b131；Res窗口67dceef0。均SSH正常推送，运行API pin d807/71b3不变。
-- Changed files / generated artifacts: 固定原UID/字节/plan摘要的独立CLI、精确DB与外部清理工具、Res窗口与完整脱敏收据；无SQL CLOSED/ACK、无v3运行时兼容、无新RPC。
-- Validation commands / exit codes / required gates: Gov6c17及ca01完整make check/audit exit0；原命令生产sender/真实PG与旧MDfence/noSend真实PG通过。旧MD651原受影响测试/vet/build通过，但完整旧base make verify实际FAIL保留，不能声称通过。1464有限c99工具/DB消费真实PG/race/vet/build/modverify通过，Res4项真实PG及完整verify exit0。
-- Acceptance IDs / actual values / evidence paths: 原1cce950b、4a1a92f7、eca4d47b均真实CLOSED，step/compute cleanup APPLIED；两日志如实TRAINING_LOGS_UNRECOVERABLE/LogsReady=false，第三只用固定原UID archive及精确denial资格。原事件54c1fb78…实际mTLS ALREADY_APPLIED并持久CAS，24570原charge全退，账户occupied/all-owner前后0；见evidence/09/legacy-retirement/original-stop-three-retirements-complete.json、original-stop-final-durable-journals.json。
-- Deployment or cleanup effects / preserved assets: Workbench唯一job3b191f8ee306437ea5cdcbba6520399b实际SUCCEEDED，源6c17，Govimage sha256:2f66dc480e1a45a1a6c2cfc6df2275cd8496eb29a5d9ad5066f2776f02528d05、PodUID7e3c6bd5-4d76-4b44-92bf-6e3b89d48a6f；真实Create503/lease0/54acceptance与23operation和charges前后相同。四UNKNOWN经真实tenant-a/admin正常Stop均202、原owner fence ACK/CLOSING、原MD admission/runtime0，四原命令均一次deliver成功、DispatchACKED，原worker实际closed_at非空/USER_STOP/NoDispatch。原worker经UID/RV/replicas/image精确test patch scale0，原PodUID已消失；fresh54/54关闭且Govlease0，见old-worker-stopped-proof-20261101T024313Z.json。见evidence/09/four-original-normal-http-stop-resume-after-202-result.json与gov-original-command-retirement/gov-aux-first-post-stop-readonly-plan.json。其他owner资产基线保留。
-- Remaining blockers / affected dependencies: 四条原命令现已同原ID/actor/acceptedAt/字节接收并native关闭；新增4行后必须fresh54MD manifest，不能沿用50行计划。7条c99完整历史资格工具已通过实读，实际删除资格/外部固定对象版本清理、DB受控删除、Res live冻结/迁移/回填/释放、新v4部署与A/B仍未完成。
-- Contract conflicts / evidence / minimal correction: 原3只采用用户明确批准的限定日志/归档/精确denial修正，所有其他UID/writer/PVC/fence/CAS/cleanup/原事件ACK保持。维护CLI原短DNS缺失仅使用同原ServiceUID/VIP和原CA/SNI/cert，不改集群DNS或身份；首次未知结果只读对账后同原事件恢复。
+### 本轮最终回填（2026-11-02 Asia/Shanghai）
+
+- 当前结果：**PARTIAL_MAIN_CLEANUP_COMPLETE_FINAL_PINS_RECONCILED**。原历史清理及B4正常全额退额完成；追加spec5.4已完成且新A/B READY，保留PVC/输入/模型/日志/产物，清单内额外工具已清。
+- 实际证据：[本项回执](../evidence/10/task-final-tools-cleanup-20261101/actual-cleanup.json)；[完整报告](../implementation-report.md)、[验收表](../acceptance-results.tsv)。
+- 新测试/make verify按用户本轮指令NOT_RUN；不把下列历史固定源码PASS归给当前提交。
+
+### 历史固定源码与此前checkpoint（保留原事实，当前状态以上文为准）
+
+- Outcome: 原66旧历史清理、Res窗口和本轮失败attempt释放已实际完成；最终bootstrap pins追加收敛未执行，Resolution保持open。原新10 checkpoint仅为历史，当前入口为kubercloud@100.64.128.12/ani-kcn-full/cluster f39bf6e2…。
+- Original cleanup/cutover: 原限定外部与双库历史精确删除、原占额0；Res官方0025/两UID回填/NULL0、原15writer全gone、67d正式切换/release及窗口工具清理均有原始收据。见 [原历史](../evidence/09/legacy-data-cleanup/native-exact-discard-actual-result.json)、[Res完成](../evidence/09/res-recovery-v3-final-window-actual.json)、[工具清理](../evidence/09/res-window-finished-tools-cleanup.json)。
+- Attempts: A1/A2按用户无备份直接清理授权精确手动退役，非正常CLOSED PASS；B1/B2/B3/B4均由原owner真实关闭/清理APPLIED/原释放event ACK，分别原24570全退，账户恒等式0。A3原7compute释放后正常owner APPLIED；日志/产物/合同保留PVC保留。见 [A1](../evidence/10/a1-exact-manual-retirement/exact-database-delete-actual.json)、[A2](../evidence/10/resumed-mainflow/a2-manual-cleanup/exact-database-delete-actual.json)、[B1](../evidence/10/b-gpu-original-release/original-b-normal-release-final-1793534000214437359.json)、[B2](../evidence/10/main-admission-abort-19240-release/b2-original-close-release-1793540950210389961.json)、[A3](../evidence/10/resumed-mainflow/a3-original-owner-compute-cleanup-final.json)。不SQL伪造CLOSED/APPLIED/ACK或账户清零。
+- Runtime/materials: 主服务1dfd6941/fe944d52…，Podb98cfbef…start15:53:50Z/单Ready/0restart/原配置不变；最终bundle4a655已启用、新A/B显式Ensure/Get READY。native4d6013/VAP10/MWC3已按用户平台trust授权安装，0RBAC/新身份。见 [当前部署](../evidence/10/main-verify-time-1dfd6941-19240-release/rollout-actual.json)、[新A/B](../evidence/10/final-material-maintenance/new-A-B-Ensure-actual.json)、[最终native](../evidence/10/trusted-platform-native-final/actual.json)。
+- Remaining: 此前5.4重登记已完成；native10/MWC3后的追加5.4因用户主线优先未执行、0该维护写，当前5b99仍pin7明确漂移。§7租户冻结保留、平台准入例外依用户新授权记录；不静默改canonical或冒称pins已收敛。B3训练/export成功但verify Begin409，原owner自动7compute全gone/原24570全退；B4实际微调/发布/Model登记/正常退额完成，下载SHA待Root；保留标准Namespace/输入/其他owner/Inference。
+- B3/current repair: 原execution a3b48752…真实train loss7.0513/export exit0；verify Begin409，Python verify未运行。原owner自动7compute全gone/原event ACK APPLIED/24570全退/account44version6 occupied0=Σ0，见[B3收据](../evidence/10/resumed-mainflow/b3-original-close-and-release-final-1793547050096007731.json)（SHA256 2307f1a605c62d7e90dd0749c7023581c827dd4358da0d57cb5c60e18e152af4）。1dfd6941仅修runtimeproof/finetuning_steps.go中exportReportedFinishedAt纳秒与Pod main.finishedAt秒精度比较，见[实际Ready](../evidence/10/main-verify-time-1dfd6941-19240-release/rollout-actual.json)；原Pod native秒值未保留，不能宣称已完全证实唯一根因。B4已在修复后通过verify及全部8步骤；这不补造原B3 Pod已缺失的秒值。
+- B4 actual: execution59f92b91-5e86-4dd1-90ec-cb1037756758已SUCCEEDED/PUBLISHED/CLOSED，8steps SUCCEEDED/19产物PUBLISHED/loss7.05126428604126，Model454cef60-ca01-4dae-a4e6-b8881026c688/version6afb1f32-a0d4-4c92-8d82-7799e450f5ee登记READY。见[正常读回](../evidence/10/resumed-mainflow/readback-B-1793548972071555495.json)、[原生观察](../evidence/10/b4-real-finetuning/current.json)。原charge9249ff3e…24570全退/account44version8 occupied0=Σ0、原event ACK APPLIED/7compute gone，见[最终释放](../evidence/10/resumed-mainflow/b4-original-close-and-release-final-1793549008812487147.json)（SHA256 f3dbe26c3623f4a308e82833c98ef97e890ea9fa3d50beb57a2cfe73cedb8d4a）。下载SHA/Model正式GET及A→B artifact否定收据待Root/snapshot，LIVE06未提前PASS；原pins漂移/追加5.4未执行及剩余现场用例不被本次成功覆盖。
 
 ## Comments
 

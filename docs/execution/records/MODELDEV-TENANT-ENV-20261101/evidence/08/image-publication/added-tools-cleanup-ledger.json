@@ -1,6 +1,6 @@
 {
   "schema": "ani.modeldev.added-tools-cleanup-ledger.v1",
-  "updated_at": "2026-11-01T02:28:03.726449+00:00",
+  "updated_at": "2026-11-01T03:00:22.526120+00:00",
   "resource_limits": "USER_REMOVED_NO_CPU_MEMORY_OR_PARALLELISM_LIMIT",
   "original_containerd": "/run/containerd/containerd.sock namespace k8s.io (retain)",
   "original_image_cache": "retain all original images/layers/DB",
@@ -267,7 +267,8 @@
       "kind": "ordinary_aux_cli_transit",
       "original": false,
       "created": true,
-      "cleanup_status": "PENDING_TRANSFER"
+      "cleanup_status": "REMOVED_ABSENCE_VERIFIED",
+      "cleanup_evidence": "local-transit-cleanup.json"
     },
     {
       "host": "node1",
@@ -275,9 +276,10 @@
       "kind": "task_private_aux_cli_destination",
       "original": false,
       "created": true,
-      "cleanup_status": "RETAIN_REQUIRED_FOR_ACTIVE_GOAL_PARENT_ENVIRONMENT_OWNS_USE_AND_FINAL_REMOVAL",
+      "cleanup_status": "REMOVED_SHA_PROCESS_MOUNT_AND_ABSENCE_VERIFIED",
       "sha256": "bbf33c31d36046f298bce3f5d95c90e1302362e99c1034ab0173da53297aa4e1",
-      "size": 151354706
+      "size": 151354706,
+      "cleanup_evidence": "../../09/completed-retirement-tools-cleanup-result.json"
     },
     {
       "host": "node1",

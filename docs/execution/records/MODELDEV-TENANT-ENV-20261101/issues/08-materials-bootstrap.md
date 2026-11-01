@@ -51,14 +51,22 @@ Blocked by: 04, 06
 
 ## Result
 
-- Outcome: BLOCKED；四镜像已实际发布并按digest读回，新增构建工具已清理；最终四Pipeline/Version、sealed材料、策略安装和真实I/O未完成。
-- Base / final commits: 固定runtime/API源d807cbdbd5dd6664d61480acedc752e19cfca48a，tree141053367fa4be9a6fb9c764b2d7900b5282be20；689构建输入逐SHA一致。
-- Changed files / generated artifacts: 四profile编译/发布journal/完整Struct读回/不可变bundle/配置挂载工具已实现。CPU/GPU/step/webhook四镜像实际发布清单见evidence/08/image-publication/result.json。
-- Validation commands / exit codes / required gates: 必要6项工具测试exit0；21对象schema server dry-run通过但尚未持久安装。四镜像缺配置启动实际exit1；发布采用原Harbor CA验证TLS，manifest及Harbor digest读回一致；没有把它作为真实训练验收。
-- Acceptance IDs / actual values / evidence paths: CPU9369651248B/digest31227c3a…，GPU9369651247B/digestaa1f6ae2…，step16911953B/digestedc52340…，webhook27604938B/digest98715f78…；完整引用与原任务未丢失证明见上述result/node receipts。两个大镜像复用原29层完整cache，实际并行构建6.110/6.437秒，无附加CPU/内存/并发限额。
-- Deployment or cleanup effects / preserved assets: 新增BuildKit/私有state/socket/auth/临时unit与333493615B节点目录及262742886B本地中转已清理、SHA/absence核实，原BuildKit/containerd/cache/tasks保留。清单evidence/08/image-publication/added-tools-cleanup-ledger.json；活跃旧退休CLI暂留，任务收尾后删除。专用bucket已建且VersioningEnabled，source Secret UIDbc62d45a-d83c-4ca8-b5fa-ca07c6cadb47；共享内部artifact账号仅此bucket，其他三个业务bucket及admin API实际403，见artifact-storage-complete-account-result.json；正向launcher I/O仍NOT_RUN。
-- Remaining blockers / affected dependencies: 两training镜像原Resource PLATFORM登记、四定义实际发布/真实ID、sealed bundle、native/RBAC实际安装与行为、最终主服务切换及A/B真实训练/隔离/轮换。runtime control按合同只读平台定义，不授publisher写权限。
-- Contract conflicts / evidence / minimal correction: 用户已批准route1并进一步明确允许两个大镜像直接在指定测试节点构建、撤销额外构建限额；主服务仍走指定Workbench。新增工具完整记账并清理。所有原身份/退出/释放门禁保持。
+### 本轮最终回填（2026-11-02 Asia/Shanghai）
+
+- 当前结果：**PASS_MATERIALS_FINAL_PINS_RECONCILED**。四最终Version/material4a655和三运行镜像已发布并由B4实际消费；publisher已撤权。最终平台bootstrap pins已同步，当前2d759平台对应VAP10/MWC3。
+- 实际证据：[本项回执](../evidence/10/finetuning-ir-correction-20261101/final/materials/seal-receipt.json)；[完整报告](../implementation-report.md)、[验收表](../acceptance-results.tsv)。
+- 新测试/make verify按用户本轮指令NOT_RUN；不把下列历史固定源码PASS归给当前提交。
+
+### 历史固定源码与此前checkpoint（保留原事实，当前状态以上文为准）
+
+- Outcome: IN_PROGRESS；四镜像、四共享Pipeline/Version、sealed bundle实际完成；最终platform12refs/新服务artifact I/O与真实pull仍未完成，不将整项resolved。
+- Actual artifacts: 四Pipeline/Version于ani-system正常发布并全读回对比；canonical bundle manifest SHAa27e1669fd2657d2d46cc4ceb419c4420e1733e743798653e9e8d300e91c8ee6。四固定registry digest见报告§4及image-publication/result.json，不改该不可变原收据。
+- Publisher identity: 用户已批准限定temporary SA/Role/RB/oneJob；已真实发布后撤RB/UID删除Job/Pod/SA/Role及投影token source，不在新tenant加入时再发定义。evidence/08/platform-materials-final/actual-publication-window.json。
+- Artifact store: 独立共享artifact IAM仅限新internalbucket，三业务bucket/admin否定403实际通过；source Secret两键已具名。真实launcher I/O、rotation和ordinarytenant隔离NOT_RUN。
+- Native/bootstrap: 21固定对象已真实安装、3VAP actual typeChecking/warnings0，11refs由生产Go实际hash。native bootstrap server dry-run14合法+7反例实际PASS，完整workload/globalwebhook行为不冒充通过。
+- Current blockers: 新webhook新Pod在私有project5缺pull凭据而init失败，旧2Ready保持、MWC未切；旧ani-gpu-platform当前public=true而新project5=false均实际GET200。project-only只读pull新identity，以及128→162与精确trusted输入都依用户指示等待裁定，没有自行创建或采用。
+- Tool cleanup: BuildKit/build私有工具已逐项actualabsence；已用完的publisher/原legacy工具与投影token source也已清；仍需要的renderer/management/window工具按总账保留待最终删除。
+- Validation: 复用固定source必要gate，不因证据/文档重跑全量；最终材料真实IR/fullreadback已实际，服务可用/训练不以工具测试或HTTP200代替。
 
 ## Comments
 
