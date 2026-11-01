@@ -395,8 +395,19 @@ func (p *Platform) readIR(profileID, digest string) (any, error) {
 }
 
 func (p *Platform) verifyFixedImages(value any) error {
+	return p.verifyFixedImageNode(value, nil)
+}
+
+func (p *Platform) verifyFixedImageNode(value any, path []string) error {
 	switch v := value.(type) {
 	case map[string]any:
+		// KFP recognizes this exact SDK resource executor as a PVC operation;
+		// argostub/createpvc is a backend marker, not a runtime container image.
+		if (reflect.DeepEqual(path, []string{"deploymentSpec", "executors", "exec-createpvc"}) ||
+			reflect.DeepEqual(path, []string{"pipeline_spec", "deploymentSpec", "executors", "exec-createpvc"})) &&
+			reflect.DeepEqual(v, map[string]any{"container": map[string]any{"image": "argostub/createpvc"}}) {
+			return nil
+		}
 		for key, child := range v {
 			if key == "image" {
 				image, ok := child.(string)
@@ -416,13 +427,13 @@ func (p *Platform) verifyFixedImages(value any) error {
 					}
 				}
 			}
-			if e := p.verifyFixedImages(child); e != nil {
+			if e := p.verifyFixedImageNode(child, append(path, key)); e != nil {
 				return e
 			}
 		}
 	case []any:
 		for _, child := range v {
-			if e := p.verifyFixedImages(child); e != nil {
+			if e := p.verifyFixedImageNode(child, append(path, "")); e != nil {
 				return e
 			}
 		}
