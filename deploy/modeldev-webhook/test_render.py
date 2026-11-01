@@ -42,6 +42,11 @@ class ManifestTests(unittest.TestCase):
         deployment=next(r for r in support["items"] if r["kind"]=="Deployment")
         pod=deployment["spec"]["template"]["spec"]
         self.assertEqual(deployment["spec"]["replicas"],2)
+        annotations=deployment["spec"]["template"]["metadata"]["annotations"]
+        config_map=next(r for r in support["items"] if r["kind"]=="ConfigMap")
+        expected=hashlib.sha256(json.dumps(config_map["data"],sort_keys=True,separators=(",",":")).encode()).hexdigest()
+        self.assertEqual(annotations,{"app.kubernetes.io/config-sha256":expected})
+        self.assertFalse(any(key.startswith(("ani.modeldev/","modeldev.ani.io/")) for key in annotations))
         self.assertIn("--copy-materials-manifest-sha256",pod["initContainers"][0]["command"])
         self.assertEqual(pod["initContainers"][0]["image"],pod["containers"][0]["image"])
         source=next(v for v in pod["volumes"] if v["name"]=="material-source")

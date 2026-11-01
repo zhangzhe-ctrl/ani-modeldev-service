@@ -161,6 +161,9 @@ class Publication(unittest.TestCase):
         service = objects["service.patch.json"]["spec"]["template"]
         webhook = objects["webhook-materials.patch.json"]["spec"]["template"]
         self.assertEqual(service["metadata"]["annotations"], webhook["metadata"]["annotations"])
+        self.assertEqual(service["metadata"]["annotations"], {"app.kubernetes.io/material-bundle-sha256": digest})
+        for template in (service, webhook):
+            self.assertFalse(any(key.startswith(("ani.modeldev/", "modeldev.ani.io/")) for key in template["metadata"]["annotations"]))
         self.assertNotIn("subPath", json.dumps(objects))
         audiences = {source["serviceAccountToken"]["audience"] for volume in service["spec"]["volumes"] if "projected" in volume for source in volume["projected"]["sources"] if "serviceAccountToken" in source}
         self.assertEqual(audiences, {"pipelines.kubeflow.org", "https://kubernetes.default.svc.cluster.local"})
