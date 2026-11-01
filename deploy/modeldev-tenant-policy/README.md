@@ -6,7 +6,7 @@ their `-binding` bindings, and the finite platform bootstrap roles. It performs
 no cluster operation and accepts no tenant list or Namespace UID label.
 
 Input has exactly `principals`, `node_principals`, `kfp_ca_key`, and
-`network_metadata_writer`.
+`network_metadata_writer`, and `network_status_writer`.
 The principals map contains the verified control, webhook, kfp_api, argo,
 trainer, jobset, job_controller, persistence_agent, and maintenance usernames.
 Node usernames are exact `system:node:NAME` identities; the renderer adds no
@@ -16,6 +16,9 @@ The separate verified network ServiceAccount may only update an existing Pod's
 Pod spec, labels, owner references, finalizers, ModelDev identity markers and all
 other annotations must remain unchanged. This identity is not a workload creator
 or a general controller update exception, and receives no new RBAC permissions.
+The separate verified Multus status ServiceAccount has the same restriction for
+only `k8s.v1.cni.cncf.io/network-status`; neither network identity may alter the
+other's annotation or any other Pod metadata/spec through these branches.
 
 Install and verify the native policies before granting bootstrap CREATE/bind.
 Do not replace an old running environment's policies before its ordered close,

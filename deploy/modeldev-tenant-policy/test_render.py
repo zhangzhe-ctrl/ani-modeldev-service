@@ -7,7 +7,7 @@ import render
 def config():
     p={name:"system:serviceaccount:platform:"+name.replace("_","-") for name in ["control","webhook","kfp_api","argo","trainer","jobset","job_controller","persistence_agent"]}
     p.update(control="system:serviceaccount:ani-system:modeldev-control",webhook="system:serviceaccount:ani-system:ani-modeldev-webhook",maintenance="verified-maintenance")
-    return {"principals":p,"node_principals":["system:node:verified-node"],"kfp_ca_key":"ca.crt","network_metadata_writer":"system:serviceaccount:kcn-system:kcn-controller"}
+    return {"principals":p,"node_principals":["system:node:verified-node"],"kfp_ca_key":"ca.crt","network_metadata_writer":"system:serviceaccount:kcn-system:kcn-controller","network_status_writer":"system:serviceaccount:kube-system:ani-multus"}
 
 
 class NativeTemplates(unittest.TestCase):

@@ -94,7 +94,7 @@ def protected_pods(name):
     return f"{name}.exists(s,(has(s.serviceAccountName) && s.serviceAccountName in {q(SA)}) || ({volumes}) || {containers})"
 
 
-def workload(p, nodes, network_metadata_writer):
+def workload(p, nodes, network_metadata_writer, network_status_writer):
     metadata = []
     for category in ["Labels", "Annotations"]:
         condition = "k.startsWith('ani.modeldev/') || k.startsWith('modeldev.ani.io/')" + (" || k == 'pipeline/runid'" if category == "Labels" else "")
@@ -110,12 +110,15 @@ def workload(p, nodes, network_metadata_writer):
     network_annotation = "networking.kubercloud.com/vnic"
     network_metadata = "request.resource.resource == 'pods' && (!has(request.subResource) || request.subResource == '') && request.userInfo.username == " + q(network_metadata_writer) + " && variables.sameSpec && variables.sameIdentity && variables.newLabels == variables.oldLabels && " + optional("object", "metadata.finalizers", "[]") + " == " + optional("oldObject", "metadata.finalizers", "[]") + " && " + q(network_annotation) + " in variables.newAnnotations && size(variables.newAnnotations[" + q(network_annotation) + "]) > 0 && variables.oldAnnotations.all(k,k == " + q(network_annotation) + " || (k in variables.newAnnotations && variables.oldAnnotations[k] == variables.newAnnotations[k])) && variables.newAnnotations.all(k,k == " + q(network_annotation) + " || (k in variables.oldAnnotations && variables.newAnnotations[k] == variables.oldAnnotations[k]))"
     variables.append(("networkMetadataUpdate", network_metadata))
+    network_status_annotation = "k8s.v1.cni.cncf.io/network-status"
+    network_status = "request.resource.resource == 'pods' && (!has(request.subResource) || request.subResource == '') && request.userInfo.username == " + q(network_status_writer) + " && variables.sameSpec && variables.sameIdentity && variables.newLabels == variables.oldLabels && " + optional("object", "metadata.finalizers", "[]") + " == " + optional("oldObject", "metadata.finalizers", "[]") + " && " + q(network_status_annotation) + " in variables.newAnnotations && size(variables.newAnnotations[" + q(network_status_annotation) + "]) > 0 && variables.oldAnnotations.all(k,k == " + q(network_status_annotation) + " || (k in variables.newAnnotations && variables.oldAnnotations[k] == variables.newAnnotations[k])) && variables.newAnnotations.all(k,k == " + q(network_status_annotation) + " || (k in variables.oldAnnotations && variables.newAnnotations[k] == variables.oldAnnotations[k]))"
+    variables.append(("networkStatusUpdate", network_status))
     creators = {"workflows": [p["kfp_api"]], "trainjobs": [p["control"]], "trainingruntimes": [p["control"]], "jobsets": [p["trainer"]], "jobs": [p["jobset"]], "pods": [p["argo"], p["job_controller"]]}
     create = " || ".join(f"(request.resource.resource == {q(resource)} && request.userInfo.username in {q(users)})" for resource, users in creators.items())
     deadline = optional("object", "spec.activeDeadlineSeconds", "-1") + " == " + optional("oldObject", "spec.activeDeadlineSeconds", "-1")
     workflow_equal = "object.spec.templates == oldObject.spec.templates && " + optional("object", "spec.arguments", "{}") + " == " + optional("oldObject", "spec.arguments", "{}") + " && object.spec.entrypoint == oldObject.spec.entrypoint && object.spec.serviceAccountName == oldObject.spec.serviceAccountName && (" + deadline + " || (request.userInfo.username == " + q(p["kfp_api"]) + " && has(object.spec.activeDeadlineSeconds) && object.spec.activeDeadlineSeconds == 0))"
     updates = "request.userInfo.username in " + q(sorted(set(p.values()) | set(nodes))) + " && variables.sameIdentity && variables.sameRetention && (request.resource.resource == 'workflows' ? (" + workflow_equal + ") : request.resource.resource == 'trainjobs' ? (variables.sameSpec || variables.suspendOnly) : request.resource.resource in ['pods','trainingruntimes'] ? variables.sameSpec : variables.newPods == variables.oldPods)"
-    updates = "(" + updates + ") || variables.networkMetadataUpdate"
+    updates = "(" + updates + ") || variables.networkMetadataUpdate || variables.networkStatusUpdate"
     pod_identity = "has(object.spec.serviceAccountName) && ((object.spec.serviceAccountName == 'modeldev-step' && (request.operation != 'CREATE' || request.userInfo.username == " + q(p["argo"]) + ")) || (object.spec.serviceAccountName == 'trainer-workload' && (request.operation != 'CREATE' || request.userInfo.username == " + q(p["job_controller"]) + ")))"
     checks = [("!variables.protected || variables.standardNamespace", "protected workload requires the standard owned namespace"), ("!variables.protected || request.operation != 'CREATE' || (" + create + ")", "only exact original controllers create protected resources"), ("!variables.protected || request.resource.resource != 'pods' || (" + pod_identity + ")", "reserved Secret, PVC or SA cannot be borrowed"), ("!variables.protected || request.operation != 'UPDATE' || (" + updates + ")", "original templates, four parameters, owner identity and retained Pod spec cannot change")]
     rules = [resource_rule(["argoproj.io"], ["workflows", "workflows/status"]), resource_rule(["trainer.kubeflow.org"], ["trainjobs", "trainjobs/status", "trainingruntimes"]), resource_rule(["jobset.x-k8s.io"], ["jobsets", "jobsets/status"]), resource_rule(["batch"], ["jobs", "jobs/status"]), resource_rule([""], ["pods", "pods/status", "pods/ephemeralcontainers"])]
@@ -146,7 +149,7 @@ def rbac(p):
 
 
 def render(config):
-    if set(config) != {"principals", "node_principals", "kfp_ca_key", "network_metadata_writer"}:
+    if set(config) != {"principals", "node_principals", "kfp_ca_key", "network_metadata_writer", "network_status_writer"}:
         raise ValueError("verified exact principals and node identities required")
     p, nodes = config["principals"], config["node_principals"]
     if not isinstance(config["kfp_ca_key"],str) or not re.fullmatch(r"[A-Za-z0-9._-]+",config["kfp_ca_key"]):
@@ -161,9 +164,12 @@ def render(config):
     network_writer = config["network_metadata_writer"]
     if not isinstance(network_writer, str) or not re.fullmatch(r"system:serviceaccount:[a-z0-9.-]+:[a-z0-9.-]+", network_writer) or network_writer in p.values():
         raise ValueError("separate verified network metadata ServiceAccount required")
+    status_writer = config["network_status_writer"]
+    if not isinstance(status_writer, str) or not re.fullmatch(r"system:serviceaccount:[a-z0-9.-]+:[a-z0-9.-]+", status_writer) or status_writer in p.values() or status_writer == network_writer:
+        raise ValueError("separate verified network status ServiceAccount required")
     if not isinstance(nodes, list) or not nodes or len(nodes) > 64 or len(set(nodes)) != len(nodes) or any(not re.fullmatch(r"system:node:[a-z0-9.-]+", n) for n in nodes):
         raise ValueError("exact verified node usernames required")
-    return {"apiVersion": "v1", "kind": "List", "items": bootstrap(p,config["kfp_ca_key"]) + configuration(p) + workload(p, nodes, network_writer) + rbac(p)}
+    return {"apiVersion": "v1", "kind": "List", "items": bootstrap(p,config["kfp_ca_key"]) + configuration(p) + workload(p, nodes, network_writer, status_writer) + rbac(p)}
 
 
 def main():
