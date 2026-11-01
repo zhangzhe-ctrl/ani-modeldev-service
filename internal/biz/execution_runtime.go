@@ -122,8 +122,10 @@ type InitializationContainerExit struct {
 
 // ValidAt validates the persisted abort facts independently of the Kubernetes
 // adapter. A completed owner Run/Workflow is additionally required by close.
+// A missing first init can be the only declared init; it then has no waiting
+// init suffix. The exact marker and complete declared-name checks still apply.
 func (proof *PodInitializationAbort) ValidAt(observedAt time.Time) bool {
-	if proof == nil || proof.PodResourceVersion == "" || proof.NodeName == "" || proof.Phase != "Failed" || proof.RestartPolicy != "Never" || proof.PodGeneration <= 0 || observedAt.IsZero() || proof.DeletedAt.IsZero() || proof.NotInitializedAt.IsZero() || proof.SandboxStoppedAt.IsZero() || proof.DeletedAt.After(observedAt) || proof.SandboxStoppedAt.After(observedAt) || proof.NotInitializedAt.After(proof.SandboxStoppedAt) || len(proof.UnstartedInitContainers) == 0 || len(proof.UnstartedContainers) == 0 || len(proof.DeclaredContainers) != len(proof.UnstartedContainers) {
+	if proof == nil || proof.PodResourceVersion == "" || proof.NodeName == "" || proof.Phase != "Failed" || proof.RestartPolicy != "Never" || proof.PodGeneration <= 0 || observedAt.IsZero() || proof.DeletedAt.IsZero() || proof.NotInitializedAt.IsZero() || proof.SandboxStoppedAt.IsZero() || proof.DeletedAt.After(observedAt) || proof.SandboxStoppedAt.After(observedAt) || proof.NotInitializedAt.After(proof.SandboxStoppedAt) || len(proof.UnstartedInitContainers) == 0 && proof.UncreatedInitContainer == nil || len(proof.UnstartedContainers) == 0 || len(proof.DeclaredContainers) != len(proof.UnstartedContainers) {
 		return false
 	}
 	seen := make(map[string]bool)
