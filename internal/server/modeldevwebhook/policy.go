@@ -342,7 +342,7 @@ func (handler *Handler) admit(ctx context.Context, request *admissionv1.Admissio
 				if !componentWorkEnvironment(container, labels[RoleLabel]) {
 					return denied(request, "work_environment")
 				}
-				if container.Image != profile.ComponentImage || !componentResourcesMatch(container.Resources, componentResources) {
+				if container.Image != handler.config.StepImage || !componentResourcesMatch(container.Resources, componentResources) {
 					return denied(request, "image_contract")
 				}
 			} else if !slices.Contains(profile.AllowedSupportImages, container.Image) {
