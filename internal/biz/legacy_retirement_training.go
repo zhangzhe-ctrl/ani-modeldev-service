@@ -9,12 +9,34 @@ const (
 	LegacyRetirementOriginalSuspended143 LegacyRetirementTrainingExitKind = "ORIGINAL_SUSPENDED_EXIT_143"
 )
 
+const LegacyRetirementStopFenceSource = "ORIGINAL_PERSISTED_RUNTIME_CLOSE"
+
+// This is the actual pre-overlay runtime row, not a replacement for the
+// current command fence or its CAS. The repository compares it under its lock.
+type LegacyRetirementStopFence struct {
+	Source      string
+	Generation  uint64
+	Reason      string
+	RequestedAt time.Time
+}
+
+func ValidLegacyRetirementStopFence(execution Execution, owner RunAuthorityCandidate, state ExecutionRuntime, fence LegacyRetirementStopFence) bool {
+	if !LegacyRetirementScopeMatches(execution, owner) || fence.Source != LegacyRetirementStopFenceSource || fence.Generation == 0 || fence.Generation > state.CloseGeneration || fence.RequestedAt.IsZero() || state.CloseRequestedAt.IsZero() || fence.RequestedAt.After(state.CloseRequestedAt) {
+		return false
+	}
+	if fence.Generation == state.CloseGeneration {
+		return fence.Reason == state.CloseReason && fence.RequestedAt.Equal(state.CloseRequestedAt) && (fence.Reason == "STEP_FAILED" || fence.Reason == "USER_STOP" || fence.Reason == "DEADLINE")
+	}
+	scope, _ := LookupLegacyRetirementScope(execution.ExecutionID)
+	return scope.TrainingPodUID != "" && fence.Generation == 1 && fence.Reason == "STEP_FAILED" && state.CloseGeneration == 2 && state.CloseReason == "USER_STOP"
+}
+
 // This classifies an observation; it never rewrites its original Outcome.
 // Only the two fixed original workers can use the suspended-exit branch. The
 // repository still requires the full original graph, writer proof and CAS.
-func ClassifyLegacyRetirementTrainingExit(execution Execution, owner RunAuthorityCandidate, state ExecutionRuntime, observation TrainingRuntimeObservation) (LegacyRetirementTrainingExitKind, error) {
+func ClassifyLegacyRetirementTrainingExit(execution Execution, owner RunAuthorityCandidate, state ExecutionRuntime, observation TrainingRuntimeObservation, fence LegacyRetirementStopFence) (LegacyRetirementTrainingExitKind, error) {
 	scope, ok := LookupLegacyRetirementScope(execution.ExecutionID)
-	if !ok || scope.TrainingPodUID == "" || !LegacyRetirementScopeMatches(execution, owner) || state.Training == nil || state.TrainingHandle == nil || observation.Handle != *state.TrainingHandle || !observation.WritersAbsent || observation.ObservedAt.IsZero() {
+	if !ok || scope.TrainingPodUID == "" || !ValidLegacyRetirementStopFence(execution, owner, state, fence) || state.Training == nil || state.TrainingHandle == nil || observation.Handle != *state.TrainingHandle || !observation.WritersAbsent || observation.ObservedAt.IsZero() {
 		return "", ErrRuntimeNotReady
 	}
 	kind := LegacyRetirementOriginalFailure
@@ -42,7 +64,7 @@ func ClassifyLegacyRetirementTrainingExit(execution Execution, owner RunAuthorit
 		// Match the original generation-1 create / generation-2 suspend and
 		// post-fence acknowledgement, including the controllers that omit
 		// observedGeneration. Worker exit retention remains mandatory.
-		if !resource.APIObjectPresent || !resource.CreationDisabled || ack == nil || ack.Generation != 2 || ack.ObservedGeneration != 0 && ack.ObservedGeneration != ack.Generation || state.CloseRequestedAt.IsZero() || ack.AcknowledgedAt.IsZero() || ack.AcknowledgedAt.Before(state.CloseRequestedAt.Truncate(time.Second)) || ack.AcknowledgedAt.After(observation.ObservedAt) || resource.Kind == "Job" && !ack.WorkerExitRetention {
+		if !resource.APIObjectPresent || !resource.CreationDisabled || ack == nil || ack.Generation != 2 || ack.ObservedGeneration != 0 && ack.ObservedGeneration != ack.Generation || ack.AcknowledgedAt.IsZero() || ack.AcknowledgedAt.Before(fence.RequestedAt.Truncate(time.Second)) || ack.AcknowledgedAt.After(observation.ObservedAt) || resource.Kind == "Job" && !ack.WorkerExitRetention {
 			return "", ErrRuntimeNotReady
 		}
 	}

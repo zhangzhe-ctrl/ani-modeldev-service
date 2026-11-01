@@ -124,6 +124,7 @@ func legacyRetirementFixture(t *testing.T, id string, ownerOnly bool) (func() *p
 		evidence.Resources = append(evidence.Resources, biz.RuntimeResource{APIVersion: "v1", Kind: "Pod", Namespace: scope.NamespaceName, Name: "retirement-" + role, UID: "retirement-" + role + "-uid", OwnerUID: scope.WorkflowUID, APIObjectPresent: true, Terminal: true, ExitCode: &zero})
 	}
 	request := biz.LegacyRetirementRequest{Authority: owner, ExpectedOwnerRevision: state.OwnerRevision, CloseGeneration: state.CloseGeneration, CommandFence: state.CloseGeneration, ApprovalSHA256: biz.LegacyRetirementApprovalSHA256, Actor: "maintenance:human-approved-retirement", Archive: biz.LegacyRetirementArchiveReceipt{Source: biz.LegacyRetirementArchiveSource, ExecutionID: scope.ExecutionID, NamespaceName: scope.NamespaceName, NamespaceUID: scope.NamespaceUID, RunID: scope.RunID, WorkflowName: scope.WorkflowName, WorkflowUID: scope.WorkflowUID, SHA256: scope.ArchiveSHA256, ArchivedResourceVersion: evidence.OwnerTermination.WorkflowResourceVersion, ObservedAt: now}, Evidence: evidence}
+	request.OriginalStopFence = biz.LegacyRetirementStopFence{Source: biz.LegacyRetirementStopFenceSource, Generation: state.CloseGeneration, Reason: state.CloseReason, RequestedAt: state.CloseRequestedAt}
 	if !ownerOnly {
 		exit := int32(143)
 		request.TrainingExitKind = biz.LegacyRetirementOriginalFailure
@@ -152,15 +153,40 @@ func TestLegacyRetirementPostgresKeepsUnknownSuspendedOriginalExit(t *testing.T)
 				r.Terminal, r.CreationDisabled = false, true
 				r.Suspension = &biz.TrainingControllerSuspension{Generation: 2, AcknowledgedAt: request.Observation.ObservedAt, WorkerExitRetention: r.Kind == "Job"}
 			}
+			// Reproduce the actual original gen1 STEP_FAILED stop/ACK followed
+			// by a later Gov USER_STOP command gen2. No row or ACK is fabricated.
+			time.Sleep(1100 * time.Millisecond)
+			laterStop := time.Now().UTC().Truncate(time.Microsecond)
+			if _, err := execution.New(open()).ApplyCloseIntent(context.Background(), biz.CloseIntent{TenantID: a.TenantID, ExecutionID: a.ExecutionID, OperationID: a.OperationID, SpecHash: a.SpecHash, SourceGeneration: 1, Reason: biz.CloseReasonUserStop, RequestedAt: laterStop, RequestedActor: a.Actor}); err != nil {
+				t.Fatal(err)
+			}
 			repository := lifecycle.NewLegacyRetirement(open())
 			ctx := context.Background()
+			_, current, _, _, fence, original, err := repository.GetLegacyRetirementPlan(ctx, a.TenantID, a.ExecutionID)
+			if err != nil || current.CloseGeneration != 2 || fence != 2 || current.CloseReason != "USER_STOP" || !current.CloseRequestedAt.Equal(laterStop) || original != request.OriginalStopFence {
+				t.Fatal("original/current stop epochs were conflated", err)
+			}
+			request.ExpectedOwnerRevision, request.CloseGeneration, request.CommandFence = current.OwnerRevision, current.CloseGeneration, fence
+			fresh := time.Now().UTC()
+			request.Observation.ObservedAt = fresh
+			request.Evidence.ObservedAt = fresh
+			request.Archive.ObservedAt = fresh
 			for name, change := range map[string]func(*biz.LegacyRetirementRequest){
 				"invented-controller-failure-kind": func(r *biz.LegacyRetirementRequest) { r.TrainingExitKind = biz.LegacyRetirementOriginalFailure },
 				"unclassified":                     func(r *biz.LegacyRetirementRequest) { r.TrainingExitKind = "" },
-				"running":                          func(r *biz.LegacyRetirementRequest) { r.Observation.Outcome = "RUNNING" },
-				"success":                          func(r *biz.LegacyRetirementRequest) { r.Observation.Outcome = "SUCCEEDED" },
-				"writer-present":                   func(r *biz.LegacyRetirementRequest) { r.Observation.WritersAbsent = false },
-				"missing-ack":                      func(r *biz.LegacyRetirementRequest) { r.Observation.Resources[0].Suspension = nil },
+				"changed-original-epoch": func(r *biz.LegacyRetirementRequest) {
+					r.OriginalStopFence.RequestedAt = r.OriginalStopFence.RequestedAt.Add(-time.Second)
+				},
+				"current-command-as-original": func(r *biz.LegacyRetirementRequest) {
+					r.OriginalStopFence.Generation = 2
+					r.OriginalStopFence.Reason = "USER_STOP"
+					r.OriginalStopFence.RequestedAt = laterStop
+				},
+				"invented-epoch-source": func(r *biz.LegacyRetirementRequest) { r.OriginalStopFence.Source = "ARCHIVE_DERIVED" },
+				"running":               func(r *biz.LegacyRetirementRequest) { r.Observation.Outcome = "RUNNING" },
+				"success":               func(r *biz.LegacyRetirementRequest) { r.Observation.Outcome = "SUCCEEDED" },
+				"writer-present":        func(r *biz.LegacyRetirementRequest) { r.Observation.WritersAbsent = false },
+				"missing-ack":           func(r *biz.LegacyRetirementRequest) { r.Observation.Resources[0].Suspension = nil },
 				"old-ack": func(r *biz.LegacyRetirementRequest) {
 					r.Observation.Resources[0].Suspension.AcknowledgedAt = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 				},
@@ -199,8 +225,12 @@ func TestLegacyRetirementPostgresKeepsUnknownSuspendedOriginalExit(t *testing.T)
 				t.Fatal("truthful suspended exit rejected", err)
 			}
 			closed, err := repository.ConfirmLegacyRetirement(ctx, request)
-			if err != nil || closed.ClosedAt == nil || closed.Observation.Outcome != "UNKNOWN" || closed.LegacyRetirement.TrainingExitKind != biz.LegacyRetirementOriginalSuspended143 {
+			if err != nil || closed.ClosedAt == nil || closed.Observation.Outcome != "UNKNOWN" || closed.LegacyRetirement.TrainingExitKind != biz.LegacyRetirementOriginalSuspended143 || closed.CloseGeneration != 2 || closed.CloseReason != "USER_STOP" || !closed.CloseRequestedAt.Equal(laterStop) || closed.LegacyRetirement.OriginalStopFence != original {
 				t.Fatal("truthful outcome was rewritten", err)
+			}
+			_, restarted, _, _, restartedFence, restartedOriginal, restartErr := lifecycle.NewLegacyRetirement(open()).GetLegacyRetirementPlan(ctx, a.TenantID, a.ExecutionID)
+			if restartErr != nil || restarted.CloseGeneration != 2 || restartedFence != 2 || !restarted.CloseRequestedAt.Equal(laterStop) || restartedOriginal != original {
+				t.Fatal("restart replaced original stop epoch or current CAS", restartErr)
 			}
 			step, err := repository.BeginStepExitCleanup(ctx, request.Authority, closed.CloseGeneration, request.Evidence)
 			if err != nil {

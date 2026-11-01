@@ -36,11 +36,12 @@ func (a *app) qualify(ctx context.Context, id string) (item, biz.LegacyRetiremen
 	if !ok {
 		return entry, biz.LegacyRetirementRequest{}, nil, biz.ErrRuntimeConflict
 	}
-	execution, state, _, owner, fence, err := a.repo.GetLegacyRetirementRecord(ctx, scope.TenantID, id)
+	execution, state, _, owner, fence, stopFence, err := a.repo.GetLegacyRetirementPlan(ctx, scope.TenantID, id)
 	if err != nil {
 		return entry, biz.LegacyRetirementRequest{}, nil, fmt.Errorf("READ_ORIGINAL_AGGREGATE: %w", err)
 	}
 	entry.Owner, entry.OwnerRevision, entry.CloseGeneration, entry.CommandFence, entry.CloseReviewReason, entry.Closed = owner, state.OwnerRevision, state.CloseGeneration, fence, state.CloseReviewReason, state.ClosedAt != nil
+	entry.OriginalStopFence = stopFence
 	raw, err := a.archive.get(ctx, scope, execution.Snapshot.Environment)
 	if err != nil {
 		return entry, biz.LegacyRetirementRequest{}, nil, fmt.Errorf("READ_FIXED_OFFICIAL_ARCHIVE: %w", err)
@@ -51,7 +52,7 @@ func (a *app) qualify(ctx context.Context, id string) (item, biz.LegacyRetiremen
 		if !biz.LegacyRetirementQualification(execution, owner, state) || state.CloseEvidence == nil {
 			return entry, biz.LegacyRetirementRequest{}, nil, biz.ErrRuntimeConflict
 		}
-		request := biz.LegacyRetirementRequest{Authority: owner, ExpectedOwnerRevision: r.ExpectedOwnerRevision, CloseGeneration: r.CloseGeneration, CommandFence: r.CommandFence, ApprovalSHA256: r.ApprovalSHA256, Actor: r.Actor, Archive: r.Archive, UnrecoverableLogs: r.UnrecoverableLogs, TrainingExitKind: r.TrainingExitKind, Evidence: *state.CloseEvidence}
+		request := biz.LegacyRetirementRequest{Authority: owner, ExpectedOwnerRevision: r.ExpectedOwnerRevision, CloseGeneration: r.CloseGeneration, CommandFence: r.CommandFence, ApprovalSHA256: r.ApprovalSHA256, Actor: r.Actor, Archive: r.Archive, UnrecoverableLogs: r.UnrecoverableLogs, TrainingExitKind: r.TrainingExitKind, OriginalStopFence: r.OriginalStopFence, Evidence: *state.CloseEvidence}
 		if state.Observation != nil {
 			request.Observation = *state.Observation
 			entry.TrainingExitKind, entry.TrainingOutcome, entry.TrainingWritersAbsent = r.TrainingExitKind, state.Observation.Outcome, state.Observation.WritersAbsent
@@ -87,12 +88,12 @@ func (a *app) qualify(ctx context.Context, id string) (item, biz.LegacyRetiremen
 	if err != nil {
 		return entry, biz.LegacyRetirementRequest{}, nil, fmt.Errorf("CURRENT_OWNER_WRITER_PROOF: %w", err)
 	}
-	request := biz.LegacyRetirementRequest{Authority: owner, ExpectedOwnerRevision: state.OwnerRevision, CloseGeneration: state.CloseGeneration, CommandFence: fence, ApprovalSHA256: biz.LegacyRetirementApprovalSHA256, Actor: "root:legacy-retirement-20261101", Archive: archive, Evidence: evidence, UnrecoverableLogs: []biz.LegacyTrainingLogDisposition{}}
+	request := biz.LegacyRetirementRequest{Authority: owner, ExpectedOwnerRevision: state.OwnerRevision, CloseGeneration: state.CloseGeneration, CommandFence: fence, ApprovalSHA256: biz.LegacyRetirementApprovalSHA256, Actor: "root:legacy-retirement-20261101", Archive: archive, OriginalStopFence: stopFence, Evidence: evidence, UnrecoverableLogs: []biz.LegacyTrainingLogDisposition{}}
 	if scope.TrainingPodUID != "" {
 		observation, err := a.training.ObserveLegacyRetirementTraining(ctx, execution, owner, state)
 		entry.TrainingOutcome, entry.TrainingWritersAbsent = observation.Outcome, observation.WritersAbsent
 		if err == nil {
-			request.TrainingExitKind, err = biz.ClassifyLegacyRetirementTrainingExit(execution, owner, state, observation)
+			request.TrainingExitKind, err = biz.ClassifyLegacyRetirementTrainingExit(execution, owner, state, observation, stopFence)
 		}
 		if err != nil {
 			return entry, request, nil, fmt.Errorf("CURRENT_ORIGINAL_TRAINING_EXIT: %w", err)
@@ -104,7 +105,7 @@ func (a *app) qualify(ctx context.Context, id string) (item, biz.LegacyRetiremen
 	if err := a.repo.ValidateLegacyRetirement(ctx, request); err != nil {
 		return entry, request, nil, fmt.Errorf("ORIGINAL_CLOSE_CAS_QUALIFICATION: %w", err)
 	}
-	if err := cleanup.New(a.kube, a.proof).ValidateLegacyRetirementCleanupPlan(ctx, execution, owner, state, evidence, request.Observation); err != nil {
+	if err := cleanup.New(a.kube, a.proof).ValidateLegacyRetirementCleanupPlan(ctx, execution, owner, state, evidence, request.Observation, stopFence); err != nil {
 		return entry, request, nil, fmt.Errorf("CURRENT_ORIGINAL_CLEANUP_GUARDS: %w", err)
 	}
 	entry.ProofSHA256 = proofDigest(request)

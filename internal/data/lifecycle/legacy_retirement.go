@@ -24,8 +24,15 @@ func NewLegacyRetirement(pool *pgxpool.Pool) *LegacyRetirementRepository {
 // It is also the restart path after ordinary readers reject the maintenance
 // marker. No exception fact or permission is created by this read.
 func (repository *LegacyRetirementRepository) GetLegacyRetirementRecord(ctx context.Context, tenant, execution string) (biz.Execution, biz.ExecutionRuntime, biz.PipelineDispatch, biz.RunAuthorityCandidate, uint64, error) {
-	zero := func(err error) (biz.Execution, biz.ExecutionRuntime, biz.PipelineDispatch, biz.RunAuthorityCandidate, uint64, error) {
-		return biz.Execution{}, biz.ExecutionRuntime{}, biz.PipelineDispatch{}, biz.RunAuthorityCandidate{}, 0, err
+	e, s, d, a, f, _, err := repository.GetLegacyRetirementPlan(ctx, tenant, execution)
+	return e, s, d, a, f, err
+}
+
+// GetLegacyRetirementPlan keeps the original persisted stopping epoch and the
+// later current command fence in one repeatable-read view, without merging them.
+func (repository *LegacyRetirementRepository) GetLegacyRetirementPlan(ctx context.Context, tenant, execution string) (biz.Execution, biz.ExecutionRuntime, biz.PipelineDispatch, biz.RunAuthorityCandidate, uint64, biz.LegacyRetirementStopFence, error) {
+	zero := func(err error) (biz.Execution, biz.ExecutionRuntime, biz.PipelineDispatch, biz.RunAuthorityCandidate, uint64, biz.LegacyRetirementStopFence, error) {
+		return biz.Execution{}, biz.ExecutionRuntime{}, biz.PipelineDispatch{}, biz.RunAuthorityCandidate{}, 0, biz.LegacyRetirementStopFence{}, err
 	}
 	scope, allowed := biz.LookupLegacyRetirementScope(execution)
 	if !allowed || tenant != scope.TenantID || repository == nil || repository.Repository == nil || repository.pool == nil || !repository.legacyRetirement || ctx == nil {
@@ -57,7 +64,7 @@ func (repository *LegacyRetirementRepository) GetLegacyRetirementRecord(ctx cont
 	if err = tx.Commit(ctx); err != nil {
 		return zero(biz.ErrPersistence)
 	}
-	return current.execution, current.state, dispatch, candidate, current.commandFence, nil
+	return current.execution, current.state, dispatch, candidate, current.commandFence, current.originalStopFence, nil
 }
 
 // ConfirmLegacyRetirement commits the explicit exception journal and verified
@@ -117,7 +124,10 @@ func qualifyLegacyRetirement(ctx context.Context, request biz.LegacyRetirementRe
 		if !biz.LegacyRetirementScopeMatches(current.execution, request.Authority) || request.CloseGeneration == 0 || request.CommandFence != request.CloseGeneration || request.CloseGeneration != current.state.CloseGeneration || request.CommandFence != current.commandFence || current.state.CloseReason == "NATURAL_TERMINAL" || current.state.CloseRequestedAt.IsZero() || current.state.CloseReviewReason == "MULTIPLE_RUNS" {
 			return false, biz.ErrRuntimeConflict
 		}
-		record := &biz.LegacyRetirementRecord{Authority: request.Authority, ExpectedOwnerRevision: request.ExpectedOwnerRevision, CloseGeneration: request.CloseGeneration, CommandFence: request.CommandFence, ApprovalSHA256: request.ApprovalSHA256, Actor: request.Actor, Archive: request.Archive, UnrecoverableLogs: append([]biz.LegacyTrainingLogDisposition{}, request.UnrecoverableLogs...), TrainingExitKind: request.TrainingExitKind, RecordedAt: current.now}
+		if request.OriginalStopFence != current.originalStopFence || !biz.ValidLegacyRetirementStopFence(current.execution, request.Authority, current.state, request.OriginalStopFence) {
+			return false, biz.ErrRuntimeConflict
+		}
+		record := &biz.LegacyRetirementRecord{Authority: request.Authority, ExpectedOwnerRevision: request.ExpectedOwnerRevision, CloseGeneration: request.CloseGeneration, CommandFence: request.CommandFence, ApprovalSHA256: request.ApprovalSHA256, Actor: request.Actor, Archive: request.Archive, UnrecoverableLogs: append([]biz.LegacyTrainingLogDisposition{}, request.UnrecoverableLogs...), TrainingExitKind: request.TrainingExitKind, OriginalStopFence: request.OriginalStopFence, RecordedAt: current.now}
 		if prior := current.state.LegacyRetirement; prior != nil {
 			record.RecordedAt = prior.RecordedAt
 			if !reflect.DeepEqual(prior, record) || !reflect.DeepEqual(current.state.CloseEvidence, &request.Evidence) {

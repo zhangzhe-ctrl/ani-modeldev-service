@@ -121,7 +121,7 @@ func (a *Adapter) ReleaseLegacyRetirementTrainingExit(ctx context.Context, execu
 	if err != nil {
 		return biz.ErrCleanupBlocked
 	}
-	kind, err := biz.ClassifyLegacyRetirementTrainingExit(execution, owner, state, observed)
+	kind, err := biz.ClassifyLegacyRetirementTrainingExit(execution, owner, state, observed, state.LegacyRetirement.OriginalStopFence)
 	if err != nil || kind != state.LegacyRetirement.TrainingExitKind {
 		return biz.ErrCleanupBlocked
 	}

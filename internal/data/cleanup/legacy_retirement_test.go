@@ -14,7 +14,7 @@ import (
 )
 
 func TestLegacyRetirementCleanupPlanRequiresOriginalStopAcknowledgementsWithoutWrites(t *testing.T) {
-	for _, attack := range []string{"none", "missing-trainer-ack", "old-jobset-ack", "replaced-uid", "foreign-finalizer"} {
+	for _, attack := range []string{"none", "later-command", "missing-trainer-ack", "old-jobset-ack", "replaced-uid", "foreign-finalizer"} {
 		t.Run(attack, func(t *testing.T) {
 			scope, _ := biz.LookupLegacyRetirementScope("1cce950b-d6e9-453e-aa11-fffd8846224b")
 			execution := biz.Execution{Admission: biz.Admission{TenantID: scope.TenantID, ExecutionID: scope.ExecutionID, OperationID: "ec266a51-6708-401c-a735-a4887d26185e", SpecHash: "original-spec", Snapshot: cpup01.Snapshot{Environment: cpup01.EnvironmentBindingSnapshot{ClusterID: scope.ClusterID, NamespaceName: scope.NamespaceName, NamespaceUID: scope.NamespaceUID}}}}
@@ -44,10 +44,14 @@ func TestLegacyRetirementCleanupPlanRequiresOriginalStopAcknowledgementsWithoutW
 				}
 				resources = append(resources, biz.RuntimeResource{APIVersion: o.GetAPIVersion(), Kind: o.GetKind(), Namespace: scope.NamespaceName, Name: o.GetName(), UID: string(o.GetUID()), OwnerUID: parent, Terminal: true, CreationDisabled: true, APIObjectPresent: true})
 			}
-			state := biz.ExecutionRuntime{CloseReason: "DEADLINE", CloseRequestedAt: fence, Training: &biz.TrainingPlan{Name: "training"}, TrainingHandle: &biz.TrainingHandle{NamespaceUID: scope.NamespaceUID, TrainJobUID: "original-train"}}
+			state := biz.ExecutionRuntime{CloseGeneration: 1, CloseReason: "DEADLINE", CloseRequestedAt: fence, Training: &biz.TrainingPlan{Name: "training"}, TrainingHandle: &biz.TrainingHandle{NamespaceUID: scope.NamespaceUID, TrainJobUID: "original-train"}}
 			observation := biz.TrainingRuntimeObservation{Handle: *state.TrainingHandle, WritersAbsent: true, Outcome: "FAILED", Resources: resources}
 			evidence := biz.ManagedCloseEvidence{Resources: []biz.RuntimeResource{{APIVersion: "v1", Kind: "Pod", Namespace: scope.NamespaceName, Name: step.GetName(), UID: string(step.GetUID()), OwnerUID: scope.WorkflowUID}}}
+			stopFence := biz.LegacyRetirementStopFence{Source: biz.LegacyRetirementStopFenceSource, Generation: state.CloseGeneration, Reason: state.CloseReason, RequestedAt: state.CloseRequestedAt}
 			switch attack {
+			case "later-command":
+				state.CloseGeneration, state.CloseReason, state.CloseRequestedAt = 2, "USER_STOP", fence.Add(30*time.Second)
+				stopFence.Reason = "STEP_FAILED"
 			case "missing-trainer-ack":
 				train.Object["status"] = map[string]any{}
 			case "old-jobset-ack":
@@ -58,11 +62,12 @@ func TestLegacyRetirementCleanupPlanRequiresOriginalStopAcknowledgementsWithoutW
 				step.SetFinalizers([]string{"foreign.example/retain"})
 			}
 			kube := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), objects...)
-			err := cleanup.New(kube, nil).ValidateLegacyRetirementCleanupPlan(context.Background(), execution, owner, state, evidence, observation)
-			if attack == "none" && err != nil {
+			err := cleanup.New(kube, nil).ValidateLegacyRetirementCleanupPlan(context.Background(), execution, owner, state, evidence, observation, stopFence)
+			positive := attack == "none" || attack == "later-command"
+			if positive && err != nil {
 				t.Fatal("actual original stop proof rejected", err)
 			}
-			if attack != "none" && err == nil {
+			if !positive && err == nil {
 				t.Fatal("current original cleanup guard bypassed", attack)
 			}
 			for _, action := range kube.Actions() {

@@ -418,7 +418,19 @@ func (adapter *Adapter) deleteController(ctx context.Context, record biz.Operati
 	propagation := metav1.DeletePropagationOrphan
 	if target.Kind == "TrainJob" {
 		if err := adapter.verifyOriginalUnsuspendedSets(ctx, plan, target, object); err != nil {
-			if !automatic || adapter.verifyOriginalSuspendedSets(ctx, record, plan, target, object) != nil {
+			if !automatic {
+				return err
+			}
+			var suspendedErr error
+			if journal := record.Runtime.LegacyRetirement; journal != nil {
+				if record.Authority == nil || !biz.LegacyRetirementCleanupAuthorized(record.Execution, *record.Authority, record.Runtime) {
+					return biz.ErrCleanupBlocked
+				}
+				suspendedErr = adapter.verifyOriginalSuspendedSetsForPlanAtFence(ctx, record, plan, target, object, true, journal.OriginalStopFence.RequestedAt)
+			} else {
+				suspendedErr = adapter.verifyOriginalSuspendedSets(ctx, record, plan, target, object)
+			}
+			if suspendedErr != nil {
 				return err
 			}
 			// While suspended, Trainer v2.1 continually applies JobSet owner
@@ -463,7 +475,11 @@ func (adapter *Adapter) verifyOriginalSuspendedSets(ctx context.Context, record 
 }
 
 func (adapter *Adapter) verifyOriginalSuspendedSetsForPlan(ctx context.Context, record biz.OperationRecord, plan biz.CleanupPlan, target biz.RuntimeResource, train *unstructured.Unstructured, requireCommittedClose bool) error {
-	if requireCommittedClose && record.Runtime.ClosedAt == nil || record.Runtime.CloseRequestedAt.IsZero() || (record.Runtime.CloseReason != "USER_STOP" && record.Runtime.CloseReason != "DEADLINE" && record.Runtime.CloseReason != "STEP_FAILED") || !originalObservedSuspend(train, record.Runtime.CloseRequestedAt) {
+	return adapter.verifyOriginalSuspendedSetsForPlanAtFence(ctx, record, plan, target, train, requireCommittedClose, record.Runtime.CloseRequestedAt)
+}
+
+func (adapter *Adapter) verifyOriginalSuspendedSetsForPlanAtFence(ctx context.Context, record biz.OperationRecord, plan biz.CleanupPlan, target biz.RuntimeResource, train *unstructured.Unstructured, requireCommittedClose bool, stopFence time.Time) error {
+	if requireCommittedClose && record.Runtime.ClosedAt == nil || record.Runtime.CloseRequestedAt.IsZero() || stopFence.IsZero() || (record.Runtime.CloseReason != "USER_STOP" && record.Runtime.CloseReason != "DEADLINE" && record.Runtime.CloseReason != "STEP_FAILED") || !originalObservedSuspend(train, stopFence) {
 		return biz.ErrCleanupBlocked
 	}
 	sets := 0
@@ -482,7 +498,7 @@ func (adapter *Adapter) verifyOriginalSuspendedSetsForPlan(ctx context.Context, 
 		if !exactObject(set, expected) || set.GetDeletionTimestamp() != nil {
 			return biz.ErrCleanupBlocked
 		}
-		observedSuspend := originalObservedSuspend(set, record.Runtime.CloseRequestedAt)
+		observedSuspend := originalObservedSuspend(set, stopFence)
 		// A naturally completed JobSet may never report Suspended, even after
 		// the original generation2 suspend was copied from its TrainJob. This
 		// automatic-only caller has already committed every exit, log and exact

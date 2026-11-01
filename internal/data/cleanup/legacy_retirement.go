@@ -31,8 +31,8 @@ func (adapter *Adapter) DeleteLegacyRetirementComputeController(ctx context.Cont
 // ValidateLegacyRetirementCleanupPlan performs only current GETs. It checks the
 // actual controller-stop acknowledgements needed by the later shared delete
 // path, without pretending that CLOSED or any cleanup intent already committed.
-func (adapter *Adapter) ValidateLegacyRetirementCleanupPlan(ctx context.Context, execution biz.Execution, owner biz.RunAuthorityCandidate, state biz.ExecutionRuntime, evidence biz.ManagedCloseEvidence, observation biz.TrainingRuntimeObservation) error {
-	if adapter == nil || adapter.kube == nil || !biz.LegacyRetirementScopeMatches(execution, owner) {
+func (adapter *Adapter) ValidateLegacyRetirementCleanupPlan(ctx context.Context, execution biz.Execution, owner biz.RunAuthorityCandidate, state biz.ExecutionRuntime, evidence biz.ManagedCloseEvidence, observation biz.TrainingRuntimeObservation, stopFence biz.LegacyRetirementStopFence) error {
+	if adapter == nil || adapter.kube == nil || !biz.ValidLegacyRetirementStopFence(execution, owner, state, stopFence) {
 		return biz.ErrCleanupBlocked
 	}
 	pods := adapter.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "pods"}).Namespace(owner.NamespaceName)
@@ -92,7 +92,7 @@ func (adapter *Adapter) ValidateLegacyRetirementCleanupPlan(ctx context.Context,
 		}
 		if fact.Kind == "TrainJob" {
 			if err := adapter.verifyOriginalUnsuspendedSets(ctx, plan, fact, object); err != nil {
-				if err := adapter.verifyOriginalSuspendedSetsForPlan(ctx, record, plan, fact, object, false); err != nil {
+				if err := adapter.verifyOriginalSuspendedSetsForPlanAtFence(ctx, record, plan, fact, object, false, stopFence.RequestedAt); err != nil {
 					return err
 				}
 			}

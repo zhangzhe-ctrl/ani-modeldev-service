@@ -73,6 +73,7 @@ type LegacyRetirementRequest struct {
 	Archive                                              LegacyRetirementArchiveReceipt
 	UnrecoverableLogs                                    []LegacyTrainingLogDisposition
 	TrainingExitKind                                     LegacyRetirementTrainingExitKind
+	OriginalStopFence                                    LegacyRetirementStopFence
 	Observation                                          TrainingRuntimeObservation
 	Evidence                                             ManagedCloseEvidence
 }
@@ -87,6 +88,7 @@ type LegacyRetirementRecord struct {
 	Archive                                              LegacyRetirementArchiveReceipt
 	UnrecoverableLogs                                    []LegacyTrainingLogDisposition
 	TrainingExitKind                                     LegacyRetirementTrainingExitKind
+	OriginalStopFence                                    LegacyRetirementStopFence
 	RecordedAt                                           time.Time
 }
 
@@ -102,6 +104,9 @@ func LegacyRetirementQualification(execution Execution, owner RunAuthorityCandid
 		return false
 	}
 	if r == nil || !LegacyRetirementScopeMatches(execution, owner) || r.Authority != owner || r.ApprovalSHA256 != LegacyRetirementApprovalSHA256 || r.ExpectedOwnerRevision == 0 || r.CommandFence == 0 || r.CommandFence != r.CloseGeneration || r.CloseGeneration != state.CloseGeneration || !cpup01.ValidAuditActor(r.Actor) || r.RecordedAt.IsZero() || r.RecordedAt.Before(state.CloseRequestedAt) || state.CloseEvidence == nil || state.CloseEvidence.NoDispatch || state.CloseEvidence.OwnerTermination == nil {
+		return false
+	}
+	if !ValidLegacyRetirementStopFence(execution, owner, state, r.OriginalStopFence) {
 		return false
 	}
 	if state.ComputeCleanup != nil && (state.ComputeCleanup.LogsReady || len(state.ComputeCleanup.Logs) != 0 || state.ComputeCleanup.OperatorRetry != nil) {
@@ -121,7 +126,7 @@ func LegacyRetirementQualification(execution Execution, owner RunAuthorityCandid
 	if len(r.UnrecoverableLogs) != 1 || state.Training == nil || state.TrainingHandle == nil || state.Workspace == nil || state.Observation == nil || state.Observation.Handle != *state.TrainingHandle || !state.Observation.WritersAbsent || state.Publication != nil || len(state.Observation.Resources) > 64 {
 		return false
 	}
-	if kind, err := ClassifyLegacyRetirementTrainingExit(execution, owner, state, *state.Observation); err != nil || kind != r.TrainingExitKind {
+	if kind, err := ClassifyLegacyRetirementTrainingExit(execution, owner, state, *state.Observation, r.OriginalStopFence); err != nil || kind != r.TrainingExitKind {
 		return false
 	}
 	log := r.UnrecoverableLogs[0]

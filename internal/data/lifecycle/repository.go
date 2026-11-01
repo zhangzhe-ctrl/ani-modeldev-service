@@ -81,6 +81,7 @@ type runtimeTransaction struct {
 	writeDeadline         time.Time
 	commandFence          uint64
 	legacyRetirement      bool
+	originalStopFence     biz.LegacyRetirementStopFence
 }
 
 func (repository *Repository) GetRuntime(ctx context.Context, tenant, execution string) (biz.ExecutionRuntime, error) {
@@ -288,6 +289,13 @@ func readRuntimeWithLegacy(ctx context.Context, tx pgx.Tx, tenantID, executionID
 	if state.ClosedAt == nil && (state.StepExitCleanup != nil || state.ComputeCleanup != nil) {
 		return nil, biz.ErrPersistence
 	}
+	originalStopFence := biz.LegacyRetirementStopFence{}
+	if legacy {
+		originalStopFence = biz.LegacyRetirementStopFence{Source: biz.LegacyRetirementStopFenceSource, Generation: state.CloseGeneration, Reason: state.CloseReason, RequestedAt: state.CloseRequestedAt}
+		if state.LegacyRetirement != nil {
+			originalStopFence = state.LegacyRetirement.OriginalStopFence
+		}
+	}
 	if generation > state.CloseGeneration {
 		close, err := executions.GetCloseIntent(ctx, executionsql.GetCloseIntentParams{TenantID: tenantID, ExecutionID: executionID})
 		closeGeneration, valid := pgvalue.Uint64(close.OwnerGeneration)
@@ -312,7 +320,7 @@ func readRuntimeWithLegacy(ctx context.Context, tx pgx.Tx, tenantID, executionID
 	if !identity.DatabaseNow.Valid || identity.DatabaseNow.InfinityModifier != pgtype.Finite {
 		return nil, biz.ErrPersistence
 	}
-	current := &runtimeTransaction{transaction: tx, queries: queries, tenantID: tenantID, executionID: executionID, execution: admitted, state: state, now: identity.DatabaseNow.Time.UTC(), commandFence: generation, legacyRetirement: legacy}
+	current := &runtimeTransaction{transaction: tx, queries: queries, tenantID: tenantID, executionID: executionID, execution: admitted, state: state, now: identity.DatabaseNow.Time.UTC(), commandFence: generation, legacyRetirement: legacy, originalStopFence: originalStopFence}
 	if state.LegacyRetirement != nil && (!biz.LegacyRetirementQualification(admitted, state.LegacyRetirement.Authority, state) || state.ClosedAt == nil || state.LegacyRetirement.CommandFence != generation || state.LegacyRetirement.ExpectedOwnerRevision >= revision || state.LegacyRetirement.RecordedAt.After(current.now) || !state.LegacyRetirement.RecordedAt.Equal(*state.ClosedAt)) {
 		return nil, biz.ErrPersistence
 	}

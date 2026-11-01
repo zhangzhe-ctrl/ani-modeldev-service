@@ -51,6 +51,7 @@ type config struct {
 }
 type connection struct{ Endpoint, CAFile, TokenFile string }
 type item struct {
+	OriginalStopFence                            biz.LegacyRetirementStopFence
 	TrainingExitKind                             biz.LegacyRetirementTrainingExitKind     `json:",omitempty"`
 	TrainingOutcome                              string                                   `json:",omitempty"`
 	TrainingWritersAbsent                        bool                                     `json:",omitempty"`

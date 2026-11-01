@@ -102,7 +102,7 @@ func TestLegacyRetirementTrainingIsReadOnlyAndKeepsExactOriginalExit(t *testing.
 				if attack == "suspended" {
 					wantOutcome, wantKind = "UNKNOWN", biz.LegacyRetirementOriginalSuspended143
 				}
-				kind, kindErr := biz.ClassifyLegacyRetirementTrainingExit(execution, owner, state, observed)
+				kind, kindErr := biz.ClassifyLegacyRetirementTrainingExit(execution, owner, state, observed, biz.LegacyRetirementStopFence{Source: biz.LegacyRetirementStopFenceSource, Generation: state.CloseGeneration, Reason: state.CloseReason, RequestedAt: state.CloseRequestedAt})
 				if err != nil || !observed.WritersAbsent || observed.Outcome != wantOutcome || kindErr != nil || kind != wantKind || observed.SpecificationMismatch {
 					for _, act := range client.Actions() {
 						t.Log(act.GetVerb(), act.GetResource().Resource, act.GetNamespace())
@@ -197,7 +197,7 @@ func legacyTrainingFixture(t *testing.T) (*trainingFixture, biz.Execution, biz.R
 	statuses[0].(map[string]any)["state"].(map[string]any)["terminated"].(map[string]any)["exitCode"] = int64(143)
 	_ = unstructured.SetNestedSlice(f.pod, statuses, "status", "containerStatuses")
 	handle := biz.TrainingHandle{NamespaceUID: scope.NamespaceUID, PVCUID: workspace.PVCUID, TrainJobUID: trainingUID}
-	state := biz.ExecutionRuntime{Training: &plan, TrainingHandle: &handle, Observation: &biz.TrainingRuntimeObservation{}}
+	state := biz.ExecutionRuntime{CloseGeneration: 1, CloseReason: "STEP_FAILED", CloseRequestedAt: time.Now().UTC().Add(-2 * time.Minute), Training: &plan, TrainingHandle: &handle, Observation: &biz.TrainingRuntimeObservation{}}
 	owner := biz.RunAuthorityCandidate{TenantID: a.TenantID, ExecutionID: a.ExecutionID, OperationID: a.OperationID, SpecHash: a.SpecHash, RunID: scope.RunID, NamespaceName: scope.NamespaceName, NamespaceUID: scope.NamespaceUID, WorkflowName: scope.WorkflowName, WorkflowUID: scope.WorkflowUID, PlanHash: strings.Repeat("a", 64)}
 	return f, execution, owner, state, scope
 }

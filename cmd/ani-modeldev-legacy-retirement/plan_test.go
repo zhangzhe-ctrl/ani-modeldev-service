@@ -63,7 +63,7 @@ func TestReviewedProofFreezesOriginalGraphAndCAS(t *testing.T) {
 	if proofDigest(copy) != initial {
 		t.Fatal("fresh read time changed fixed proof")
 	}
-	for _, mutate := range []func(*biz.LegacyRetirementRequest){func(x *biz.LegacyRetirementRequest) { x.ExpectedOwnerRevision++ }, func(x *biz.LegacyRetirementRequest) { x.CommandFence++ }, func(x *biz.LegacyRetirementRequest) { x.CloseGeneration++ }, func(x *biz.LegacyRetirementRequest) { x.Authority.WorkflowUID = "replacement" }, func(x *biz.LegacyRetirementRequest) { x.Archive.SHA256 = "replacement" }, func(x *biz.LegacyRetirementRequest) { x.Observation.WritersAbsent = false }} {
+	for _, mutate := range []func(*biz.LegacyRetirementRequest){func(x *biz.LegacyRetirementRequest) { x.ExpectedOwnerRevision++ }, func(x *biz.LegacyRetirementRequest) { x.CommandFence++ }, func(x *biz.LegacyRetirementRequest) { x.CloseGeneration++ }, func(x *biz.LegacyRetirementRequest) { x.Authority.WorkflowUID = "replacement" }, func(x *biz.LegacyRetirementRequest) { x.Archive.SHA256 = "replacement" }, func(x *biz.LegacyRetirementRequest) { x.Observation.WritersAbsent = false }, func(x *biz.LegacyRetirementRequest) { x.OriginalStopFence.Generation++ }, func(x *biz.LegacyRetirementRequest) { x.OriginalStopFence.RequestedAt = time.Now() }, func(x *biz.LegacyRetirementRequest) { x.TrainingExitKind = biz.LegacyRetirementOriginalSuspended143 }} {
 		copy = r
 		mutate(&copy)
 		if proofDigest(copy) == initial {
