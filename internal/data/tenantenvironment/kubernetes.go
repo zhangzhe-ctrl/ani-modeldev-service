@@ -275,7 +275,7 @@ func (p *Platform) publicObjects(row *biz.TenantExecutionEnvironment) ([]*unstru
 		}
 		out = append(out, object(row, "ServiceAccount", name, fields))
 	}
-	for _, rb := range []struct{ name, role, ns, sa string }{{"modeldev-runtime", "modeldev-runtime-v1", "ani-system", "modeldev-control"}, {"modeldev-step", "modeldev-step-v1", row.NamespaceName, "modeldev-step"}, {"modeldev-webhook-read", "modeldev-webhook-read-v1", c.WebhookServiceAccount.Namespace, c.WebhookServiceAccount.Name}, {"modeldev-kfp-api", "modeldev-kfp-api-v1", c.KFPAPIServiceAccount.Namespace, c.KFPAPIServiceAccount.Name}, {"modeldev-kfp-access", "modeldev-kfp-access-v1", "ani-system", "modeldev-control"}} {
+	for _, rb := range []struct{ name, role, ns, sa string }{{"modeldev-runtime", "modeldev-runtime-v1", "ani-system", "modeldev-control"}, {"modeldev-step", "modeldev-step-v1", row.NamespaceName, "modeldev-step"}, {"modeldev-webhook-read", "modeldev-webhook-read-v1", "ani-system", "ani-modeldev-webhook"}, {"modeldev-kfp-api", "modeldev-kfp-api-v1", c.KFPAPIServiceAccount.Namespace, c.KFPAPIServiceAccount.Name}, {"modeldev-kfp-access", "modeldev-kfp-access-v1", "ani-system", "modeldev-control"}} {
 		out = append(out, object(row, "RoleBinding", rb.name, map[string]any{"roleRef": map[string]any{"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": rb.role}, "subjects": []any{map[string]any{"kind": "ServiceAccount", "name": rb.sa, "namespace": rb.ns}}}))
 	}
 	stepRaw, _ := json.Marshal(c.StepOwner)
