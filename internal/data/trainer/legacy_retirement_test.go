@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/contract/cpup01/conformance"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/trainer"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/testsupport/admissionfixture"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -25,11 +27,24 @@ func (r *forbiddenLegacyLogReader) ReadTrainingLogs(context.Context, biz.Trainin
 }
 
 func TestLegacyRetirementTrainingIsReadOnlyAndKeepsExactOriginalExit(t *testing.T) {
-	for _, attack := range []string{"none", "uid", "container-id", "exit-code", "restart", "running", "extra-worker", "foreign-finalizer", "foreign-job-owner", "extra-owner", "resource-version", "namespace", "training-plan", "not-allowlisted"} {
+	for _, attack := range []string{"none", "suspended", "uid", "container-id", "exit-code", "restart", "running", "extra-worker", "foreign-finalizer", "foreign-job-owner", "extra-owner", "resource-version", "namespace", "training-plan", "not-allowlisted"} {
 		t.Run(attack, func(t *testing.T) {
 			f, execution, owner, state, scope := legacyTrainingFixture(t)
 			pod := &unstructured.Unstructured{Object: f.pod}
 			switch attack {
+			case "suspended":
+				now := time.Now().UTC()
+				state.CloseRequestedAt = now.Add(-90 * time.Second)
+				for _, object := range []map[string]any{f.train, f.jobset, f.job} {
+					u := &unstructured.Unstructured{Object: object}
+					u.SetGeneration(2)
+					u.SetResourceVersion("original-suspended-rv")
+					u.SetCreationTimestamp(metav1.NewTime(now.Add(-2 * time.Minute)))
+					_ = unstructured.SetNestedField(object, true, "spec", "suspend")
+					reason := map[string]string{"TrainJob": "Suspended", "JobSet": "SuspendedJobs", "Job": "JobSuspended"}[u.GetKind()]
+					object["status"] = map[string]any{"conditions": []any{map[string]any{"type": "Suspended", "status": "True", "reason": reason, "lastTransitionTime": now.Add(-time.Minute).Format(time.RFC3339Nano)}}}
+				}
+				_ = unstructured.SetNestedStringSlice(f.job, []string{exitEvidenceFinalizer}, "spec", "template", "metadata", "finalizers")
 			case "uid":
 				pod.SetUID("replacement-pod")
 			case "container-id":
@@ -82,8 +97,13 @@ func TestLegacyRetirementTrainingIsReadOnlyAndKeepsExactOriginalExit(t *testing.
 			logs := &forbiddenLegacyLogReader{}
 			adapter := trainer.New(client).WithTrainingLogs(logs)
 			observed, err := adapter.ObserveLegacyRetirementTraining(context.Background(), execution, owner, state)
-			if attack == "none" {
-				if err != nil || !observed.WritersAbsent || observed.Outcome != "FAILED" || observed.SpecificationMismatch {
+			if attack == "none" || attack == "suspended" {
+				wantOutcome, wantKind := "FAILED", biz.LegacyRetirementOriginalFailure
+				if attack == "suspended" {
+					wantOutcome, wantKind = "UNKNOWN", biz.LegacyRetirementOriginalSuspended143
+				}
+				kind, kindErr := biz.ClassifyLegacyRetirementTrainingExit(execution, owner, state, observed)
+				if err != nil || !observed.WritersAbsent || observed.Outcome != wantOutcome || kindErr != nil || kind != wantKind || observed.SpecificationMismatch {
 					for _, act := range client.Actions() {
 						t.Log(act.GetVerb(), act.GetResource().Resource, act.GetNamespace())
 					}
@@ -113,7 +133,7 @@ func TestLegacyRetirementTrainingIsReadOnlyAndKeepsExactOriginalExit(t *testing.
 				}
 			}
 			// Ordinary ObserveTraining retains its log and finalizer contract.
-			if attack == "none" {
+			if attack == "none" || attack == "suspended" {
 				_, ordinaryErr := adapter.ObserveTraining(context.Background(), f.plan, *state.TrainingHandle, nil)
 				if ordinaryErr == nil || logs.calls != 1 {
 					t.Fatal("maintenance changed ordinary capture requirement", ordinaryErr, logs.calls)

@@ -126,6 +126,7 @@ func legacyRetirementFixture(t *testing.T, id string, ownerOnly bool) (func() *p
 	request := biz.LegacyRetirementRequest{Authority: owner, ExpectedOwnerRevision: state.OwnerRevision, CloseGeneration: state.CloseGeneration, CommandFence: state.CloseGeneration, ApprovalSHA256: biz.LegacyRetirementApprovalSHA256, Actor: "maintenance:human-approved-retirement", Archive: biz.LegacyRetirementArchiveReceipt{Source: biz.LegacyRetirementArchiveSource, ExecutionID: scope.ExecutionID, NamespaceName: scope.NamespaceName, NamespaceUID: scope.NamespaceUID, RunID: scope.RunID, WorkflowName: scope.WorkflowName, WorkflowUID: scope.WorkflowUID, SHA256: scope.ArchiveSHA256, ArchivedResourceVersion: evidence.OwnerTermination.WorkflowResourceVersion, ObservedAt: now}, Evidence: evidence}
 	if !ownerOnly {
 		exit := int32(143)
+		request.TrainingExitKind = biz.LegacyRetirementOriginalFailure
 		request.Observation = biz.TrainingRuntimeObservation{Handle: *state.TrainingHandle, Outcome: "FAILED", WritersAbsent: true, ObservedAt: now, Resources: []biz.RuntimeResource{
 			{APIVersion: "trainer.kubeflow.org/v1alpha1", Kind: "TrainJob", Namespace: scope.NamespaceName, Name: state.Training.Name, UID: state.TrainingHandle.TrainJobUID, APIObjectPresent: true, Terminal: true},
 			{APIVersion: "jobset.x-k8s.io/v1alpha2", Kind: "JobSet", Namespace: scope.NamespaceName, Name: "retirement-set", UID: "retirement-jobset-uid", OwnerUID: state.TrainingHandle.TrainJobUID, APIObjectPresent: true, Terminal: true},
@@ -135,6 +136,101 @@ func legacyRetirementFixture(t *testing.T, id string, ownerOnly bool) (func() *p
 		request.UnrecoverableLogs = []biz.LegacyTrainingLogDisposition{{Status: biz.LegacyTrainingLogsUnrecoverable, PodUID: scope.TrainingPodUID, ContainerID: scope.TrainingContainerID, KubeletErrorBytes: 115, KubeletErrorSHA256: scope.TrainingLogErrorSHA256, ObservedAt: now}}
 	}
 	return open, a, request
+}
+
+func TestLegacyRetirementPostgresKeepsUnknownSuspendedOriginalExit(t *testing.T) {
+	for _, id := range []string{"1cce950b-d6e9-453e-aa11-fffd8846224b", "4a1a92f7-4d94-439d-a8d7-1833f38c7dbc"} {
+		t.Run(id, func(t *testing.T) {
+			open, a, request := legacyRetirementFixture(t, id, false)
+			request.TrainingExitKind = biz.LegacyRetirementOriginalSuspended143
+			request.Observation.Outcome = "UNKNOWN"
+			for i := range request.Observation.Resources {
+				r := &request.Observation.Resources[i]
+				if r.Kind == "Pod" {
+					continue
+				}
+				r.Terminal, r.CreationDisabled = false, true
+				r.Suspension = &biz.TrainingControllerSuspension{Generation: 2, AcknowledgedAt: request.Observation.ObservedAt, WorkerExitRetention: r.Kind == "Job"}
+			}
+			repository := lifecycle.NewLegacyRetirement(open())
+			ctx := context.Background()
+			for name, change := range map[string]func(*biz.LegacyRetirementRequest){
+				"invented-controller-failure-kind": func(r *biz.LegacyRetirementRequest) { r.TrainingExitKind = biz.LegacyRetirementOriginalFailure },
+				"unclassified":                     func(r *biz.LegacyRetirementRequest) { r.TrainingExitKind = "" },
+				"running":                          func(r *biz.LegacyRetirementRequest) { r.Observation.Outcome = "RUNNING" },
+				"success":                          func(r *biz.LegacyRetirementRequest) { r.Observation.Outcome = "SUCCEEDED" },
+				"writer-present":                   func(r *biz.LegacyRetirementRequest) { r.Observation.WritersAbsent = false },
+				"missing-ack":                      func(r *biz.LegacyRetirementRequest) { r.Observation.Resources[0].Suspension = nil },
+				"old-ack": func(r *biz.LegacyRetirementRequest) {
+					r.Observation.Resources[0].Suspension.AcknowledgedAt = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+				},
+				"changed-generation":          func(r *biz.LegacyRetirementRequest) { r.Observation.Resources[1].Suspension.Generation = 3 },
+				"changed-observed-generation": func(r *biz.LegacyRetirementRequest) { r.Observation.Resources[1].Suspension.ObservedGeneration = 1 },
+				"unretained-worker": func(r *biz.LegacyRetirementRequest) {
+					r.Observation.Resources[2].Suspension.WorkerExitRetention = false
+				},
+				"controller-can-create":       func(r *biz.LegacyRetirementRequest) { r.Observation.Resources[0].CreationDisabled = false },
+				"missing-original-controller": func(r *biz.LegacyRetirementRequest) { r.Observation.Resources = r.Observation.Resources[1:] },
+				"changed-original-pod":        func(r *biz.LegacyRetirementRequest) { r.Observation.Resources[3].UID = uuid.NewString() },
+				"invented-exit":               func(r *biz.LegacyRetirementRequest) { code := int32(0); r.Observation.Resources[3].ExitCode = &code },
+				"missing-exit":                func(r *biz.LegacyRetirementRequest) { r.Observation.Resources[3].ExitCode = nil },
+				"not-terminal":                func(r *biz.LegacyRetirementRequest) { r.Observation.Resources[3].Terminal = false },
+				"wrong-parent": func(r *biz.LegacyRetirementRequest) {
+					r.Observation.Resources[3].OwnerUID = r.Observation.Resources[0].UID
+				},
+				"extra-worker": func(r *biz.LegacyRetirementRequest) {
+					extra := r.Observation.Resources[3]
+					extra.UID = uuid.NewString()
+					r.Observation.Resources = append(r.Observation.Resources, extra)
+				},
+			} {
+				t.Run(name, func(t *testing.T) {
+					bad := copyLegacyRequest(t, request)
+					change(&bad)
+					if err := repository.ValidateLegacyRetirement(ctx, bad); err == nil {
+						t.Fatal("changed original proof passed plan")
+					}
+					if _, err := repository.ConfirmLegacyRetirement(ctx, bad); err == nil {
+						t.Fatal("changed original proof committed")
+					}
+				})
+			}
+			if err := repository.ValidateLegacyRetirement(ctx, request); err != nil {
+				t.Fatal("truthful suspended exit rejected", err)
+			}
+			closed, err := repository.ConfirmLegacyRetirement(ctx, request)
+			if err != nil || closed.ClosedAt == nil || closed.Observation.Outcome != "UNKNOWN" || closed.LegacyRetirement.TrainingExitKind != biz.LegacyRetirementOriginalSuspended143 {
+				t.Fatal("truthful outcome was rewritten", err)
+			}
+			step, err := repository.BeginStepExitCleanup(ctx, request.Authority, closed.CloseGeneration, request.Evidence)
+			if err != nil {
+				t.Fatal(err)
+			}
+			removed := append([]biz.RuntimeResource{}, step.StepExitCleanup.Evidence.Resources...)
+			for i := range removed {
+				removed[i].APIObjectPresent = false
+			}
+			if _, err = repository.CompleteStepExitCleanup(ctx, request.Authority, closed.CloseGeneration, removed); err != nil {
+				t.Fatal(err)
+			}
+			state, err := repository.BeginComputeCleanup(ctx, request.Authority, closed.CloseGeneration)
+			if err != nil {
+				t.Fatal(err)
+			}
+			state, err = repository.StartComputeCleanupAttempt(ctx, request.Authority, closed.CloseGeneration)
+			if err != nil {
+				t.Fatal(err)
+			}
+			removed = append([]biz.RuntimeResource{}, state.ComputeCleanup.Targets...)
+			for i := range removed {
+				removed[i].APIObjectPresent = false
+			}
+			state, err = repository.RecordComputeCleanupResult(ctx, request.Authority, closed.CloseGeneration, 1, removed, "")
+			if err != nil || !biz.LegacyRetirementComputeCleanupApplied(biz.Execution{Admission: a}, request.Authority, state) || state.Observation.Outcome != "UNKNOWN" || state.ComputeCleanup.LogsReady || len(state.ComputeCleanup.Logs) != 0 {
+				t.Fatal("suspended original cleanup fabricated outcome/logs", err)
+			}
+		})
+	}
 }
 
 func copyLegacyRequest(t *testing.T, r biz.LegacyRetirementRequest) biz.LegacyRetirementRequest {

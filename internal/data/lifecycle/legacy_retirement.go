@@ -117,7 +117,7 @@ func qualifyLegacyRetirement(ctx context.Context, request biz.LegacyRetirementRe
 		if !biz.LegacyRetirementScopeMatches(current.execution, request.Authority) || request.CloseGeneration == 0 || request.CommandFence != request.CloseGeneration || request.CloseGeneration != current.state.CloseGeneration || request.CommandFence != current.commandFence || current.state.CloseReason == "NATURAL_TERMINAL" || current.state.CloseRequestedAt.IsZero() || current.state.CloseReviewReason == "MULTIPLE_RUNS" {
 			return false, biz.ErrRuntimeConflict
 		}
-		record := &biz.LegacyRetirementRecord{Authority: request.Authority, ExpectedOwnerRevision: request.ExpectedOwnerRevision, CloseGeneration: request.CloseGeneration, CommandFence: request.CommandFence, ApprovalSHA256: request.ApprovalSHA256, Actor: request.Actor, Archive: request.Archive, UnrecoverableLogs: append([]biz.LegacyTrainingLogDisposition{}, request.UnrecoverableLogs...), RecordedAt: current.now}
+		record := &biz.LegacyRetirementRecord{Authority: request.Authority, ExpectedOwnerRevision: request.ExpectedOwnerRevision, CloseGeneration: request.CloseGeneration, CommandFence: request.CommandFence, ApprovalSHA256: request.ApprovalSHA256, Actor: request.Actor, Archive: request.Archive, UnrecoverableLogs: append([]biz.LegacyTrainingLogDisposition{}, request.UnrecoverableLogs...), TrainingExitKind: request.TrainingExitKind, RecordedAt: current.now}
 		if prior := current.state.LegacyRetirement; prior != nil {
 			record.RecordedAt = prior.RecordedAt
 			if !reflect.DeepEqual(prior, record) || !reflect.DeepEqual(current.state.CloseEvidence, &request.Evidence) {

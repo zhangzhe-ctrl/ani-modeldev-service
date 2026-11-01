@@ -6,15 +6,19 @@ The business sequence is original admission/frozen dispatch and unique Run → o
 
 Two CPU training streams remain explicitly `TRAINING_LOGS_UNRECOVERABLE`, with original Pod UID/containerID and the actual previous kubelet-error bytes/hash. No `TrainingLog`, `LogsReady`, captured flag or log lines are created. The official v1 `pipeline_runtime.workflow_manifest` is read in memory, checked against its fixed original bytes SHA, and kept separate from current Kubernetes API evidence. Current Workflow GETs must really report NotFound. The approved `image_contract` no-process exception is limited to the original third execution and retains the complete retry/parent/child/template/process-field checks.
 
+Original non-natural close requires verified writer absence, not a `FAILED` training outcome (`lifecycle/repository.go:636–647`, `validation.go:47,150`). The original observer retains `UNKNOWN` when the three original controllers report suspension rather than failure even though the original worker exited 143. The maintenance journal therefore distinguishes `ORIGINAL_FAILURE` from `ORIGINAL_SUSPENDED_EXIT_143`; it never changes the observed outcome or controller conditions. The latter is available only for the two compiled original workers, with their exact UID/container/zero restarts/real 143 and finishedAt, full original graph, generation-2 suspension and post-fence ACKs, worker exit retention, current writer/PVC proof and original CAS. Ordinary observation and close behavior remain unchanged.
+
 The third execution already has Governance generic `resource-release-v1` receipt `23600748-d80d-5ceb-be35-664a995bb7db`, event `54c1fb78-da48-4586-990e-333ed8090aef`, create operation `1bc185ad-0977-4b3f-bb1c-404bc37e94fa`, resource `eca4d47b-5911-4f0f-8b45-89c1be775925`, reason `RESOURCE_RELEASED`, payload SHA256 `3e63b8ddc427e1228169804c6a6d28c34899318224257119b0c788b522ca7cad`. The old MD anchor and outbox are absent. Calling the ordinary MD `SealGPURelease` would generate a different event and `ABORTED_CLEANED` reason; maintenance explicitly rejects it. After real close and cleanup, the command replays the exact original four fields through the existing ModelDev mTLS Governance client, requires actual `ALREADY_APPLIED`, and rechecks the exact original charge plus both GPU account equalities before CAS-recording an independent maintenance journal. It never synthesizes an MD release scope/outbox or applies another refund. This is the bounded maintenance interpretation of spec 13.3.7 and ADR 0002; their release authority is preserved.
 
 ## Execution and evidence
 
 Heavy generation, tests and builds run on Fedora only. `--mode=plan` opens the MD database with `default_transaction_read_only=on`, reuses the repository's RR read-only complete qualification, refuses non-read Kubernetes requests, and reads the original control workload's already-projected tokens. It creates no tokens. Config contains only node-local protected file references; DSNs, token/private-key bytes and full Workflow manifests never enter stdout or evidence. The SSH entry identity is checked in full using the existing kubercloud kubectl configuration; business Kube/KFP calls retain the original control identity.
 
+On the node, the original API short name has no Pod DNS search list. The command retains `https://kubernetes.default.svc:443`, its TLS hostname/CA and original token, while dialing only the original API Service VIP `10.96.0.1:443`. Full identity checks additionally require `default/kubernetes` UID `bfbd6463-67e2-471c-8d49-a84b853bd4e0`, type ClusterIP and its sole TCP/443 port before use. It changes no host/resolver file or default runtime.
+
 ```sh
 sudo env KUBECONFIG=/home/kubercloud/.kube/config \
-  /tmp/modeldev-legacy-retirement-command-stripped \
+  /tmp/modeldev-legacy-retirement-<source-commit> \
   --config /tmp/modeldev-legacy-retirement-20261101/config.json --mode plan
 ```
 
@@ -40,4 +44,4 @@ The required stop-admission JSON has exactly these fields; the actual source pro
 }
 ```
 
-Apply additionally takes `--plan`, `--plan-sha256`, `--stopped-admission-receipt` and `--stopped-admission-sha256`. No apply has been run. The first node transfer failed with SSH exit 255, so live plan and all mutation/business acceptance remain NOT_RUN until the specified SSH entrance is available. Component, real-PostgreSQL, source-gate and live evidence are kept separate under `.scratch/legacy-retirement/evidence/`.
+Apply additionally takes `--plan`, `--plan-sha256`, `--stopped-admission-receipt` and `--stopped-admission-sha256`. No apply has been run. The actual source/binary hashes, real plan output and each refusal are recorded separately from component and real-PostgreSQL tests under `.scratch/legacy-retirement/evidence/`. A successful read-only plan is not mutation or business acceptance.

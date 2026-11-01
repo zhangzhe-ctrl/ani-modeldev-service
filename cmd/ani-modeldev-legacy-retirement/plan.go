@@ -51,9 +51,10 @@ func (a *app) qualify(ctx context.Context, id string) (item, biz.LegacyRetiremen
 		if !biz.LegacyRetirementQualification(execution, owner, state) || state.CloseEvidence == nil {
 			return entry, biz.LegacyRetirementRequest{}, nil, biz.ErrRuntimeConflict
 		}
-		request := biz.LegacyRetirementRequest{Authority: owner, ExpectedOwnerRevision: r.ExpectedOwnerRevision, CloseGeneration: r.CloseGeneration, CommandFence: r.CommandFence, ApprovalSHA256: r.ApprovalSHA256, Actor: r.Actor, Archive: r.Archive, UnrecoverableLogs: r.UnrecoverableLogs, Evidence: *state.CloseEvidence}
+		request := biz.LegacyRetirementRequest{Authority: owner, ExpectedOwnerRevision: r.ExpectedOwnerRevision, CloseGeneration: r.CloseGeneration, CommandFence: r.CommandFence, ApprovalSHA256: r.ApprovalSHA256, Actor: r.Actor, Archive: r.Archive, UnrecoverableLogs: r.UnrecoverableLogs, TrainingExitKind: r.TrainingExitKind, Evidence: *state.CloseEvidence}
 		if state.Observation != nil {
 			request.Observation = *state.Observation
+			entry.TrainingExitKind, entry.TrainingOutcome, entry.TrainingWritersAbsent = r.TrainingExitKind, state.Observation.Outcome, state.Observation.WritersAbsent
 		}
 		entry.OwnerRevision = r.ExpectedOwnerRevision
 		entry.ProofSHA256 = proofDigest(request)
@@ -89,12 +90,14 @@ func (a *app) qualify(ctx context.Context, id string) (item, biz.LegacyRetiremen
 	request := biz.LegacyRetirementRequest{Authority: owner, ExpectedOwnerRevision: state.OwnerRevision, CloseGeneration: state.CloseGeneration, CommandFence: fence, ApprovalSHA256: biz.LegacyRetirementApprovalSHA256, Actor: "root:legacy-retirement-20261101", Archive: archive, Evidence: evidence, UnrecoverableLogs: []biz.LegacyTrainingLogDisposition{}}
 	if scope.TrainingPodUID != "" {
 		observation, err := a.training.ObserveLegacyRetirementTraining(ctx, execution, owner, state)
-		if err != nil || !observation.WritersAbsent || observation.Outcome != "FAILED" {
-			if err == nil {
-				err = biz.ErrRuntimeNotReady
-			}
+		entry.TrainingOutcome, entry.TrainingWritersAbsent = observation.Outcome, observation.WritersAbsent
+		if err == nil {
+			request.TrainingExitKind, err = biz.ClassifyLegacyRetirementTrainingExit(execution, owner, state, observation)
+		}
+		if err != nil {
 			return entry, request, nil, fmt.Errorf("CURRENT_ORIGINAL_TRAINING_EXIT: %w", err)
 		}
+		entry.TrainingExitKind = request.TrainingExitKind
 		request.Observation = observation
 		request.UnrecoverableLogs = []biz.LegacyTrainingLogDisposition{{Status: biz.LegacyTrainingLogsUnrecoverable, PodUID: scope.TrainingPodUID, ContainerID: scope.TrainingContainerID, KubeletErrorBytes: 115, KubeletErrorSHA256: scope.TrainingLogErrorSHA256, ObservedAt: a.config.LogEvidenceObservedAt}}
 	}

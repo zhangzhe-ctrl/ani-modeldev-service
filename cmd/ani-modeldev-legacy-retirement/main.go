@@ -51,6 +51,9 @@ type config struct {
 }
 type connection struct{ Endpoint, CAFile, TokenFile string }
 type item struct {
+	TrainingExitKind                             biz.LegacyRetirementTrainingExitKind     `json:",omitempty"`
+	TrainingOutcome                              string                                   `json:",omitempty"`
+	TrainingWritersAbsent                        bool                                     `json:",omitempty"`
 	OriginalGPURelease                           *govReleaseProof                         `json:",omitempty"`
 	QualificationFacts                           *runtimeproof.LegacyRetirementOwnerFacts `json:",omitempty"`
 	ExecutionID                                  string

@@ -72,6 +72,7 @@ type LegacyRetirementRequest struct {
 	ApprovalSHA256, Actor                                string
 	Archive                                              LegacyRetirementArchiveReceipt
 	UnrecoverableLogs                                    []LegacyTrainingLogDisposition
+	TrainingExitKind                                     LegacyRetirementTrainingExitKind
 	Observation                                          TrainingRuntimeObservation
 	Evidence                                             ManagedCloseEvidence
 }
@@ -85,6 +86,7 @@ type LegacyRetirementRecord struct {
 	ApprovalSHA256, Actor                                string
 	Archive                                              LegacyRetirementArchiveReceipt
 	UnrecoverableLogs                                    []LegacyTrainingLogDisposition
+	TrainingExitKind                                     LegacyRetirementTrainingExitKind
 	RecordedAt                                           time.Time
 }
 
@@ -114,9 +116,12 @@ func LegacyRetirementQualification(execution Execution, owner RunAuthorityCandid
 		return false
 	}
 	if s.TrainingPodUID == "" {
-		return len(r.UnrecoverableLogs) == 0 && state.Training == nil && state.TrainingHandle == nil && state.Observation == nil && state.Publication == nil
+		return r.TrainingExitKind == "" && len(r.UnrecoverableLogs) == 0 && state.Training == nil && state.TrainingHandle == nil && state.Observation == nil && state.Publication == nil
 	}
-	if len(r.UnrecoverableLogs) != 1 || state.Training == nil || state.TrainingHandle == nil || state.Workspace == nil || state.Observation == nil || state.Observation.Handle != *state.TrainingHandle || !state.Observation.WritersAbsent || state.Observation.Outcome != "FAILED" || state.Publication != nil || len(state.Observation.Resources) > 64 {
+	if len(r.UnrecoverableLogs) != 1 || state.Training == nil || state.TrainingHandle == nil || state.Workspace == nil || state.Observation == nil || state.Observation.Handle != *state.TrainingHandle || !state.Observation.WritersAbsent || state.Publication != nil || len(state.Observation.Resources) > 64 {
+		return false
+	}
+	if kind, err := ClassifyLegacyRetirementTrainingExit(execution, owner, state, *state.Observation); err != nil || kind != r.TrainingExitKind {
 		return false
 	}
 	log := r.UnrecoverableLogs[0]

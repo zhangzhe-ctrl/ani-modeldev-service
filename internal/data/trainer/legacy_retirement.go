@@ -118,7 +118,11 @@ func (a *Adapter) ReleaseLegacyRetirementTrainingExit(ctx context.Context, execu
 		return nil
 	}
 	observed, err := a.ObserveLegacyRetirementTraining(ctx, execution, owner, state)
-	if err != nil || !observed.WritersAbsent || observed.Outcome != "FAILED" {
+	if err != nil {
+		return biz.ErrCleanupBlocked
+	}
+	kind, err := biz.ClassifyLegacyRetirementTrainingExit(execution, owner, state, observed)
+	if err != nil || kind != state.LegacyRetirement.TrainingExitKind {
 		return biz.ErrCleanupBlocked
 	}
 	// Refresh once more after the full writer graph and bind this exact patch to
