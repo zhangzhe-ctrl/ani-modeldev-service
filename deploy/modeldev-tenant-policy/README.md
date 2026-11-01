@@ -6,7 +6,8 @@ their `-binding` bindings, and the finite platform bootstrap roles. It performs
 no cluster operation and accepts no tenant list or Namespace UID label.
 
 Input has exactly `principals`, `node_principals`, `kfp_ca_key`,
-`network_metadata_writer`, `network_status_writer`, and `gc_finalizer_writer`.
+`network_metadata_writer`, `network_status_writer`, `gc_finalizer_writer`, and
+`scheduler_writer`.
 The principals map contains the verified control, webhook, kfp_api, argo,
 trainer, jobset, job_controller, persistence_agent, and maintenance usernames.
 Node usernames are exact `system:node:NAME` identities; the renderer adds no
@@ -29,6 +30,19 @@ exactly `orphan`, preserving spec, status, labels,
 annotations, owner references, deletion timestamp and every other finalizer.
 It is excluded from the general controller update set and receives no new RBAC
 or workload creation permission.
+
+The same exact GC identity may remove the sole existing controller ownerReference
+from JobSet→TrainJob, Job→JobSet, and Pod→Job/Workflow dependents during native
+orphan deletion. It cannot add or replace an owner reference; spec, status,
+labels, annotations, finalizers and deletion timestamps remain unchanged.
+
+The separate `scheduler_writer` contains the existing Volcano scheduler username
+and live ServiceAccount UID. Main Pod UPDATE may change only the six pinned
+`volcano.sh/` vGPU allocation/release annotations. Pod status UPDATE may change
+only PodScheduled and nominatedNodeName; other conditions, status fields, spec,
+and identity metadata remain unchanged. Server-owned resourceVersion and
+managedFields bookkeeping remain API-server responsibilities. The scheduler is
+not included in general controller or creation sets and receives no new RBAC.
 
 Install and verify the native policies before granting bootstrap CREATE/bind.
 Do not replace an old running environment's policies before its ordered close,

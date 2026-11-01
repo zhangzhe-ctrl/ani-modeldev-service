@@ -94,7 +94,7 @@ def protected_pods(name):
     return f"{name}.exists(s,(has(s.serviceAccountName) && s.serviceAccountName in {q(SA)}) || ({volumes}) || {containers})"
 
 
-def workload(p, nodes, network_metadata_writer, network_status_writer, gc_finalizer_writer):
+def workload(p, nodes, network_metadata_writer, network_status_writer, gc_finalizer_writer, scheduler_writer):
     metadata = []
     for category in ["Labels", "Annotations"]:
         condition = "k.startsWith('ani.modeldev/') || k.startsWith('modeldev.ani.io/')" + (" || k == 'pipeline/runid'" if category == "Labels" else "")
@@ -117,12 +117,32 @@ def workload(p, nodes, network_metadata_writer, network_status_writer, gc_finali
     new_finalizers = optional("object", "metadata.finalizers", "[]")
     gc_finalizer = "request.operation == 'UPDATE' && request.resource.resource in ['pods','workflows','trainjobs','trainingruntimes','jobsets','jobs'] && (!has(request.subResource) || request.subResource == '') && request.userInfo.username == " + q(gc_finalizer_writer["username"]) + " && has(request.userInfo.uid) && request.userInfo.uid == " + q(gc_finalizer_writer["uid"]) + " && oldObject != null && has(oldObject.metadata.deletionTimestamp) && has(object.metadata.deletionTimestamp) && object.metadata.deletionTimestamp == oldObject.metadata.deletionTimestamp && variables.sameSpec && variables.sameIdentity && variables.newLabels == variables.oldLabels && variables.newAnnotations == variables.oldAnnotations && " + optional("object", "status", "{}") + " == " + optional("oldObject", "status", "{}") + " && 'orphan' in " + old_finalizers + " && " + new_finalizers + " == " + old_finalizers + ".filter(f,f != 'orphan')"
     variables.append(("gcFinalizerUpdate", gc_finalizer))
+    # Native GC may orphan an original dependent before removing its parent.
+    # Only the existing sole controller reference can disappear; none is added.
+    gc_actor = "request.operation == 'UPDATE' && (!has(request.subResource) || request.subResource == '') && request.userInfo.username == " + q(gc_finalizer_writer["username"]) + " && has(request.userInfo.uid) && request.userInfo.uid == " + q(gc_finalizer_writer["uid"])
+    old_refs = optional("oldObject", "metadata.ownerReferences", "[]")
+    new_refs = optional("object", "metadata.ownerReferences", "[]")
+    same_meta_fields = lambda skip: " && ".join(optional("object", "metadata." + field, "null") + " == " + optional("oldObject", "metadata." + field, "null") for field in ["name", "generateName", "namespace", "uid", "creationTimestamp", "generation", "deletionTimestamp", "deletionGracePeriodSeconds", "labels", "annotations", "finalizers", "ownerReferences"] if field not in skip)
+    parent = "(" + old_refs + ")[0]"
+    controller_kind = "(request.resource.resource == 'jobsets' && " + parent + ".apiVersion == 'trainer.kubeflow.org/v1alpha1' && " + parent + ".kind == 'TrainJob') || (request.resource.resource == 'jobs' && " + parent + ".apiVersion == 'jobset.x-k8s.io/v1alpha2' && " + parent + ".kind == 'JobSet') || (request.resource.resource == 'pods' && ((" + parent + ".apiVersion == 'batch/v1' && " + parent + ".kind == 'Job') || (" + parent + ".apiVersion == 'argoproj.io/v1alpha1' && " + parent + ".kind == 'Workflow')))"
+    gc_owner = gc_actor + " && oldObject != null && variables.sameSpec && " + optional("object", "status", "{}") + " == " + optional("oldObject", "status", "{}") + " && " + same_meta_fields({"ownerReferences"}) + " && size(" + old_refs + ") == 1 && size(" + new_refs + ") == 0 && has(" + parent + ".controller) && " + parent + ".controller && size(" + parent + ".uid) > 0 && (" + controller_kind + ")"
+    variables.append(("gcOrphanDependentUpdate", gc_owner))
+    scheduler_actor = "request.operation == 'UPDATE' && request.resource.resource == 'pods' && oldObject != null && request.userInfo.username == " + q(scheduler_writer["username"]) + " && has(request.userInfo.uid) && request.userInfo.uid == " + q(scheduler_writer["uid"]) + " && variables.sameSpec"
+    gpu_annotations = ["volcano.sh/vgpu-node", "volcano.sh/vgpu-ids-new", "volcano.sh/devices-to-allocate", "volcano.sh/vgpu-time", "volcano.sh/bind-time", "volcano.sh/bind-phase"]
+    unchanged_annotations = "variables.oldAnnotations.all(k,k in " + q(gpu_annotations) + " || (k in variables.newAnnotations && variables.oldAnnotations[k] == variables.newAnnotations[k])) && variables.newAnnotations.all(k,k in " + q(gpu_annotations) + " || (k in variables.oldAnnotations && variables.newAnnotations[k] == variables.oldAnnotations[k]))"
+    scheduler_meta = scheduler_actor + " && (!has(request.subResource) || request.subResource == '') && " + same_meta_fields({"annotations"}) + " && " + optional("object", "status", "{}") + " == " + optional("oldObject", "status", "{}") + " && " + unchanged_annotations
+    variables.append(("schedulerMetadataUpdate", scheduler_meta))
+    variables += [("newStatus", optional("object", "status", "{}")), ("oldStatus", optional("oldObject", "status", "{}"))]
+    new_conditions = optional("object", "status.conditions", "[]")
+    old_conditions = optional("oldObject", "status.conditions", "[]")
+    scheduler_status = scheduler_actor + " && has(request.subResource) && request.subResource == 'status' && " + same_meta_fields(set()) + " && variables.newStatus.all(k,k in ['conditions','nominatedNodeName'] || (k in variables.oldStatus && variables.newStatus[k] == variables.oldStatus[k])) && variables.oldStatus.all(k,k in ['conditions','nominatedNodeName'] || (k in variables.newStatus && variables.oldStatus[k] == variables.newStatus[k])) && (" + new_conditions + ").filter(c,c.type != 'PodScheduled') == (" + old_conditions + ").filter(c,c.type != 'PodScheduled') && size((" + new_conditions + ").filter(c,c.type == 'PodScheduled')) == 1 && size((" + old_conditions + ").filter(c,c.type == 'PodScheduled')) <= 1"
+    variables.append(("schedulerStatusUpdate", scheduler_status))
     creators = {"workflows": [p["kfp_api"]], "trainjobs": [p["control"]], "trainingruntimes": [p["control"]], "jobsets": [p["trainer"]], "jobs": [p["jobset"]], "pods": [p["argo"], p["job_controller"]]}
     create = " || ".join(f"(request.resource.resource == {q(resource)} && request.userInfo.username in {q(users)})" for resource, users in creators.items())
     deadline = optional("object", "spec.activeDeadlineSeconds", "-1") + " == " + optional("oldObject", "spec.activeDeadlineSeconds", "-1")
     workflow_equal = "object.spec.templates == oldObject.spec.templates && " + optional("object", "spec.arguments", "{}") + " == " + optional("oldObject", "spec.arguments", "{}") + " && object.spec.entrypoint == oldObject.spec.entrypoint && object.spec.serviceAccountName == oldObject.spec.serviceAccountName && (" + deadline + " || (request.userInfo.username == " + q(p["kfp_api"]) + " && has(object.spec.activeDeadlineSeconds) && object.spec.activeDeadlineSeconds == 0))"
     updates = "request.userInfo.username in " + q(sorted(set(p.values()) | set(nodes))) + " && variables.sameIdentity && variables.sameRetention && (request.resource.resource == 'workflows' ? (" + workflow_equal + ") : request.resource.resource == 'trainjobs' ? (variables.sameSpec || variables.suspendOnly) : request.resource.resource in ['pods','trainingruntimes'] ? variables.sameSpec : variables.newPods == variables.oldPods)"
-    updates = "(" + updates + ") || variables.networkMetadataUpdate || variables.networkStatusUpdate || variables.gcFinalizerUpdate"
+    updates = "(" + updates + ") || variables.networkMetadataUpdate || variables.networkStatusUpdate || variables.gcFinalizerUpdate || variables.gcOrphanDependentUpdate || variables.schedulerMetadataUpdate || variables.schedulerStatusUpdate"
     pod_identity = "has(object.spec.serviceAccountName) && ((object.spec.serviceAccountName == 'modeldev-step' && (request.operation != 'CREATE' || request.userInfo.username == " + q(p["argo"]) + ")) || (object.spec.serviceAccountName == 'trainer-workload' && (request.operation != 'CREATE' || request.userInfo.username == " + q(p["job_controller"]) + ")))"
     checks = [("!variables.protected || variables.standardNamespace", "protected workload requires the standard owned namespace"), ("!variables.protected || request.operation != 'CREATE' || (" + create + ")", "only exact original controllers create protected resources"), ("!variables.protected || request.resource.resource != 'pods' || (" + pod_identity + ")", "reserved Secret, PVC or SA cannot be borrowed"), ("!variables.protected || request.operation != 'UPDATE' || (" + updates + ")", "original templates, four parameters, owner identity and retained Pod spec cannot change")]
     rules = [resource_rule(["argoproj.io"], ["workflows", "workflows/status"]), resource_rule(["trainer.kubeflow.org"], ["trainjobs", "trainjobs/status", "trainingruntimes"]), resource_rule(["jobset.x-k8s.io"], ["jobsets", "jobsets/status"]), resource_rule(["batch"], ["jobs", "jobs/status"]), resource_rule([""], ["pods", "pods/status", "pods/ephemeralcontainers"])]
@@ -153,7 +173,7 @@ def rbac(p):
 
 
 def render(config):
-    if set(config) != {"principals", "node_principals", "kfp_ca_key", "network_metadata_writer", "network_status_writer", "gc_finalizer_writer"}:
+    if set(config) != {"principals", "node_principals", "kfp_ca_key", "network_metadata_writer", "network_status_writer", "gc_finalizer_writer", "scheduler_writer"}:
         raise ValueError("verified exact principals and node identities required")
     p, nodes = config["principals"], config["node_principals"]
     if not isinstance(config["kfp_ca_key"],str) or not re.fullmatch(r"[A-Za-z0-9._-]+",config["kfp_ca_key"]):
@@ -174,9 +194,12 @@ def render(config):
     gc_writer = config["gc_finalizer_writer"]
     if not isinstance(gc_writer, dict) or set(gc_writer) != {"username", "uid"} or gc_writer["username"] != "system:serviceaccount:kube-system:generic-garbage-collector" or gc_writer["username"] in p.values() or gc_writer["username"] in (network_writer, status_writer) or not isinstance(gc_writer["uid"], str) or not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", gc_writer["uid"]) or gc_writer["uid"] == "00000000-0000-0000-0000-000000000000":
         raise ValueError("separate verified garbage collector ServiceAccount username and UID required")
+    scheduler = config["scheduler_writer"]
+    if not isinstance(scheduler, dict) or set(scheduler) != {"username", "uid"} or scheduler["username"] != "system:serviceaccount:volcano-system:ani-volcano-scheduler" or scheduler["username"] in p.values() or scheduler["username"] in (network_writer, status_writer, gc_writer["username"]) or not isinstance(scheduler["uid"], str) or not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", scheduler["uid"]) or scheduler["uid"] == "00000000-0000-0000-0000-000000000000":
+        raise ValueError("separate verified Volcano scheduler ServiceAccount username and UID required")
     if not isinstance(nodes, list) or not nodes or len(nodes) > 64 or len(set(nodes)) != len(nodes) or any(not re.fullmatch(r"system:node:[a-z0-9.-]+", n) for n in nodes):
         raise ValueError("exact verified node usernames required")
-    return {"apiVersion": "v1", "kind": "List", "items": bootstrap(p,config["kfp_ca_key"]) + configuration(p) + workload(p, nodes, network_writer, status_writer, gc_writer) + rbac(p)}
+    return {"apiVersion": "v1", "kind": "List", "items": bootstrap(p,config["kfp_ca_key"]) + configuration(p) + workload(p, nodes, network_writer, status_writer, gc_writer, scheduler) + rbac(p)}
 
 
 def main():
