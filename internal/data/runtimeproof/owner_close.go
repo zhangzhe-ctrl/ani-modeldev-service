@@ -391,7 +391,10 @@ func serverDeniedAdmissionNode(workflow *unstructured.Unstructured, node map[str
 		return serverWebhookAdmissionTimeout(workflow.GetNamespace(), strings.TrimPrefix(message, prefix))
 	}
 	executor := node["templateName"] == "metadata-0-2-retry-system-container-impl" || node["templateName"] == "metadata-1-2-retry-system-container-impl"
-	policyDenied := message == "admission webhook \""+workflow.GetNamespace()+".modeldev.ani.io\" denied the request: ModelDev Pod admission refused: work_environment"
+	// The dynamic hook rejects an image mismatch before storage Create. The
+	// complete zero-retry executor graph below must still prove no Pod ran.
+	policyDenied := message == "admission webhook \""+workflow.GetNamespace()+".modeldev.ani.io\" denied the request: ModelDev Pod admission refused: work_environment" ||
+		message == "admission webhook \"dynamic.modeldev.ani.io\" denied the request: ModelDev Pod admission refused: image_contract"
 	return executor && (serverWebhookAdmissionTimeout(workflow.GetNamespace(), message) || policyDenied) && rejectedExecutorHasZeroRetries(workflow, node)
 }
 
