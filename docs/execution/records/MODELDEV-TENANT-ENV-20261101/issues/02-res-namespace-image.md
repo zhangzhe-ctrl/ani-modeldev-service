@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 Resolution: resolved
-Blocked by: 01
+Blocked by: None
 
 ## Goal
 
@@ -53,9 +53,8 @@ Blocked by: 01
 
 ### 本轮最终回填（2026-11-02 Asia/Shanghai）
 
-- 当前结果：**PASS_IMAGE_AND_NAMESPACE_MAIN_FLOW**。原标准Namespace未新建；两新CPU/GPU受管image tuple已实际消费，B4 GPU_SHARED全链成功。
-- 实际证据：[本项回执](../evidence/10/resumed-mainflow/readback-B-1793548972071555495.json)；[完整报告](../implementation-report.md)、[验收表](../acceptance-results.tsv)。
-- 新测试/make verify按用户本轮指令NOT_RUN；不把下列历史固定源码PASS归给当前提交。
+- 当前结果：**PASS / RESOLVED**。Resource原migration/原UID回填/零NULL及67d正式切换完成，无新Namespace RPC；见 evidence/09/res-recovery-v3-final-window-actual.json。
+- 组件、外部double与真实现场范围分开；按用户要求本轮未重跑全量make verify，未实测GPU_WHOLE。具体证据及边界见[完整报告](../implementation-report.md)与[逐项验收](../acceptance-results.tsv)。
 
 ### 历史固定源码与此前checkpoint（保留原事实，当前状态以上文为准）
 

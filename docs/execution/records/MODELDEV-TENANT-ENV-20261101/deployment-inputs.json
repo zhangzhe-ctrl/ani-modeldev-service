@@ -17,9 +17,9 @@
     "governance_pin_evidence": "evidence/gov-final/formal-module-pin-captured.log; no replace, official immutable module"
   },
   "secrets_must_not_be_included": true,
-  "status": "FINAL_POLICY_PINS_RECONCILED_EXPLICIT_A_B_READY",
-  "updated_at": "2026-11-01T16:33:12.106536+00:00",
-  "instructions": "Current target remains original10064/ani-kcn-full. Runtime1dfd6941/fe944 is unchanged. Immutable platform2d75921a/runtime5c138546 pin actual native workload VAP10/MWC3. Original two registrations were precisely revoked under spec5.4 after all five executions closed and released; normal A/B Get404\u2192explicitEnsure200\u2192GetREADY succeeded on one shared process. Gov Create is restored to UNSET/defaultfalse. Existing A CPU/B GPU_SHARED/Stop and artifact acceptance records are preserved; no new training was added during this maintenance.",
+  "status": "GOAL_AND_CURRENT_MULTI_TENANT_REGRESSION_ACCEPTED",
+  "updated_at": "2026-11-01T17:15:00.577153+00:00",
+  "instructions": "Current target remains kubercloud@100.64.128.12/ani-kcn-full. Final main1df/fe944, platform2d759/runtime5c138 and bundle4a655 unchanged. Mandatory acceptance and new current-version A4 CPU/B5 GPU_SHARED complete flow PASS; both original owner cleanups APPLIED, B5 original24570 fully released/ACK APPLIED. Same single ModelDev process, no tenant array or per-tenant deployment. LIVE10 restored original MWC fullspec/UID; current generation5 is metadata excluded from BootstrapDigest, no pins/spec mutation. Gov Create stays enabled. Exact added STS/observer tools removed; reusable service binaries/OCI retained.",
   "target": {
     "ssh_user": "kubercloud",
     "ssh_host": "100.64.128.12",
@@ -31,16 +31,15 @@
     "evidence": "evidence/10/final-policy-maintenance/gov-unpause-actual.json"
   },
   "status_reason": {
-    "status": "FINAL_POLICY_PINS_RECONCILED_EXPLICIT_A_B_READY",
+    "status": "PASS",
     "current_runtime_and_environment_blocker": null,
-    "training_acceptance": "Actual A3 CPU and B4 GPU_SHARED SUCCEEDED/PUBLISHED/CLOSED, B4 Model parent/version READY and normal download SHA matched.",
-    "fresh_ensure_revalidation": "PASS_NORMAL_A_B_GET404_ENSURE200_GET_READY_SAME_MAIN_FINAL_NATIVE10_MWC3",
+    "training_acceptance": "Current A4 CPU and B5 GPU_SHARED SUCCEEDED/PUBLISHED/CLOSED; normal logs/download verified, B Model parent/version READY, original close/cleanup/release complete.",
+    "fresh_ensure_revalidation": "A/B Get404->explicitEnsure/GetREADY same shared process; concurrent busy returns persisted view per source and actual receipts.",
     "evidence": [
-      "evidence/10/resumed-mainflow/readback-B-1793548972071555495.json",
-      "evidence/10/resumed-mainflow/download-B-1793549202671540591.json",
-      "evidence/10/resumed-mainflow/b4-original-close-and-release-final-1793549008812487147.json",
-      "evidence/10/final-policy-maintenance/new-A-B-Ensure-actual.json",
-      "evidence/10/final-policy-maintenance/gov-unpause-actual.json"
+      "evidence/10/completion-multitenant-regression/result.json",
+      "evidence/10/completion-live03/persisted-view-resolution.json",
+      "evidence/10/completion-admission/result.json",
+      "evidence/10/completion-live11/result.json"
     ]
   },
   "kfp": {
@@ -367,7 +366,7 @@
     "ensure_process_evidence": "evidence/10/final-policy-maintenance/new-A-B-Ensure-actual.json",
     "current_ready_evidence": "evidence/10/final-policy-maintenance/final-config-switch-actual.json"
   },
-  "current_checkpoint": "evidence/10/final-policy-maintenance/result.json",
+  "current_checkpoint": "evidence/10/completion-multitenant-regression/result.json",
   "current_sources": {
     "modeldev": {
       "commit": "1dfd6941e5780eca0d55dc4e5fbbd2f58e0710ab",
@@ -396,5 +395,11 @@
       "evidence": "evidence/10/trusted-platform-native-final/actual.json"
     }
   },
-  "current_create_enabled_evidence": "evidence/10/final-policy-maintenance/gov-unpause-actual.json"
+  "current_create_enabled_evidence": "evidence/10/final-policy-maintenance/gov-unpause-actual.json",
+  "final_mwc_observation": {
+    "uid": "c452d29d-89be-41af-ac95-eb467e1a89c2",
+    "generation": 5,
+    "original_full_webhooks_restored": true,
+    "evidence": "evidence/10/completion-admission/final-original-restore-public.json"
+  }
 }

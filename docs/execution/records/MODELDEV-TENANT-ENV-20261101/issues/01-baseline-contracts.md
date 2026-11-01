@@ -53,9 +53,8 @@ Blocked by: None
 
 ### 本轮最终回填（2026-11-02 Asia/Shanghai）
 
-- 当前结果：**PASS_FIXED_CONTRACTS**。固定API/合同不变；当前main1dfd6941、native4d6013；用户明确授权的既有平台信任范围按报告第7节记录。
-- 实际证据：[本项回执](../evidence/09/final-switch/fixed-sources-api-pins.json)；[完整报告](../implementation-report.md)、[验收表](../acceptance-results.tsv)。
-- 新测试/make verify按用户本轮指令NOT_RUN；不把下列历史固定源码PASS归给当前提交。
+- 当前结果：**PASS / RESOLVED**。完整指定集群身份、固定源码/镜像、部署输入及合同已回填；最终共享进程与namespace对账见 evidence/10/completion-multitenant-regression/final-coexistence-and-process.json。
+- 组件、外部double与真实现场范围分开；按用户要求本轮未重跑全量make verify，未实测GPU_WHOLE。具体证据及边界见[完整报告](../implementation-report.md)与[逐项验收](../acceptance-results.tsv)。
 
 ### 历史固定源码与此前checkpoint（保留原事实，当前状态以上文为准）
 

@@ -1,7 +1,7 @@
 {
   "schema": "ani.modeldev.task-tool-cleanup-ledger.v1",
-  "updated_at": "2026-11-01T16:16:46.625318+00:00",
-  "status": "LISTED_TASK_TOOLS_CLEANED",
+  "updated_at": "2026-11-01T17:13:30.176693+00:00",
+  "status": "LISTED_COMPLETION_LIVE09_AND_B5_TOOLS_CLEANED",
   "user_requirement": "Record each added tool and remove at task completion; no additional build CPU/memory/concurrency caps.",
   "completed_ledgers": [
     "08/image-publication/added-tools-cleanup-ledger.json",
@@ -208,5 +208,40 @@
       "10/task-final-tools-cleanup-20261101/workbench-exact-cleanup.json",
       "10/task-final-tools-cleanup-20261101/local-exact-cleanup.json"
     ]
+  },
+  "completion_live09_tool": {
+    "created_for": "Required real LIVE09 normal business STS cross-scope rejection, CPU A attempt4 prepare",
+    "source_sha256": "01feafc4a4a07f343dac01b565857f022b9cde1f87024fc3f0bde05200474581",
+    "workbench_root": "/root/ani-runs/modeldev-completion-live09-20261102",
+    "node_root": "/home/kubercloud/tenantenv-20261101/completion-live09-live10-20261101",
+    "cleanup": "Remove own client binary/source/private staging after actual bounded request; preserve only public receipts and marker needed by LIVE10",
+    "state": "REMOVED_EXACT_OWNER_SHA_PROCESS_AND_ABSENCE_VERIFIED",
+    "binary_sha256": "5692253fe311da4019c615682d8439bc8a42f85b87986ecec825213da1ac8f81",
+    "binary_bytes": 20586658,
+    "watcher_pid": 817964,
+    "ready_evidence": "10/completion-live09/watcher-ready.json",
+    "projected_tokens_persisted": false,
+    "STS_requests_so_far": 1,
+    "live09_status": "PASS_OWN_INPUT_READ_AND_CROSS_SCOPE_ACCESS_DENIED",
+    "actual_evidence": "10/completion-live09/actual.json",
+    "cleanup_evidence": "10/completion-live09/cleanup.json",
+    "credential_values_or_hashes_persisted": false
+  },
+  "completion_B5_observer": {
+    "state": "COMPLETED_PIPELINE_SUCCEEDED_PROCESS_EXITED_LOCAL_HELPER_REMOVED",
+    "remote_pid": 854288,
+    "remote_program": "existing python3 reading stdin; no remote helper file installed",
+    "duration_limit_seconds": 600,
+    "interval_seconds": 5,
+    "execution_id": "636f6bee-093a-4ea4-b768-029bb5031ca3",
+    "source_sha256": "769d03bd1d162658784b04bd4fbbd959fedb0d7ca053996efa01de4a13cb3b12",
+    "local_source": "/home/chabking/workspace/.worktrees/modeldev-dynamic-tenant-environment/.scratch/modeldev-dynamic-tenant-environment/evidence/10/completion-multitenant-regression/watch-b5-original-pods.py",
+    "public_output": "10/completion-multitenant-regression/b5-original-pods.jsonl",
+    "cleanup": "After original pipeline terminal/finite stop, remove own local helper source; retain public snapshots; do not touch service binaries/OCI/cache",
+    "cluster_writes": 0,
+    "new_tools_installed": false,
+    "cleanup_evidence": "10/completion-multitenant-regression/b5-observer-complete.json",
+    "public_snapshots_retained": true,
+    "ssh_exit": 0
   }
 }

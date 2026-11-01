@@ -1,8 +1,8 @@
 # 09 原环境关闭清理、Res 回填与一次切换
 
 Status: ready-for-agent
-Resolution: open
-Blocked by: 02, 05, 06, 07, 08
+Resolution: resolved
+Blocked by: None
 
 ## Goal
 
@@ -53,9 +53,8 @@ Blocked by: 02, 05, 06, 07, 08
 
 ### 本轮最终回填（2026-11-02 Asia/Shanghai）
 
-- 当前结果：**PARTIAL_MAIN_CLEANUP_COMPLETE_FINAL_PINS_RECONCILED**。原历史清理及B4正常全额退额完成；追加spec5.4已完成且新A/B READY，保留PVC/输入/模型/日志/产物，清单内额外工具已清。
-- 实际证据：[本项回执](../evidence/10/task-final-tools-cleanup-20261101/actual-cleanup.json)；[完整报告](../implementation-report.md)、[验收表](../acceptance-results.tsv)。
-- 新测试/make verify按用户本轮指令NOT_RUN；不把下列历史固定源码PASS归给当前提交。
+- 当前结果：**PASS / RESOLVED**。原manifest自有资源/九表/Gov原项已清，原charge全退；最终共存UID和健康、旧入口搜索通过，临时额外工具已清，见 evidence/10/completion-live11/result.json、evidence/10/completion-live09/cleanup.json。
+- 组件、外部double与真实现场范围分开；按用户要求本轮未重跑全量make verify，未实测GPU_WHOLE。具体证据及边界见[完整报告](../implementation-report.md)与[逐项验收](../acceptance-results.tsv)。
 
 ### 历史固定源码与此前checkpoint（保留原事实，当前状态以上文为准）
 

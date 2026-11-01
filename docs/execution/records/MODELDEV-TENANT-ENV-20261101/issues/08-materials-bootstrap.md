@@ -1,8 +1,8 @@
 # 08 固定镜像、四定义与部署材料准备验证
 
 Status: ready-for-agent
-Resolution: open
-Blocked by: 04, 06
+Resolution: resolved
+Blocked by: None
 
 ## Goal
 
@@ -53,9 +53,8 @@ Blocked by: 04, 06
 
 ### 本轮最终回填（2026-11-02 Asia/Shanghai）
 
-- 当前结果：**PASS_MATERIALS_FINAL_PINS_RECONCILED**。四最终Version/material4a655和三运行镜像已发布并由B4实际消费；publisher已撤权。最终平台bootstrap pins已同步，当前2d759平台对应VAP10/MWC3。
-- 实际证据：[本项回执](../evidence/10/finetuning-ir-correction-20261101/final/materials/seal-receipt.json)；[完整报告](../implementation-report.md)、[验收表](../acceptance-results.tsv)。
-- 新测试/make verify按用户本轮指令NOT_RUN；不把下列历史固定源码PASS归给当前提交。
+- 当前结果：**PASS / RESOLVED**。四个固定新Version及最终bundle已正式发布seal并消费，三运行镜像/主服务已部署；publisher已撤权，见 evidence/10/finetuning-ir-correction-20261101/publisher/final-step67/actual-publication-window.json。
+- 组件、外部double与真实现场范围分开；按用户要求本轮未重跑全量make verify，未实测GPU_WHOLE。具体证据及边界见[完整报告](../implementation-report.md)与[逐项验收](../acceptance-results.tsv)。
 
 ### 历史固定源码与此前checkpoint（保留原事实，当前状态以上文为准）
 

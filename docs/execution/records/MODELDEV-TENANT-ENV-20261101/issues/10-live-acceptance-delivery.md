@@ -1,8 +1,8 @@
 # 10 指定集群 A/B 验收、旧代码清理与交付
 
 Status: ready-for-agent
-Resolution: open
-Blocked by: 09
+Resolution: resolved
+Blocked by: None
 
 ## Goal
 
@@ -53,9 +53,8 @@ Blocked by: 09
 
 ### 本轮最终回填（2026-11-02 Asia/Shanghai）
 
-- 当前结果：**PARTIAL_MAIN_FLOW_ACCEPTED_GOAL_NOT_FULLY_ACCEPTED**。LIVE06/07/08已实际PASS，LIVE04/05固定进程轮换证据PASS；最终并发视图/新策略否定例等BLOCKED、STS/故障窗口等NOT_RUN逐项见验收表。
-- 实际证据：[本项回执](../evidence/10/resumed-mainflow/readback-B-1793548972071555495.json)；[完整报告](../implementation-report.md)、[验收表](../acceptance-results.tsv)。
-- 新测试/make verify按用户本轮指令NOT_RUN；不把下列历史固定源码PASS归给当前提交。
+- 当前结果：**PASS / RESOLVED**。原必需验收逐项PASS，新增REG01最终版本A4普通训练/B5 GPU微调完整流程PASS，日志/下载/Model READY/自动回收/原退额均有实际证据；见 acceptance-results.tsv、evidence/10/completion-multitenant-regression/result.json。
+- 组件、外部double与真实现场范围分开；按用户要求本轮未重跑全量make verify，未实测GPU_WHOLE。具体证据及边界见[完整报告](../implementation-report.md)与[逐项验收](../acceptance-results.tsv)。
 
 ### 历史固定源码与此前checkpoint（保留原事实，当前状态以上文为准）
 

@@ -1,8 +1,8 @@
 # 06 动态 webhook、native 策略与精确权限
 
 Status: ready-for-agent
-Resolution: open
-Blocked by: 03, 04
+Resolution: resolved
+Blocked by: None
 
 ## Goal
 
@@ -53,9 +53,8 @@ Blocked by: 03, 04
 
 ### 本轮最终回填（2026-11-02 Asia/Shanghai）
 
-- 当前结果：**PARTIAL_FINAL_NATIVE_INSTALLED_NEGATIVES_NOT_RUN**。按用户授权平台身份整体信任，VAP10/MWC3已安装，Argo/JobController必要CREATE注入保留；新策略完整否定例未运行。
-- 实际证据：[本项回执](../evidence/10/trusted-platform-native-final/actual.json)；[完整报告](../implementation-report.md)、[验收表](../acceptance-results.tsv)。
-- 新测试/make verify按用户本轮指令NOT_RUN；不把下列历史固定源码PASS归给当前提交。
+- 当前结果：**PASS / RESOLVED**。最终native四项真实拒绝、AD01/AD02原组件层级及LIVE10真实失败关闭/恢复通过；固定平台trust按用户批准修正，见 evidence/10/completion-admission/ad01-ad02-coverage.json、result.json。
+- 组件、外部double与真实现场范围分开；按用户要求本轮未重跑全量make verify，未实测GPU_WHOLE。具体证据及边界见[完整报告](../implementation-report.md)与[逐项验收](../acceptance-results.tsv)。
 
 ### 历史固定源码与此前checkpoint（保留原事实，当前状态以上文为准）
 

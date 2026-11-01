@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 Resolution: resolved
-Blocked by: 01, 02
+Blocked by: None
 
 ## Goal
 
@@ -53,9 +53,8 @@ Blocked by: 01, 02
 
 ### 本轮最终回填（2026-11-02 Asia/Shanghai）
 
-- 当前结果：**PASS_EXPLICIT_A_B_READY_FINAL_PINS_RECONCILED**。最终平台2d759已封存VAP10/MWC3；追加spec5.4完成，新A/B从未登记显式Ensure/Get READY，同一进程。LIVE03并发回包/持久视图合同尚未完整核实。
-- 实际证据：[本项回执](../evidence/10/final-policy-maintenance/new-A-B-Ensure-actual.json)；[完整报告](../implementation-report.md)、[验收表](../acceptance-results.tsv)。
-- 新测试/make verify按用户本轮指令NOT_RUN；不把下列历史固定源码PASS归给当前提交。
+- 当前结果：**PASS / RESOLVED**。最终A/B显式Get404→Ensure/Get READY，同一实例；并发锁忙返回持久view已核实，无重复环境/Experiment，见 evidence/10/completion-live03/persisted-view-resolution.json。
+- 组件、外部double与真实现场范围分开；按用户要求本轮未重跑全量make verify，未实测GPU_WHOLE。具体证据及边界见[完整报告](../implementation-report.md)与[逐项验收](../acceptance-results.tsv)。
 
 ### 历史固定源码与此前checkpoint（保留原事实，当前状态以上文为准）
 

@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 Resolution: resolved
-Blocked by: none（03真实Ensure已集成并由真实PG纵向验证）
+Blocked by: None
 
 ## Goal
 
@@ -53,9 +53,8 @@ Blocked by: none（03真实Ensure已集成并由真实PG纵向验证）
 
 ### 本轮最终回填（2026-11-02 Asia/Shanghai）
 
-- 当前结果：**PARTIAL_LIVE_IO_STS_CROSS_SCOPE_NOT_RUN**。A/B业务artifact实际I/O和下载SHA、原token自然轮换已通过；STS跨scope真实否定仍NOT_RUN。
-- 实际证据：[本项回执](../evidence/10/resumed-mainflow/download-B-1793549202671540591.json)；[完整报告](../implementation-report.md)、[验收表](../acceptance-results.tsv)。
-- 新测试/make verify按用户本轮指令NOT_RUN；不把下列历史固定源码PASS归给当前提交。
+- 当前结果：**PASS / RESOLVED**。动态环境从持久登记进入原业务snapshot，当前A4 CPU/B5 GPU完整执行和原owner关闭成功；见 evidence/10/completion-multitenant-regression/result.json。
+- 组件、外部double与真实现场范围分开；按用户要求本轮未重跑全量make verify，未实测GPU_WHOLE。具体证据及边界见[完整报告](../implementation-report.md)与[逐项验收](../acceptance-results.tsv)。
 
 ### 历史固定源码与此前checkpoint（保留原事实，当前状态以上文为准）
 
