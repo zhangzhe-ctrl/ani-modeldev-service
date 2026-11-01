@@ -29,41 +29,41 @@ func (verifier *Verifier) VerifyOwnerWritersAbsent(ctx context.Context, executio
 // one-time retirement gate. The ordinary path always reads the live owner.
 func (verifier *Verifier) verifyOwnerWritersAbsent(ctx context.Context, execution biz.Execution, authority biz.RunAuthorityCandidate, workspace *biz.WorkspaceBinding, archive *legacyRetirementWorkflow) (biz.ManagedCloseEvidence, error) {
 	if verifier == nil || verifier.kube == nil || verifier.runs == nil || verifier.plans == nil || ctx == nil || ctx.Err() != nil {
-		return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+		return biz.ManagedCloseEvidence{}, ownerQualificationFailure(archive, "DEPENDENCIES", biz.ErrRuntimeNotReady)
 	}
 	if _, _, err := execution.CanonicalPayloads(); err != nil {
-		return biz.ManagedCloseEvidence{}, biz.ErrRuntimeConflict
+		return biz.ManagedCloseEvidence{}, ownerQualificationFailure(archive, "EXECUTION_CANONICAL_PAYLOAD", biz.ErrRuntimeConflict)
 	}
 	environment := execution.Snapshot.Environment
 	if authority.TenantID != execution.TenantID || authority.ExecutionID != execution.ExecutionID || authority.OperationID != execution.OperationID || authority.SpecHash != execution.SpecHash ||
 		authority.NamespaceName != environment.NamespaceName || authority.NamespaceUID != environment.NamespaceUID || authority.WorkflowName == "" || authority.WorkflowUID == "" {
-		return biz.ManagedCloseEvidence{}, biz.ErrRuntimeConflict
+		return biz.ManagedCloseEvidence{}, ownerQualificationFailure(archive, "ORIGINAL_AUTHORITY_BINDING", biz.ErrRuntimeConflict)
 	}
 	dispatch, err := verifier.plans.Get(ctx, execution.TenantID, execution.ExecutionID)
 	if err != nil {
-		return biz.ManagedCloseEvidence{}, err
+		return biz.ManagedCloseEvidence{}, ownerQualificationFailure(archive, "FROZEN_DISPATCH_READ", err)
 	}
 	frozen, err := (biz.PipelineDispatchRequest{Admission: execution.Admission, Owner: dispatch.Plan.Owner}).Freeze()
 	if err != nil {
-		return biz.ManagedCloseEvidence{}, biz.ErrRuntimeConflict
+		return biz.ManagedCloseEvidence{}, ownerQualificationFailure(archive, "FROZEN_DISPATCH_CONTRACT", biz.ErrRuntimeConflict)
 	}
 	digest, err := frozen.Digest()
 	actualDigest, actualErr := dispatch.Plan.Digest()
 	if err != nil || actualErr != nil || digest != actualDigest || dispatch.PlanHash != digest || authority.PlanHash != digest || authority.AttemptID != dispatch.AttemptID ||
 		dispatch.State != biz.PipelineDispatchConfirmed || len(dispatch.ConfirmedRuns) != 1 || dispatch.ConfirmedRuns[0].RunID != authority.RunID {
-		return biz.ManagedCloseEvidence{}, biz.ErrRuntimeConflict
+		return biz.ManagedCloseEvidence{}, ownerQualificationFailure(archive, "FROZEN_DISPATCH_IDENTITY", biz.ErrRuntimeConflict)
 	}
 	run, err := verifier.runs.GetManagedRun(ctx, dispatch.Plan, authority.RunID)
 	if err != nil {
-		return biz.ManagedCloseEvidence{}, err
+		return biz.ManagedCloseEvidence{}, ownerQualificationFailure(archive, "AUTHENTICATED_RUN_READ", err)
 	}
 	observedAt := time.Now().UTC()
 	if !terminalTask(run.State) || run.FinishedAt.IsZero() || run.FinishedAt.After(observedAt) {
-		return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+		return biz.ManagedCloseEvidence{}, ownerQualificationFailure(archive, "RUN_TERMINAL", biz.ErrRuntimeNotReady)
 	}
 	namespace, err := verifier.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}).Get(ctx, environment.NamespaceName, metav1.GetOptions{})
 	if err != nil || !sameObject(namespace, "v1", "Namespace", "", environment.NamespaceName, environment.NamespaceUID) || namespace.GetDeletionTimestamp() != nil {
-		return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+		return biz.ManagedCloseEvidence{}, ownerObjectQualificationFailure(archive, "NAMESPACE_IDENTITY", namespace, err, biz.ErrRuntimeNotReady)
 	}
 	workflows := verifier.kube.Resource(schema.GroupVersionResource{Group: "argoproj.io", Version: "v1alpha1", Resource: "workflows"}).Namespace(environment.NamespaceName)
 	workflow, err := workflows.Get(ctx, authority.WorkflowName, metav1.GetOptions{})
@@ -73,14 +73,14 @@ func (verifier *Verifier) verifyOwnerWritersAbsent(ctx context.Context, executio
 		// Observe absence through the real API. Archived metadata is never
 		// returned by a substitute Kubernetes GET or claimed to be current.
 		if !apierrors.IsNotFound(err) {
-			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+			return biz.ManagedCloseEvidence{}, ownerObjectQualificationFailure(archive, "ORIGINAL_WORKFLOW_ABSENT", workflow, err, biz.ErrRuntimeNotReady)
 		}
 		workflow = archive.workflow
 		err = nil
 		deniedNode, rejectedTask = archive.deniedNode, archive.rejectedTask
 	}
 	if err != nil || !sameObject(workflow, "argoproj.io/v1alpha1", "Workflow", environment.NamespaceName, authority.WorkflowName, authority.WorkflowUID) || workflow.GetDeletionTimestamp() != nil {
-		return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+		return biz.ManagedCloseEvidence{}, ownerObjectQualificationFailure(archive, "ARCHIVE_IDENTITY", workflow, err, biz.ErrRuntimeNotReady)
 	}
 	proof, nodes, err := ownerWorkflowCompletionWithDeniedNode(workflow, observedAt, deniedNode)
 	if err != nil {
@@ -89,18 +89,18 @@ func (verifier *Verifier) verifyOwnerWritersAbsent(ctx context.Context, executio
 	proof.RunState, proof.RunFinishedAt = run.State, run.FinishedAt
 	if workspace != nil {
 		if err := biz.ValidateWorkspaceBinding(execution, *workspace); err != nil {
-			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeConflict
+			return biz.ManagedCloseEvidence{}, ownerQualificationFailure(archive, "FROZEN_WORKSPACE_BINDING", biz.ErrRuntimeConflict)
 		}
 		pvc, err := verifier.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "persistentvolumeclaims"}).Namespace(environment.NamespaceName).Get(ctx, workspace.PVCName, metav1.GetOptions{})
 		if err != nil || !sameObject(pvc, "v1", "PersistentVolumeClaim", environment.NamespaceName, workspace.PVCName, workspace.PVCUID) || pvc.GetDeletionTimestamp() != nil {
-			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+			return biz.ManagedCloseEvidence{}, ownerObjectQualificationFailure(archive, "PVC_IDENTITY", pvc, err, biz.ErrRuntimeNotReady)
 		}
 	}
 	// No selector is used: labels and KFP's latest task list cannot hide older
 	// attempts, the close Pod, or another controller's writer on the same PVC.
 	pods, err := verifier.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "pods"}).Namespace(environment.NamespaceName).List(ctx, metav1.ListOptions{})
 	if err != nil || pods == nil || pods.GetContinue() != "" {
-		return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+		return biz.ManagedCloseEvidence{}, ownerQualificationFailure(archive, "POD_INVENTORY", biz.ErrRuntimeNotReady)
 	}
 	if archive == nil && workspace == nil && rootAdmissionRejected(workflow, dispatch.Plan, authority.RunID, run, pods.Items) {
 		if _, absent := verifier.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "persistentvolumeclaims"}).Namespace(environment.NamespaceName).Get(ctx, biz.ExpectedWorkspacePVCName(execution.ExecutionID), metav1.GetOptions{}); !apierrors.IsNotFound(absent) {
@@ -133,20 +133,20 @@ func (verifier *Verifier) verifyOwnerWritersAbsent(ctx context.Context, executio
 	for i := range pods.Items {
 		pod := &pods.Items[i]
 		if pod.GetAPIVersion() != "v1" || pod.GetKind() != "Pod" || pod.GetNamespace() != environment.NamespaceName {
-			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+			return biz.ManagedCloseEvidence{}, ownerObjectQualificationFailure(archive, "POD_TYPE_IDENTITY", pod, nil, biz.ErrRuntimeNotReady)
 		}
 		if podMatchesDeniedNode(workflow, pod, deniedNode) {
-			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+			return biz.ManagedCloseEvidence{}, ownerObjectQualificationFailure(archive, "REJECTED_NODE_POD_PRESENT", pod, nil, biz.ErrRuntimeNotReady)
 		}
 		owned := workflowOwner(pod, association)
 		for _, owner := range pod.GetOwnerReferences() {
 			if string(owner.UID) == authority.WorkflowUID && !owned {
-				return biz.ManagedCloseEvidence{}, biz.ErrRuntimeConflict
+				return biz.ManagedCloseEvidence{}, ownerObjectQualificationFailure(archive, "POD_ORIGINAL_OWNER_REFERENCE", pod, nil, biz.ErrRuntimeConflict)
 			}
 		}
 		usesPVC, valid := ownerWorkspaceReference(pod, writerWorkspace)
 		if !valid {
-			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+			return biz.ManagedCloseEvidence{}, ownerObjectQualificationFailure(archive, "PVC_REFERENCE", pod, nil, biz.ErrRuntimeNotReady)
 		}
 		if !owned && !usesPVC {
 			continue
@@ -169,19 +169,19 @@ func (verifier *Verifier) verifyOwnerWritersAbsent(ctx context.Context, executio
 			}
 		}
 		if !terminal || pod.GetUID() == "" || pod.GetName() == "" || completed.After(observedAt) {
-			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+			return biz.ManagedCloseEvidence{}, ownerObjectQualificationFailure(archive, "POD_PROCESS_TERMINAL", pod, nil, biz.ErrRuntimeNotReady)
 		}
 		if !owned {
 			continue
 		}
 		account, _ := textAt(pod, "spec", "serviceAccountName")
 		if (code == nil && abort == nil && sandbox == nil) || account != environment.Identities.KFPStepServiceAccount || seenNames[pod.GetName()] || seenUIDs[string(pod.GetUID())] {
-			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeConflict
+			return biz.ManagedCloseEvidence{}, ownerObjectQualificationFailure(archive, "POD_EXIT_IDENTITY_AND_ACCOUNT", pod, nil, biz.ErrRuntimeConflict)
 		}
 		// The current native node ID is mandatory independently of Pod name.
 		nodeID := pod.GetAnnotations()["workflows.argoproj.io/node-id"]
 		if nodeID == "" || !nodes[nodeID] || seenNodes[nodeID] {
-			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+			return biz.ManagedCloseEvidence{}, ownerObjectQualificationFailure(archive, "POD_NATIVE_NODE", pod, nil, biz.ErrRuntimeNotReady)
 		}
 		seenNames[pod.GetName()], seenUIDs[string(pod.GetUID())], seenNodes[nodeID] = true, true, true
 		if abort != nil {
@@ -203,14 +203,14 @@ func (verifier *Verifier) verifyOwnerWritersAbsent(ctx context.Context, executio
 	for _, task := range run.Tasks {
 		structuralTermination := terminatedOwnerStructuralTask(workflow, task)
 		if task.RunID != authority.RunID || task.ID == "" || task.Name == "" || seenTasks[task.ID] || (task.State != "" && !terminalTask(task.State) && task.State != "SKIPPED" && !structuralTermination) {
-			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+			return biz.ManagedCloseEvidence{}, ownerQualificationFailure(archive, "TASK_HISTORY", biz.ErrRuntimeNotReady)
 		}
 		seenTasks[task.ID] = true
 		terminatedStructuralTasks[task.ID] = structuralTermination
 		// Retain the top-level Pod contract for older adapters. Child node
 		// references are resolved against the independently completed graph.
 		if task.PodName != "" && (task.State == "SKIPPED" || !seenNames[task.PodName]) {
-			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+			return biz.ManagedCloseEvidence{}, ownerQualificationFailure(archive, "TASK_POD_ASSOCIATION", biz.ErrRuntimeNotReady)
 		}
 	}
 	// The original failed KFP task and complete graph remain in the Run/history
@@ -229,14 +229,14 @@ func (verifier *Verifier) verifyOwnerWritersAbsent(ctx context.Context, executio
 	}
 	for _, task := range tasks {
 		if !terminalTask(task.State) && task.State != "SKIPPED" && !(task.State == "RUNNING" && terminatedStructuralTasks[task.ID]) {
-			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+			return biz.ManagedCloseEvidence{}, ownerQualificationFailure(archive, "TASK_TERMINAL", biz.ErrRuntimeNotReady)
 		}
 		if task.State == "SKIPPED" {
 			if task.PodName != "" {
-				return biz.ManagedCloseEvidence{}, biz.ErrRuntimeConflict
+				return biz.ManagedCloseEvidence{}, ownerQualificationFailure(archive, "SKIPPED_TASK_POD_PRESENT", biz.ErrRuntimeConflict)
 			}
 		} else if task.PodName == "" || !seenNames[task.PodName] {
-			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+			return biz.ManagedCloseEvidence{}, ownerQualificationFailure(archive, "TASK_POD_EXIT", biz.ErrRuntimeNotReady)
 		}
 	}
 	// A controller mutation/retry during enumeration invalidates this observation.
@@ -252,13 +252,13 @@ func (verifier *Verifier) verifyOwnerWritersAbsent(ctx context.Context, executio
 		}
 		current, err := verifier.kube.Resource(schema.GroupVersionResource{Version: "v1", Resource: "pods"}).Namespace(environment.NamespaceName).Get(ctx, resource.Name, metav1.GetOptions{})
 		if err != nil || !sameObject(current, "v1", "Pod", environment.NamespaceName, resource.Name, abortedPods[resource.Name]) || current.GetResourceVersion() != version {
-			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+			return biz.ManagedCloseEvidence{}, ownerObjectQualificationFailure(archive, "POD_RV_RECHECK", current, err, biz.ErrRuntimeNotReady)
 		}
 	}
 	current, err := workflows.Get(ctx, authority.WorkflowName, metav1.GetOptions{})
 	if archive != nil {
 		if !apierrors.IsNotFound(err) {
-			return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
+			return biz.ManagedCloseEvidence{}, ownerObjectQualificationFailure(archive, "ORIGINAL_WORKFLOW_RECHECK", current, err, biz.ErrRuntimeNotReady)
 		}
 	} else if err != nil || !sameObject(current, "argoproj.io/v1alpha1", "Workflow", environment.NamespaceName, authority.WorkflowName, authority.WorkflowUID) || current.GetDeletionTimestamp() != nil || current.GetResourceVersion() != proof.WorkflowResourceVersion {
 		return biz.ManagedCloseEvidence{}, biz.ErrRuntimeNotReady
@@ -266,7 +266,7 @@ func (verifier *Verifier) verifyOwnerWritersAbsent(ctx context.Context, executio
 
 	if evidence.UnpreparedWorkspace != nil {
 		if err := verifier.verifyUnpreparedWorkspace(ctx, execution, authority, evidence.UnpreparedWorkspace, false); err != nil {
-			return biz.ManagedCloseEvidence{}, err
+			return biz.ManagedCloseEvidence{}, ownerQualificationFailure(archive, "FINAL_WORKSPACE_PROOF", err)
 		}
 	}
 	sort.Slice(evidence.Resources, func(i, j int) bool { return evidence.Resources[i].UID < evidence.Resources[j].UID })

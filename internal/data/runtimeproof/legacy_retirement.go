@@ -3,10 +3,12 @@ package runtimeproof
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
 	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/kfp"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -18,6 +20,73 @@ type legacyRetirementWorkflow struct {
 	imageContractDenial bool
 }
 
+// The maintenance plan reports only these source-defined qualification stages.
+// The normal runtime retains its original error values and response behavior.
+type legacyRetirementOwnerFailure struct {
+	stage string
+	cause error
+	facts *LegacyRetirementOwnerFacts
+}
+
+// Only public identity/process metadata is eligible for a failed plan receipt.
+// No object body, environment, log, Secret data or external message is retained.
+type LegacyRetirementOwnerFacts struct {
+	APIVersion, Kind, Namespace, Name, UID, ResourceVersion string
+	Phase, NodeID, ServiceAccountName, APIReason            string
+	Deleting, APIReadFailed                                 bool
+}
+
+func (e *legacyRetirementOwnerFailure) Error() string { return e.stage + ": " + e.cause.Error() }
+func (e *legacyRetirementOwnerFailure) Unwrap() error { return e.cause }
+
+func LegacyRetirementOwnerFailureStage(err error) string {
+	var failure *legacyRetirementOwnerFailure
+	if errors.As(err, &failure) {
+		return failure.stage
+	}
+	return ""
+}
+
+func LegacyRetirementOwnerFailureFacts(err error) *LegacyRetirementOwnerFacts {
+	var failure *legacyRetirementOwnerFailure
+	if errors.As(err, &failure) && failure.facts != nil {
+		copy := *failure.facts
+		return &copy
+	}
+	return nil
+}
+
+func ownerQualificationFailure(archive *legacyRetirementWorkflow, stage string, cause error) error {
+	if archive == nil {
+		return cause
+	}
+	return &legacyRetirementOwnerFailure{stage: stage, cause: cause}
+}
+
+func ownerObjectQualificationFailure(archive *legacyRetirementWorkflow, stage string, object *unstructured.Unstructured, readErr, cause error) error {
+	if archive == nil {
+		return cause
+	}
+	facts := &LegacyRetirementOwnerFacts{APIReadFailed: readErr != nil}
+	if readErr != nil {
+		switch reason := apierrors.ReasonForError(readErr); reason {
+		case "Forbidden", "Unauthorized", "NotFound", "Timeout", "ServerTimeout", "Invalid", "Conflict", "AlreadyExists":
+			facts.APIReason = string(reason)
+		default:
+			facts.APIReason = "Unknown"
+		}
+	}
+	if object != nil {
+		facts.APIVersion, facts.Kind = object.GetAPIVersion(), object.GetKind()
+		facts.Namespace, facts.Name, facts.UID, facts.ResourceVersion = object.GetNamespace(), object.GetName(), string(object.GetUID()), object.GetResourceVersion()
+		facts.Phase, _ = textAt(object, "status", "phase")
+		facts.NodeID = object.GetAnnotations()["workflows.argoproj.io/node-id"]
+		facts.ServiceAccountName, _ = textAt(object, "spec", "serviceAccountName")
+		facts.Deleting = object.GetDeletionTimestamp() != nil
+	}
+	return &legacyRetirementOwnerFailure{stage: stage, cause: cause, facts: facts}
+}
+
 // VerifyLegacyRetirementOwner is the explicitly invoked, one-time maintenance
 // boundary. The normal OwnerWriterVerifier interface does not invoke it. The
 // caller must persist the returned archive receipt beside the close evidence;
@@ -26,11 +95,11 @@ type legacyRetirementWorkflow struct {
 func (verifier *Verifier) VerifyLegacyRetirementOwner(ctx context.Context, execution biz.Execution, authority biz.RunAuthorityCandidate, workspace *biz.WorkspaceBinding, archiveBytes []byte) (biz.ManagedCloseEvidence, biz.LegacyRetirementArchiveReceipt, error) {
 	scope, allowed := biz.LookupLegacyRetirementScope(execution.ExecutionID)
 	if !allowed || !biz.LegacyRetirementScopeMatches(execution, authority) || contentSHA(archiveBytes) != scope.ArchiveSHA256 {
-		return biz.ManagedCloseEvidence{}, biz.LegacyRetirementArchiveReceipt{}, biz.ErrRuntimeConflict
+		return biz.ManagedCloseEvidence{}, biz.LegacyRetirementArchiveReceipt{}, ownerQualificationFailure(&legacyRetirementWorkflow{}, "ORIGINAL_SCOPE_AND_ARCHIVE_SHA", biz.ErrRuntimeConflict)
 	}
 	archive, err := parseLegacyRetirementWorkflow(archiveBytes, scope)
 	if err != nil {
-		return biz.ManagedCloseEvidence{}, biz.LegacyRetirementArchiveReceipt{}, err
+		return biz.ManagedCloseEvidence{}, biz.LegacyRetirementArchiveReceipt{}, ownerQualificationFailure(&legacyRetirementWorkflow{}, "ARCHIVE_DECODE_IDENTITY", err)
 	}
 	evidence, err := verifier.verifyOwnerWritersAbsent(ctx, execution, authority, workspace, archive)
 	if err != nil {

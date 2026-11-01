@@ -25,6 +25,31 @@ import (
 	ktesting "k8s.io/client-go/testing"
 )
 
+func TestLegacyRetirementStageKeepsDefaultErrorsAndExactGuard(t *testing.T) {
+	cause := biz.ErrRuntimeNotReady
+	if err := ownerQualificationFailure(nil, "POD_PROCESS_TERMINAL", cause); err != cause || LegacyRetirementOwnerFailureStage(err) != "" {
+		t.Fatal("default runtime error behavior changed")
+	}
+	err := ownerQualificationFailure(&legacyRetirementWorkflow{}, "POD_PROCESS_TERMINAL", cause)
+	if !errors.Is(err, cause) || LegacyRetirementOwnerFailureStage(err) != "POD_PROCESS_TERMINAL" {
+		t.Fatal("maintenance qualification stage lost original guard")
+	}
+	pod := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "v1", "kind": "Pod", "metadata": map[string]any{"name": "original", "namespace": "tenant-a", "uid": "original-pod", "resourceVersion": "72"}, "spec": map[string]any{"serviceAccountName": "original-sa", "containers": []any{map[string]any{"env": []any{map[string]any{"name": "PRIVATE", "value": "must-not-leak"}}}}}, "status": map[string]any{"phase": "Running"}}}
+	err = ownerObjectQualificationFailure(&legacyRetirementWorkflow{}, "POD_PROCESS_TERMINAL", pod, nil, cause)
+	facts := LegacyRetirementOwnerFailureFacts(err)
+	if facts == nil || facts.Kind != "Pod" || facts.UID != "original-pod" || facts.Phase != "Running" || facts.ResourceVersion != "72" {
+		t.Fatal("decoded public identity facts missing")
+	}
+	raw, _ := json.Marshal(facts)
+	if strings.Contains(string(raw), "PRIVATE") || strings.Contains(string(raw), "must-not-leak") {
+		t.Fatal("private object data escaped diagnostic receipt")
+	}
+	facts.UID = "mutated-copy"
+	if LegacyRetirementOwnerFailureFacts(err).UID != "original-pod" {
+		t.Fatal("diagnostic facts expose mutable evidence")
+	}
+}
+
 // Only external KFP/Kubernetes records are doubled. This exercises the same
 // production FrozenPlan, authenticated Run, completion graph, task resolution
 // and current writer checks as ordinary close. Synthetic archives are passed

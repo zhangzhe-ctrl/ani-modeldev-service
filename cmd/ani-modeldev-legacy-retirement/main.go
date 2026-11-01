@@ -51,7 +51,8 @@ type config struct {
 }
 type connection struct{ Endpoint, CAFile, TokenFile string }
 type item struct {
-	OriginalGPURelease                           *govReleaseProof `json:",omitempty"`
+	OriginalGPURelease                           *govReleaseProof                         `json:",omitempty"`
+	QualificationFacts                           *runtimeproof.LegacyRetirementOwnerFacts `json:",omitempty"`
 	ExecutionID                                  string
 	Owner                                        biz.RunAuthorityCandidate
 	OwnerRevision, CloseGeneration, CommandFence uint64

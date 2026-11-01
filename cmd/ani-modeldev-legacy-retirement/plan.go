@@ -21,6 +21,7 @@ func (a *app) buildPlan(ctx context.Context) plan {
 		entry, _, _, err := a.qualify(ctx, id)
 		if err != nil {
 			entry.Blocker = safeReason(err)
+			entry.QualificationFacts = runtimeproof.LegacyRetirementOwnerFailureFacts(err)
 			entry.Ready = false
 			p.Ready = false
 		}
@@ -332,6 +333,9 @@ func safeReason(err error) string {
 			stage = prefix + ":"
 			break
 		}
+	}
+	if qualified := runtimeproof.LegacyRetirementOwnerFailureStage(err); qualified != "" {
+		stage += qualified + ":"
 	}
 	// Preserve only fixed, non-sensitive qualification locations already
 	// supplied by the verifier, never arbitrary external error text.
