@@ -67,3 +67,5 @@ Blocked by: 01
 
 
 - 2026-11-01：02组件完成并推送；验收边界及09维护输入见Result。
+
+补充切换维护实现67dceef03f01215c294a55f11464e3e3a52cb783：真实PG4项race及make verify均exit0，本地/Fedora8458文件一致；未改API/migration/dependency或普通runtime接线。见evidence/09/res-uid-window-final.json与res-namespace-window-preparation.md；现场所有写步骤NOT_RUN。

@@ -12,7 +12,8 @@
     "kubernetes_version": "v1.35.8",
     "confirmed_at": "2026-10-31T17:44:33.093019+00:00",
     "evidence": "evidence/baseline.json",
-    "remote_build_os": "Fedora via ssh fedora"
+    "remote_build_os": "Fedora via ssh fedora",
+    "latest_readonly_identity_evidence": "evidence/09/open-state-only-recheck-20261031T205637Z.json"
   },
   "source_baseline": {
     "modeldev": "21bf4bd6540d462a61c91b629f26250899583223",
@@ -71,16 +72,16 @@
   "platform_materials": {
     "catalogue_path": null,
     "catalogue_sha256": null,
-    "managed_registry_authority": null,
-    "platform_project": null,
+    "managed_registry_authority": "10.10.1.66:30003",
+    "platform_project": "ani-resource-factor10-20261022",
     "authenticated_fixed_images": [],
     "anonymous_support_images": [],
-    "workspace_storage_class": null,
+    "workspace_storage_class": "ani-cephfs",
     "workspace_size": null,
     "target_platform": null,
     "step_callback_endpoint": null,
-    "modeldev_public_ca_file": null,
-    "s3_public_ca_file": null,
+    "modeldev_public_ca_file": "evidence/08-public-kfp-ca.crt",
+    "s3_public_ca_file": "evidence/08-public-kfp-ca.crt",
     "owner_reference": null,
     "owner_revision_sha256": null,
     "pipelines": [
@@ -116,24 +117,43 @@
         "ir_sha256": null,
         "material_sha256": null
       }
-    ]
+    ],
+    "public_source_evidence": "evidence/08/new-public-inputs-readonly.json",
+    "source_level": "Existing exact-source configuration/public CA only; new publication, client loading and I/O NOT_RUN",
+    "workspace_size_candidates": {
+      "builtin.mlp": 4294967296,
+      "builtin.sft_lora": 68719476736,
+      "final_shared_size": "UNSELECTED"
+    },
+    "step_callback_candidate": {
+      "target": "ani-modeldev.ani-system.svc:9001",
+      "sni": "ani-modeldev.ani-system.svc",
+      "actual_rpc": "NOT_RUN",
+      "evidence": "evidence/08/new-public-inputs-readonly.json"
+    }
   },
   "storage": {
     "input": {
-      "connection_id": null,
-      "bucket": null,
-      "prefix": "inputs/<tenant_uuid>"
+      "connection_id": "modeldev-newenv-rustfs-20261022",
+      "bucket": "ani-md-v21-input-01a15f47",
+      "prefix": "inputs/<tenant_uuid>",
+      "source_evidence": "evidence/08/new-public-inputs-readonly.json",
+      "new_scope_acceptance": "NOT_RUN"
     },
     "publication": {
-      "connection_id": null,
-      "bucket": null,
+      "connection_id": "modeldev-newenv-rustfs-20261022",
+      "bucket": "ani-md-v21-output-01a15f47",
       "prefix": "executions/<tenant_uuid>",
-      "actual_write_prefix": "executions/<tenant_uuid>/<execution_uuid>/"
+      "actual_write_prefix": "executions/<tenant_uuid>/<execution_uuid>/",
+      "source_evidence": "evidence/08/new-public-inputs-readonly.json",
+      "new_scope_acceptance": "NOT_RUN"
     },
     "model": {
-      "connection_id": null,
-      "bucket": null,
-      "prefix": "<tenant_uuid>"
+      "connection_id": "modeldev-newenv-rustfs-20261022",
+      "bucket": "ani-models-v21-01a15f47",
+      "prefix": "<tenant_uuid>",
+      "source_evidence": "evidence/08/new-public-inputs-readonly.json",
+      "new_scope_acceptance": "NOT_RUN"
     },
     "kfp_artifacts": {
       "endpoint": null,
@@ -148,6 +168,12 @@
       "tls_loading_evidence": null,
       "real_io_evidence": null,
       "access_isolation_evidence": null
+    },
+    "public_endpoint": {
+      "endpoint": "https://ani-rustfs-svc.ani-platform.svc.cluster.local:9000",
+      "region": "us-east-1",
+      "source_evidence": "evidence/08/new-public-inputs-readonly.json",
+      "new_client_tls_io": "NOT_RUN"
     }
   },
   "namespace_samples": [
@@ -197,7 +223,27 @@
     "old_gov_pending_after": null,
     "release_reconciliation_evidence": "evidence/09/old-gov-inventory.json",
     "res_uid_backfill_evidence": "evidence/09/res-namespace-pre-migration.json (read-only preflight; migration/backfill NOT_RUN)",
-    "manifest_status": "READ_ONLY_INVENTORY_NOT_EXECUTABLE; exact deletion eligibility and complete manifest remain blocked by 3 OPEN executions"
+    "manifest_status": "READ_ONLY_ORIGINAL_INVENTORY; exact3 retirement qualification, f216 ordinary reader/original ACK, four UNKNOWN owner closure, fixed external UID/version cleanup and fresh pause/drain proof remain incomplete",
+    "retirement_amendment_approval": "evidence/09/retirement-amendment-approval-20261101.json",
+    "original_gpu_event_assessment": "evidence/09/original-gpu-event-assessment-20261101.json",
+    "db_cleanup_tool": {
+      "commit": "e682a29e3c617c184978c6833eb909cc8dc0b729",
+      "receipt": "evidence/09/legacy-data-cleanup/delivery.json",
+      "targeted_pg_race_vet_build_modverify": "PASS",
+      "live_apply": "NOT_RUN"
+    },
+    "legacy_retirement_tool": {
+      "commit": "ae42fb08f5a091ad8bdaac9418dc7925bf993532",
+      "final_diagnostic_test_evidence": "evidence/09/legacy-retirement/final-route-source-identity.json",
+      "original_required_gate": "FAIL retained, old baseline conflicts",
+      "live_apply": "NOT_RUN",
+      "live_readonly_plan": "evidence/09/legacy-retirement/final-route-live-readonly-plan.json",
+      "readonly_qualification": {
+        "eca4d47b-5911-4f0f-8b45-89c1be775925": "READY for original qualification only; actual retirement cleanup/ACK NOT_RUN",
+        "1cce950b-d6e9-453e-aa11-fffd8846224b": "BLOCKED CURRENT_ORIGINAL_TRAINING_EXIT",
+        "4a1a92f7-4d94-439d-a8d7-1833f38c7dbc": "BLOCKED CURRENT_ORIGINAL_TRAINING_EXIT"
+      }
+    }
   },
   "delivered_builds": {
     "modeldev": {
@@ -208,15 +254,47 @@
       "budget_recovery_test_commit": "6b0b952478081034baee8ab27fd8216b26742700"
     },
     "gov": {
-      "commit": "fa80f886d022177173d7e9cf81ec51e54c2df4c8",
+      "commit": "244780ffe6b9a7deb1c3f6f162e474e76a73a566",
       "image_digest": null,
       "deployed_image_id": null,
-      "test_only_supplement_commit": "5cfa9065190b9585b799e428537a0019ca70e41a"
+      "test_only_supplement_commit": "5cfa9065190b9585b799e428537a0019ca70e41a",
+      "fixture_grouping_test_commit": "f6a68ed7f89cca56b4ea97377a21e4146f4c6b62",
+      "original_runtime_api_commit": "fa80f886d022177173d7e9cf81ec51e54c2df4c8",
+      "final_required_gate_evidence": "evidence/gov-final/vm-log-map-final-proof.json",
+      "previous_required_gate_commit": "02f4f71e743b4ffe08ef04e880f1c431b62d7213",
+      "fixture_timezone_evidence": "evidence/gov-maintenance/maintenance-timezone-commits.json"
     },
     "res": {
-      "commit": "71b3ad7a2a88ae531e5e7b80abde2f494ff28d9d",
+      "commit": "67dceef03f01215c294a55f11464e3e3a52cb783",
       "image_digest": null,
-      "deployed_image_id": null
+      "deployed_image_id": null,
+      "api_implementation_commit": "71b3ad7a2a88ae531e5e7b80abde2f494ff28d9d",
+      "cutover_tool_gate_evidence": "evidence/09/res-uid-window-final.json"
+    },
+    "local_auxiliary_images": {
+      "source_commit": "d807cbdbd5dd6664d61480acedc752e19cfca48a",
+      "source_git_tree": "141053367fa4be9a6fb9c764b2d7900b5282be20",
+      "input_sha256": "dd70433a47d201f2cb8343a6e643ef38223f90dd88a78c79ad590286f37678a9",
+      "images": {
+        "step": {
+          "local_image_id": "102a17fcca37414302ee9703e310bae554905349d8f3b6556ac323ea1408a2a9",
+          "local_oci_digest": "sha256:ff66486ba63d6edfaa7c227fe0fc2db3d897b1ab99db863752502f8089230815",
+          "binary_sha256": "97a8bae2dd8518dcf8ce845c09adbec29441bf6e581ba0e7819bc7ce5f01287e",
+          "registry_digest": null,
+          "deployed_image_id": null
+        },
+        "webhook": {
+          "local_image_id": "c1eb9355492835c7cb4897e01fb5b7c400fad91235e0910024c2ded76725e252",
+          "local_oci_digest": "sha256:49a2a74db318db0b627209738c4dc48d1d9f73ee80c8680cb1c25f0638cac317",
+          "binary_sha256": "6deb8d923a5e3f93afba7672ba8133e07c2f9066d810e275bc50e43743cf571f",
+          "registry_digest": null,
+          "deployed_image_id": null
+        }
+      },
+      "push": "NOT_RUN",
+      "rollout": "NOT_RUN",
+      "evidence": "evidence/08/build/build-receipt.json",
+      "cpu_gpu_status": "BLOCKED_CACHED_OFFICIAL_BASE_MISSING"
     }
   },
   "secrets_must_not_be_included": true,
@@ -240,12 +318,27 @@
     "global_clusterrolebinding": "modeldev-rbac-inventory-global"
   },
   "maintenance_build": {
-    "governance_commit": "6a7c721ea113d51497421d7975122ec7ca8105c2",
+    "governance_commit": "32c61fcbd57c70ca996d62ad2b234ba84ff0b052",
     "branch": "codex/modeldev-create-maintenance",
     "deployed": false,
-    "required_check": "FAIL (pre-existing VM route permission mapping missing)",
-    "audit": "FAIL (pre-existing synthetic component-name gitleaks finding; 0 called vulnerability)",
-    "evidence": "evidence/gov-maintenance/result.json"
+    "required_check": "Previous45ed full check/audit PASS;32c61 UTC test fixture change passed UTC/Berlin/Shanghai targeted race; Workbench full check RUNNING",
+    "audit": "PASS; 0 called vulnerabilities; noncalled package1/module10 retained; no leaks",
+    "evidence": "evidence/gov-maintenance/maintenance-default-pause-final-result.json",
+    "job_id": "8d8b448e1a8846c0ba96bb391d323a7e",
+    "request_id": "1e16ba89-c936-4eb8-a89d-275db38bd07a",
+    "last_confirmed_job_evidence": "evidence/09/workbench-maintenance-diagnostic-query-20261101.json",
+    "live_503_acceptance": "NOT_RUN",
+    "local_socks_failure": "evidence/09/workbench-local-socks-connectivity-20261101.json",
+    "workbench_result": "RUNNING_VERIFY_LAST_CONFIRMED_QUERY_2026-11-01T0043Z; package test statuses complete, audit has no terminal receipt",
+    "workbench_failure": "evidence/09/workbench-maintenance-verify-failure-20261101.json",
+    "latest_query": "evidence/09/workbench-configured-proxy-query-20261101.json",
+    "previous_checked_commit": "45ed49fe91608960cab89797c06dab2705a65740",
+    "previous_job": {
+      "job_id": "eda85e66a4f24c3895b7be87a5211500",
+      "commit": "45ed49fe91608960cab89797c06dab2705a65740",
+      "result": "FAIL_VERIFY_BEFORE_BUILD",
+      "evidence": "evidence/09/workbench-maintenance-verify-failure-20261101.json"
+    }
   },
   "blocking_evidence": {
     "legacy_close": "evidence/09/open-execution-blockers.md",
@@ -260,7 +353,15 @@
     ],
     "archive_observation": "evidence/09/kfp-v1-original-run-detail-20261031T204206Z.json",
     "original_close_qualification": "evidence/09/third-archive-close-assessment.md",
-    "legacy_archive_status": "original Workflow archive found for all3; two original training logs absent, third live/denial/writer qualifications unresolved; no mutation"
+    "legacy_archive_status": "Exact3 approved; service-DNS maintenance transport repaired preserving original URL/CA/SNI/token; one Ready/two blocked original training-exit in real read-only plan; no apply",
+    "latest_exact_open3_state": "evidence/09/open-state-only-recheck-20261031T205637Z.json",
+    "fluentbit_cri_identity_bridge": "evidence/09/fluentbit-cri-fieldcaps-20261031T210107Z.json",
+    "latest_exact_open3_state_result": "3 OPEN; unchanged original generation/revision/reasons; no CloseEvidence; transaction_read_only=on; no mutations",
+    "cri_bridge_result": "NO_CONFIGURED_MAPPED_CRI_IDENTITY_BRIDGE; exact two daily indices; fields={}; search=0; does not exclude other external archives",
+    "current_network": "evidence/09/entry-connectivity-20261101.json",
+    "extra_old_qualification": "evidence/09/original-owner-close-qualification-20261101.json",
+    "current_workbench_network": "evidence/09/workbench-maintenance-proxychains-query-20261101.json",
+    "update_entry_scope": "evidence/08/update-entry-complete-inventory.md"
   },
   "pending_inputs": [
     {
@@ -320,20 +421,23 @@
     {
       "path": "platform_materials.managed_registry_authority",
       "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "CONFIG_SOURCE_CONFIRMED_LIVE_NOT_RUN",
+      "required_evidence": "Exact existing-source configuration observed; new-system actual TLS, authorization and I/O remain required",
+      "evidence": "evidence/08/new-public-inputs-readonly.json"
     },
     {
       "path": "platform_materials.platform_project",
       "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "CONFIG_SOURCE_CONFIRMED_LIVE_NOT_RUN",
+      "required_evidence": "Exact existing-source configuration observed; new-system actual TLS, authorization and I/O remain required",
+      "evidence": "evidence/08/new-public-inputs-readonly.json"
     },
     {
       "path": "platform_materials.workspace_storage_class",
       "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "CONFIG_SOURCE_CONFIRMED_LIVE_NOT_RUN",
+      "required_evidence": "Exact existing-source configuration observed; new-system actual TLS, authorization and I/O remain required",
+      "evidence": "evidence/08/new-public-inputs-readonly.json"
     },
     {
       "path": "platform_materials.workspace_size",
@@ -356,14 +460,16 @@
     {
       "path": "platform_materials.modeldev_public_ca_file",
       "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "CONFIG_SOURCE_CONFIRMED_LIVE_NOT_RUN",
+      "required_evidence": "Exact existing-source configuration observed; new-system actual TLS, authorization and I/O remain required",
+      "evidence": "evidence/08/new-public-inputs-readonly.json"
     },
     {
       "path": "platform_materials.s3_public_ca_file",
       "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "CONFIG_SOURCE_CONFIRMED_LIVE_NOT_RUN",
+      "required_evidence": "Exact existing-source configuration observed; new-system actual TLS, authorization and I/O remain required",
+      "evidence": "evidence/08/new-public-inputs-readonly.json"
     },
     {
       "path": "platform_materials.owner_reference",
@@ -476,38 +582,44 @@
     {
       "path": "storage.input.connection_id",
       "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "CONFIG_SOURCE_CONFIRMED_LIVE_NOT_RUN",
+      "required_evidence": "Exact existing-source configuration observed; new-system actual TLS, authorization and I/O remain required",
+      "evidence": "evidence/08/new-public-inputs-readonly.json"
     },
     {
       "path": "storage.input.bucket",
       "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "CONFIG_SOURCE_CONFIRMED_LIVE_NOT_RUN",
+      "required_evidence": "Exact existing-source configuration observed; new-system actual TLS, authorization and I/O remain required",
+      "evidence": "evidence/08/new-public-inputs-readonly.json"
     },
     {
       "path": "storage.publication.connection_id",
       "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "CONFIG_SOURCE_CONFIRMED_LIVE_NOT_RUN",
+      "required_evidence": "Exact existing-source configuration observed; new-system actual TLS, authorization and I/O remain required",
+      "evidence": "evidence/08/new-public-inputs-readonly.json"
     },
     {
       "path": "storage.publication.bucket",
       "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "CONFIG_SOURCE_CONFIRMED_LIVE_NOT_RUN",
+      "required_evidence": "Exact existing-source configuration observed; new-system actual TLS, authorization and I/O remain required",
+      "evidence": "evidence/08/new-public-inputs-readonly.json"
     },
     {
       "path": "storage.model.connection_id",
       "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "CONFIG_SOURCE_CONFIRMED_LIVE_NOT_RUN",
+      "required_evidence": "Exact existing-source configuration observed; new-system actual TLS, authorization and I/O remain required",
+      "evidence": "evidence/08/new-public-inputs-readonly.json"
     },
     {
       "path": "storage.model.bucket",
       "owner_task": "08",
-      "status": "NOT_RUN",
-      "required_evidence": "specified-cluster original identity, material/readback or acceptance evidence; never substitute guessed values"
+      "status": "CONFIG_SOURCE_CONFIRMED_LIVE_NOT_RUN",
+      "required_evidence": "Exact existing-source configuration observed; new-system actual TLS, authorization and I/O remain required",
+      "evidence": "evidence/08/new-public-inputs-readonly.json"
     },
     {
       "path": "storage.kfp_artifacts.endpoint",
@@ -672,12 +784,17 @@
     "governance_pin_evidence": "evidence/gov-final/formal-module-pin-captured.log; no replace, official immutable module"
   },
   "validation_blocker": {
-    "status": "BLOCKED",
-    "reason": "round2 original default/race exit0; make check exit2 from baseline VM authority mapping; audit continuation exit1 with original unchanged negative fixture finding",
-    "evidence": "evidence/gov-final/fedora-round2-original-session-exits.json",
-    "source_identity": "evidence/gov-final/fedora-round2-source-identity.json",
+    "status": "RESOLVED",
+    "reason": "final Gov make check exit0 including complete audit in the same final four-file hash snapshot; original failures retained as history",
+    "final_commit": "02f4f71e743b4ffe08ef04e880f1c431b62d7213",
+    "evidence": "evidence/gov-final/vm-log-map-make-check-receipt.json",
+    "full_check_and_audit_log": "evidence/gov-final/vm-log-map-make-check.log",
+    "source_identity": "evidence/gov-final/vm-log-map-final-proof.json",
+    "original_source_identity": "evidence/gov-final/fedora-round2-source-identity.json",
+    "historical_original_session_exits": "evidence/gov-final/fedora-round2-original-session-exits.json",
     "no_local_heavy_fallback": true,
-    "entrypoint_status": "PASS (recovered)"
+    "entrypoint_status": "PASS (recovered)",
+    "does_not_resolve_legacy_close_or_live_acceptance": true
   },
   "image_preparation": {
     "status": "BLOCKED",
@@ -688,5 +805,7 @@
     "job_posted": false,
     "bypass_used": false
   },
-  "status_reason": "LEGACY_CLOSE_EVIDENCE_AND_ORIGINAL_QUALIFICATION"
+  "status_reason": "LEGACY_CLOSE_EVIDENCE_AND_ORIGINAL_QUALIFICATION",
+  "update_entry_scope_inventory": "evidence/08/update-entry-complete-inventory.md",
+  "update_entry_scope_approval": "evidence/08/update-entry-scope-approval-20261101.json"
 }

@@ -51,16 +51,18 @@ Blocked by: 02, 05, 06, 07, 08
 
 ## Result
 
-- Outcome: BLOCKED。
-- Base / final commits: 三仓base见deployment-inputs；Res `71b3ad7a2a88ae531e5e7b80abde2f494ff28d9d`；旧API维护Gov `6a7c721ea113d51497421d7975122ec7ca8105c2`已SSH推送但未部署。
-- Changed files / generated artifacts: 只读旧聚合/FK/触发器清单及摘要、Gov原charge/receipt/account对账、原Pod/KFP/Workflow精确诊断、OpenSearch有限字段恢复探测、Res迁移前2行精确Namespace核验、A/B共存资产基线。
-- Validation commands / exit codes / required gates: 所有集群调用仅ssh kubercloud@100.64.128.12，五项完整identity一致；DB强制default_transaction_read_only。21个bootstrap/native对象server dry-run全部exit0且before/after原对象不变；无持久策略安装。SQL查询/原对象读取命令和结果在evidence/09及06证据。
-- Acceptance IDs / actual values / evidence paths: 旧MD 50执行/10输入、47CLOSED/3OPEN、50confirmed dispatch/44authority；12原GPU outbox均ACK+DeliveredAt；Gov54acceptances（50ACKED、4UNKNOWN且retry_blocked INVALID_COMMAND）、23原MD charges全额released、2账户恒等式均成立。Res原Namespace表2行、namespace_uid列尚不存在，A/B标准名/UID/归属/Active均正确；RS01实际migration/backfill未执行。证据 `evidence/09/old-inventory.json`+SHA、old-gov-inventory.json、open-execution-blockers.md、res-namespace-pre-migration.json、evidence/preserved-assets.json、native-principals.json。
-- Deployment or cleanup effects / preserved assets: 未停止原worker、未删旧对象/行/S3/KFP、未迁移或回填Res、未切服务。保留基线4VM/3VMI/34非MD PVC、A/B无关Pod/Sandbox原UID与原健康。
-- Remaining blockers / affected dependencies: 原执行1cce950b-d6e9-453e-aa11-fffd8846224b及4a1a92f7-4d94-439d-a8d7-1833f38c7dbc原Pod日志实际只有115字节kubelet取容器日志失败体，原node日志/容器也不可用；第三eca4d47b-5911-4f0f-8b45-89c1be775925的原Workflow不可读。三原KFP Run FAILED，但三Workflow已404，26保留step Pod不替代完整原writer/退出证据。OpenSearch有两日索引但无原UID或完整containerID精确字段；未按名称伪造关联。依§9/§13.3无法原协议排空，因此新v4切换及LIVE03–11受阻。
-- Contract conflicts / evidence / minimal correction: 不接受HTTP200 kubelet错误为日志、不用404/FAILED补造退出、不SQL置CLOSED或退款。最小保持方案是从已有外部归档恢复真正原UID日志/Workflow证明，经有界维护导入/原repository CAS继续关闭；当前未取得这种归档、未实现未经证实的数据导入。已向用户询问是否有另外的原UID归档位置，继续不受阻代码和门禁。Gov正式v4 decoder不能承担旧v3排空，另有旧base+仅maintenance开关提交保持旧API；未部署，不把make check基线FAIL当上线就绪。
+- Outcome: BLOCKED；没有执行真实旧资源/数据库删除、Res live窗口或新v4切换。
+- Base / final commits: 独立旧base维护工具ae42fb0（f7有限诊断后补精确原Service传输）；DB两阶段工具e682a29；Res窗口67dceef；旧API Gov32c61。均正常SSH推送，正式运行API pin不变。
+- Changed files / generated artifacts: `cmd/ani-modeldev-legacy-retirement`、原资格的有限维护扩展；`scripts/legacy-modeldev-data-cleanup`；Res `scripts/tenant-namespace-window`；完整脱敏原清单/批准/原事件/部署维护job收据。外部逐UID/对象版本清理CLI仍在实现，不把原ApplyExecutionCleanup当完整清理。
+- Validation commands / exit codes / required gates: 旧维护初始9c2受影响真实PG/定向/vet/build PASS；完整旧base make verify实际FAIL保留（固定依赖API/原fixtures/materials panic），没有以局部PASS覆盖。f7有限诊断cmd/runtimeproof定向/vet/build exit0；见`evidence/09/legacy-retirement/final-stage-source-identity.json`。DB工具Fedora真实PG/race、vet/build/modverify于UTC00:18:07–00:18:30全exit0，12源码本地/远端一致，见`evidence/09/legacy-data-cleanup/delivery.json`。Res4项真实PG及完整verify exit0，见res-uid-window-final.json。所有live apply NOT_RUN。
+- Acceptance IDs / actual values / evidence paths: 固定原清单50MD/10input/47CLOSED+3OPEN、54Gov acceptance/23原charges，12旧outbox已ACK，账户恒等式仅原只读状态。精确3条例外已由用户批准，见retirement-amendment-approval-20261101.json。最终真实只读plan UTC00:43:07第三条Ready=true，原owner/archive/当前writer/PVC/task与原Govreceipt/account资格通过；其余两条仍CURRENT_ORIGINAL_TRAINING_EXIT，整体Ready=false。原宿主DNS缺记录的传输已仅在维护cmd补齐，原URL/CA/SNI/token保持，必要定向/vet/build exit0；见legacy-retirement/final-route-source-identity.json和final-route-live-readonly-plan.json。不放宽原guard。f216实际普通GET503根因尚未证实；四UNKNOWN原canonical形状未新取得，retry_blocked不会因Stop自动清除；见original-owner-close-qualification-20261101.json。它们不在3条批准中。
+- Deployment or cleanup effects / preserved assets: 原Gov job eda85e66实际verify FAIL，未build/deploy；最小UTC fixture32c61新job8d8b448e最后成功查询UTC00:43仍RUNNING verify，run_verify=true；后续网络失败不重复POST。实际新Gov image/503/lease drain NOT_RUN。旧MD worker未停、旧UID对象/行/S3/KFP删除0、Res迁移/回填0。保留4VM/3VMI/34非MD PVC/A/B无关Pod原基线；清理后健康比较NOT_RUN。
+- Remaining blockers / affected dependencies: 真实停入/关闭/退出/writer/PVC/cleanup/原GPU ACK、f216及4UNKNOWN原owner资格、外部固定对象/版本manifest与清理、正式Res窗口、材料/策略/挂载/新v4切换及A/B全部仍未完成。仅同一原canonical在先durable fence ACK后由原队列重投可能合法，不能替换ID/重发不确定Run；Gov与MD都称v3但具体training_image合同不同，必须核原字节。
+- Contract conflicts / evidence / minimal correction: 只限精确3条的日志不可恢复/原UID archive与精确denial例外；不伪造原事实、不新v4兼容、不改释放事件。用户另已批准route1：主服务镜像经Workbench，固定附加镜像/材料Fedora与指定SSH维护，太慢报告；见`evidence/08/update-entry-scope-approval-20261101.json`。原身份、资格和门禁不变。
 
 ## Comments
+
+以下为按时间保留的历史记录；当前状态以本文件 Result 为准。
 
 - 初始任务，尚无实施或验收完成声明；后续按时间追加事实与证据。
 - 达到本项验收后再更新 Resolution 和 Result；后续现场证据不得提前标记通过。
@@ -68,3 +70,9 @@ Blocked by: 02, 05, 06, 07, 08
 第二轮当前状态复核：2026-10-31T20:23:19Z至20:23:22Z，完整identity一致；三原execution仍OPEN且close reason/原Pod与containerID、115bytes日志hash均未变；三个原Workflow仍NotFound。无新可推进原关闭证据。证据evidence/09/open-current-recheck-20261031T202319Z.json；未重跑全量inventory/OpenSearch，未进行持久写。
 
 第二轮新原证据：官方v1 GetRun detail精确返回3原Run的6份manifest，原WorkflowUID/name/Namespace匹配，35/35/25节点终态，但无直接PodUID或原日志archive URI。第三条原CloseAuthority已存在、4原Pod退出已核；原live UID/RV读取、image_contract Error资格及完整writer/PVC/模板证明仍不满足，单纯authority重放no-op。详evidence/09/kfp-v1-original-run-detail-20261031T204206Z.json及third-archive-close-assessment.md。未做CAS/重建/清理；与此前‘未建立归档来源’不同，当前具体断点是原关闭不支持该archive证据及额外资格缺口。
+
+用户最新明确答复：无其他原日志/Workflow归档，并批准报告§7限定一次性退休修正，见[evidence/09/retirement-amendment-approval-20261101.json](../evidence/09/retirement-amendment-approval-20261101.json)。上述日志/归档不满足原协议的内容保留为历史发现；现由独立旧base维护工具如实记录两条不可恢复日志与原UID archive，未解除其他writer/exit/fence/CAS/cleanup/原释放资格。工具定向验证已运行，现场只读plan和apply仍NOT_RUN。
+
+当前现场具体阻塞是指定SSH入口连接关闭/单文件传输超时，及本地SOCKS对指定更新入口仍RemoteDisconnected；原job只查询、不重复POST。证据见[SSH](../evidence/09/entry-connectivity-20261101.json)、[SOCKS](../evidence/09/workbench-local-socks-connectivity-20261101.json)。原GPU事件独立维护决策见[原事件评估](../evidence/09/original-gpu-event-assessment-20261101.json)，尚无实际新ACK。部署后[维护门禁探针](../evidence/09/gov-maintenance-live-acceptance.py)只准备未执行，不作为PASS。
+
+原更新任务恢复查询确定verify FAIL（UTC22:04:07），未进build/push/deploy，精确失败为timeutil日期fixture受host DST时区影响；见evidence/09/workbench-maintenance-verify-failure-20261101.json。修复仍保留原run_verify=true和原失败记录，不重复原job。

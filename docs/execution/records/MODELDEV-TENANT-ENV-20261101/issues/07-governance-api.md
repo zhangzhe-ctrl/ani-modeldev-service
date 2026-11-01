@@ -1,7 +1,7 @@
 # 07 Gov 当前租户入口、授权、错误与预算
 
-Status: in-progress
-Resolution: open
+Status: ready-for-agent
+Resolution: resolved
 Blocked by: 03, 04
 
 ## Goal
@@ -51,15 +51,16 @@ Blocked by: 03, 04
 
 ## Result
 
-- Outcome: BLOCKED。相关default/race和真实PG子项PASS；必需make check/audit实际FAIL；真实A/B仍由09阻断。本轮真实HTTP正向/撤权补测已PASS，仍不将组件通过升级为现场A/B或全仓质量gate通过。
-- Base / final commits: Gov base `ddd98f4c79751ba848fa862bab6878dc7bc99bb7`；运行/API源码 `fa80f886d022177173d7e9cf81ec51e54c2df4c8`与仅测试提交 `5cfa9065190b9585b799e428537a0019ca70e41a`均已SSH推送；44项变更文件Fedora/local SHA一致（evidence/gov-final/fedora-round2-source-identity.json）。旧API维护专用 `6a7c721ea113d51497421d7975122ec7ca8105c2`单独保留，不代替final v4结果。
-- Changed files / generated artifacts: 官方API/OpenAPI、当前tenant显式Ensure/Get、精确权限/metadata/预算/Error38有限转换、Permission迁移/权威map及Create/publisher维护gate。完整已提交清单/manifest见evidence/gov-final/local-changed-files.txt、local-source-sha256.json；无replace、复制pb、compat或VM/Inference权限修改。
-- Validation commands / exit codes / required gates: 正式ModelDev module `v0.0.0-20261031195825-d807cbdbd5dd`及Resource `v0.0.0-20261031180451-71b3ad7a2a88` go get exit0；真实隔离PG六项exit0/0.294s，owner/runtime分离且自有容器已移除，原完整log已取回environment-formal-pg-tests.log。原default/race session44762终态exit0，data15.993s/service1.453s/server1.941s；不是重启重跑，见fedora-round2-original-session-exits.json及environment-formal-default-tests.log。此前permcode生成/check和测试exit0仍保留。
-- Final required checks: 原make check46554终态exit2，真实失败为基线TestVMCatalogUsesRuntimePathVariables：活跃GET /api/v1/virtual-machines/{vm_id}/logs缺权威capability mapping；未扩大VM权限。原audit91298终态exit1为vuln.go.dev网络read timeout，尚未到Gitleaks；网络恢复后只续一次原audit，exit1，govulncheck调用受影响0（另有1导入包/10required模块漏洞观察），Gitleaks1项。精确redacted诊断确认app/admin/service/internal/data/platform_component_log_scope_test.go:57–58、generic-api-key，base/final blob相同，为原负向fixture；未加allowlist、未标audit通过。证据environment-formal-make-check.log、environment-formal-audit-resume-once.log及receipt、gitleaks-final-finding-metadata.json；均为evidence/gov-final/下本次实际输出。原RESULT_UNKNOWN仅历史，已由终态证据取代。
-- Acceptance IDs / actual values / evidence paths: 现有API组件验证当前独立manage/view、精确API/ALL范围、tenant0/API-key拒绝、真实PG撤权后AuthorizeEnvironment重验；权限迁移实际为manager/template各2 grant、viewer0及重入仍viewer0，没有证明既有OFF grant重入不复活。mTLS metadata重建、28/3秒RPC及30/5秒HTTP父预算、严格body/query/header/未知proto、reason白名单及无登记38未吞均有默认组证据；新真实JWT/Redis/Casbin/PG、生产HTTP/service/client、外部mTLS ModelDev peer集成已实跑PASS：Ensure202→200/Get200/无登记404、Prepare503仅指定cause、同JWT同key撤manage后403且全部ModelDev RPC计数不增、view独立，每请求acceptance/charge0。22cause仅converter单测，HTTP实跑1cause；证据evidence/gov-final/environment-http-integration-{final.log,final-receipt.json,source-and-coverage.json}。原CPU无GPU账、原GPU单次可靠受理及并发原key一次占额由真实PG六项验证。NS01 Gov不拥有Namespace resolver，不复制Res/MD vectors；只消费正式v4 codec并拒绝foreignName/未知view。现场A/B/Stop/下载授权仍NOT_RUN。
-- Deployment or cleanup effects / preserved assets: 无线上DB/集群或服务更新；临时PG为独占任务资源且清理。维护开关只阻Create/claim，原Stop/close/release保留；未把final decoder部署用于旧v3排空。未修改VM/Inference权限或关闭/退额协议。
-- Remaining blockers / affected dependencies: Fedora入口本轮恢复，原会话均权威终态，无相关Gov进程残留；不存在继续凭SSH超时称RESULT_UNKNOWN的理由。质量gate实际FAIL待明确处理边界，旧三执行仍缺原关闭证明；未推进v4 rollout/真实A-B验收。
-- Contract conflicts / evidence / minimal correction: 本任务不为既有VM gate失败扩权限，不为fixture扫描命中加忽略。新事实是网络恢复允许取回原结果并仅续一次未完成audit；这些已完成，未重复默认组或make check。旧单独maintenance结果未替代final结果。必要HTTP补测复用现行真实PG/JWT/Redis/Casbin设施，只有外部ModelDev mTLS及既有Resource选择传输替身；定向race exit0/1.960s，单文件SHA f084a4d2e3a124e8e08c862704a2fba858e2bf5f3151c8f55f35c160b93534e5。两次夹具失败保留，未改生产或重跑全量。
+- Outcome: PASS（本项源码/组件/必需gate）；Resolution: resolved。显式Ensure/Get及Prepare前置失败已在真实JWT/Redis/Casbin/PG授权与生产HTTP/service/client中验证；只有外部ModelDev mTLS及Resource服务边界为明确替身。指定集群A/B业务授权与实际平台连接仍由09/10负责，未记LIVE通过。
+- Base / final commits: Gov base `ddd98f4c79751ba848fa862bab6878dc7bc99bb7`；原运行/API提交 `fa80f886d022177173d7e9cf81ec51e54c2df4c8`、HTTP补测 `5cfa9065190b9585b799e428537a0019ca70e41a`、非秘密fixture分组说明 `f6a68ed7f89cca56b4ea97377a21e4146f4c6b62`、最终既有VM权限map同步 `02f4f71e743b4ffe08ef04e880f1c431b62d7213` 均已正常SSH推送。最终部署候选使用02f4，不把fa80旧快照当最终源树。原44文件manifest、两个独立补测hash和最终四文件hash按提交串联，见evidence/gov-final/fedora-round2-source-identity.json、environment-http-integration-source-and-coverage.json、gitleaks-fixture-grouping-source.json、vm-log-map-final-proof.json。
+- Changed files / generated artifacts: 官方API/OpenAPI、当前tenant显式Ensure/Get、精确权限/metadata/预算/Error38有限转换、Permission迁移/权威map及Create/publisher维护gate。正式ModelDev module `v0.0.0-20261031195825-d807cbdbd5dd` 和Resource `v0.0.0-20261031180451-71b3ad7a2a88`；没有replace或复制pb。最后四文件仅将已存在SQL的VM日志GET→vm:read补入capability TSV、固定生成capability_gen.go及维护两处覆盖计数测试；未改SQL/role/plan grants/VM runtime/Inference/扫描规则。
+- Validation commands / exit codes / required gates: 原default/race session44762 exit0（data15.993s/service1.453s/server1.941s），真实隔离PG六项exit0/0.294s；相关完整日志均已取回，独占临时PG已清理。HTTP定向race exit0/1.960s（environment-http-integration-final.log）。最后固定生成及--check exit0；permcode/bootstrap定向race exit0（1.020s/5.905s）；最终 `make check` 于UTC2026-10-31T21:07:47Z–21:13:38Z真实exit0，包含checks.sh末段完整audit，同四文件hash快照：实际调用漏洞0、另有未调用导入包1/required module10观察保留、Gitleaks35,310,357bytes无泄漏。证据evidence/gov-final/vm-log-map-{make-check.log,make-check-receipt.json,final-proof.json}。这不是把先前子项拼接为完整gate；没有在无变更后再重跑audit。
+- Acceptance IDs / actual values / evidence paths: API01覆盖独立manage/view、精确API/ALL范围、tenant0/API-key拒绝、真实PG撤权后重验；实际JWT/Redis/Casbin/PG/生产HTTP→mTLS peer实跑Ensure202→200、Get200/无行404，同JWT同key撤manage后403且全部4类上游RPC计数不增、view独立。严格body/query/header/未知proto和28/3秒RPC、30/5秒HTTP父预算默认组PASS。API02真实HTTP Prepare503仅environment_reason=TENANT_NAMESPACE_NOT_FOUND，每请求acceptance/charge0；全部22cause由converter单测覆盖，HTTP只实跑1cause。证据environment-http-integration-{final.log,final-receipt.json,source-and-coverage.json}及environment-formal-{default-tests,pg-tests}.log。权限迁移manager/template各2grant、viewer0且重入保持viewer0；不声明已实测既有OFF grant重入。原CPU无GPU账、原GPU可靠受理及同key一次占额由真实PG六项验证。NS01只消费正式v4 codec，不宣称Gov拥有Namespace resolver或复制完整vectors。
+- Deployment or cleanup effects / preserved assets: 未更新线上DB/集群或服务，未应用权限SQL或角色/套餐授予。旧API维护候选 `6a7c721ea113d51497421d7975122ec7ca8105c2` 独立保留且未部署，其旧gate失败没有被本次final结果覆盖；final v4 decoder未用于旧v3排空。原Stop/close/release协议不变。
+- Remaining blockers / affected dependencies: 本项相关必需gate已解除；没有运行中的远端检查或以SSH超时残留的RESULT_UNKNOWN。09原三执行关闭证据阻断v4 rollout和真实A/B验收，现场授权/Stop/下载矩阵NOT_RUN，不能由本项组件PASS替代。
+- Contract conflicts / evidence / minimal correction: 原make check因缺既有VM日志map失败，先前audit网络恢复后因原负向fixture命中失败，原输出完整保留。最小修正一：在12个原非秘密负向值之间加准确分组注释，所有值/顺序/断言逐项相同，不加allowlist，定向及完整audit均exit0（gitleaks-fixture-grouping-source.json）。最小修正二：原base SQL已明确GET日志→vm:read；原base与当前OpenAPI均28个VM路由且集合相同，27路来自原register-vm-permissions.sql、1路来自原register-security-group-permissions.sql，两SQL哈希与base完全相同，故补1行map、派生总量各+1，并把过时VM26覆盖计数维护为有来源证明的28，未删除断言或新增权限。首次targeted的实际FAIL保留，修复后完整make check已真实通过；证据vm-log-map-existing-28-contracts.json、vm-log-map-targeted.log和最终proof。
+
+最新测试fixture补充：244780ffe6b9a7deb1c3f6f162e474e76a73a566仅固定原timeutil测试的UTC时区，原生产diff.go SHA/断言不变；与旧API维护32c61相同修正，三时区race包测试均exit0。原02f4完整check/audit PASS仍准确对应旧固定源码，新候选完整Workbench gate待实际结果，不拼接冒称。见evidence/gov-maintenance/maintenance-timezone-commits.json。
 
 ## Comments
 

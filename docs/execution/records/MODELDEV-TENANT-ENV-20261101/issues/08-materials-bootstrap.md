@@ -51,17 +51,18 @@ Blocked by: 04, 06
 
 ## Result
 
-- Outcome: BLOCKED（组件子项PASS：工具、真实四IR编译、不可变材料与渲染子项）；Resolution保持open。现场新镜像构建/运行映射、四定义实际发布ID、最终材料安装及切换未完成，不能记LIVE PASS。
-- Base / final commits: ModelDev base 21bf4bd6540d462a61c91b629f26250899583223；最终源码提交 d807cbdbd5dd6664d61480acedc752e19cfca48a及 matched=true 的本次源码核对见 evidence/modeldev-tested-source-identity.json；不将附件历史镜像/发布记录当作本次最终映射。
-- Changed files / generated artifacts: deploy/modeldev-environment/{bundle.py,publisher.py,platform_config.py,render.py,verify_target.py,test_materials.py,README.md}。固定四profile原IR，发布journal先意图后POST且未知结果不重发；同一canonical manifest/raw SHA供service和webhook；八材料普通文件copy与独立platform copy；Kubernetes/KFP独立投影audiences及artifact两键Secret文件引用，未带tenant map或秘密值。
-- Validation commands / exit codes / required gates: Fedora /home/chabking/tenantenv-20261101/modeldev-snapshot，固定KFP/kfp-kubernetes/kfp-pipeline-spec2.16.0，PYTHONPATH=deploy/modeldev-environment .../kfp-resource-venv/bin/python -m unittest discover -s deploy/modeldev-environment -p test_materials.py -v，6项、exit0、4.535s（evidence/08/tools.log）。最终ModelDev make verify PASS（evidence/modeldev-final-make-verify.log）；该Go门禁不代替上述Python编译测试或真实发布。
-- Acceptance IDs / actual values / evidence paths: SNP01/AD02的四IR root编译与共用bundle子项PASS、IM01单authority/platform_project与明确匿名证据工具拒绝分支PASS，实际输出 evidence/08/tools.log。完整集群身份只读采集见 evidence/08-identity-receipt.json；控制器/CA key等实际输入见 evidence/native-principals.json。06后续schema dry-run21/21 PASS见 evidence/06-native-server-dryrun.fixed.json；它不是本项真实安装或LIVE02全PASS。LIVE01/02/04/06/09中部署imageID、发布ID/完整GET、artifact/CA/授权和普通tenant隔离等完整现场项均未完成。
-- Deployment or cleanup effects / preserved assets: 本项无持久集群写、正式新镜像部署、四定义现场发布、旧定义删除、撤权或数据清理；publisher测试仅替代外部发布传输。真实四IR编译结果属于测试产物，不冒充ani-system已发布的Pipeline/Version。
-- Remaining blockers / affected dependencies: 06最终模板已交付并通过server schema dry-run。09的旧执行排空仍BLOCKED（evidence/09/open-execution-blockers.md），所以实际发布四定义、以正式ID生成最终canonical materials、seal同一bundle、真实平台输入加载、安装和服务/webhook切换均NOT_RUN。此前身份收据不作为未来写授权；09任何写前须重核完整身份与实际输入，不猜未知值。
-- Contract conflicts / evidence / minimal correction: 固定 KFP SHA `85a38e0719870e5b2f97a74f5c966d79bcc7c960` 的 `backend/api/v2beta1/pipeline.proto:185–186` 把 GetVersion.pipeline_spec 定义为 protobuf Struct；`backend/src/apiserver/server/api_converter.go:470–484` 通过 `api_util.go:152–201` 将多doc原YAML投影成 `{pipeline_spec:doc1,platform_spec:doc2}`，无法从 GET 恢复原 bytes。受影响 spec 的“原 IR SHA 与精确 GET”验证。主 agent 已确认最小修正：同一 immutable bundle 保留四份原 IR，以原 bytes SHA 对 Config.IRSHA，再完整结构比较官方 GET Struct；不重定义 IR SHA、不绕过 GET、不加兼容或扩大身份。发布器和03 IRSources reader均用该语义，官方源链接见README。
-- Evidence provenance: 上述PASS仅引用本次evidence/实际输出；附件verification及其他历史记录只作输入，不作为本次验收。
+- Outcome: BLOCKED；材料工具/四profile编译与两个附加镜像本地构建已完成，真实发布/安装/I-O未完成。
+- Base / final commits: 固定runtime/API源d807cbdbd5dd6664d61480acedc752e19cfca48a，tree141053367fa4be9a6fb9c764b2d7900b5282be20。689输入SHA与Fedora一致；没有用漂移的共享snapshot构建。
+- Changed files / generated artifacts: 同一四profile编译、发布journal、完整Struct读回、不可变bundle、平台config和挂载renderer；step/webhook Fedora本地镜像。完整范围见`evidence/08/update-entry-complete-inventory.md`。
+- Validation commands / exit codes / required gates: 6项工具真实编译/材料/恢复测试exit0，见evidence/08/tools.log；21native对象schema server dry-run通过但未安装。step/webhook固定源build exit0，缺配置真实启动exit1拒绝，见`evidence/08/build/build-receipt.json`。无真实registry push/pull/TLS/artifact结论。
+- Acceptance IDs / actual values / evidence paths: step36,725,738B（35.02MiB）、webhook67,703,675B（64.57MiB），共99.59MiB本地Size，非压缩传输量。CPU/GPU training未构建，固定官方base当前构建store不在缓存；不把历史base登记或固定FROM当新runtime镜像。现有registry10.10.1.66:30003/projectani-resource-factor10-20261022、业务connection/bucket、workspace class和公开CA候选已精确只读核验，见new-public-inputs-readonly.json；新客户端加载/I-O仍NOT_RUN。
+- Deployment or cleanup effects / preserved assets: 本地镜像未发布/部署；四个Pipeline/Version最终ID、sealed材料包、专用artifact身份/IAM、native/bootstrap、配置挂载未安装。没有每租户副本或新Namespace。
+- Remaining blockers / affected dependencies: 最终registry digest/大小/认证pull，training固定base与build，shared workspace容量选择，四定义实际发布、bucket-only内部artifact身份及真实TLS/I-O、最终最小RBAC/native行为、旧清理完成后的v4切换与A/B验收。
+- Contract conflicts / evidence / minimal correction: 指定入口只有主服务image-only目标。用户已在完整清单后批准route1，其他固定材料镜像Fedora+指定SSH维护；太慢须报告，重任务仍在Fedora且不打包传输。见update-entry-scope-approval-20261101.json。该批准未豁免任何原身份/退出/释放门禁。
 
 ## Comments
+
+以下为按时间保留的历史记录；当前状态以本文件 Result 为准。
 
 - 初始任务，尚无实施或验收完成声明；后续按时间追加事实与证据。
 - 达到本项验收后再更新 Resolution 和 Result；后续现场证据不得提前标记通过。
@@ -69,3 +70,5 @@ Blocked by: 04, 06
 第二轮公开输入补证：evidence/08-public-inputs-readonly-20261101.json和公开CA原bytes(713bytes)；只读实际metadata Service派生新tenant候选metadata-grpc-service.kubeflow.svc:8080，原CM仅短名、旧namespace同名CM404。已取driver/launcher/Argo原digest，显式TLS flags未暴露保持UNKNOWN，不当false；未作新launcher加载/I-O。
 
 第二轮镜像准备入口事实：evidence/08-workbench-build-only-readonly-20261101.json。线上app.js/request7字段与本地前端一致；本地后端拒额外字段且push后无条件deploy，但live后端hash未暴露不宣称同源。没有可安全使用的build-only操作，现有modeldev recipe仅主service，未涵盖webhook/step/training；WORKLOAD_IMAGE尚未固定。未POST job或直接绕开入口。需取得支持完整镜像发布的确切入口合同，实际构建与digest仍NOT_RUN。
+
+新增本地镜像构建部分PASS：Fedora固定Git d807的689输入校验后实际构建step/webhook，缺配置拒绝启动，source/tree/binarySHA/localImageID/localOCIdigest完整见evidence/08/build/build-receipt.json；未push/rollout。CPU/GPU因指定store固定LFbase缺失BLOCKED。此产物阶段未走Workbench job，不更新测试环境；服务切换仍指定Workbench。原snapshot55差异已被guard拒绝，实际构建从固定Git普通文件context，无Fedora archive打包传输。
