@@ -1,0 +1,82 @@
+{
+  "schema": "ani.modeldev.original-abe-private-assets.v1",
+  "pod": {
+    "namespace": "ani-system",
+    "name": "modeldev-original-abe-observer-20261101",
+    "uid": "ce8454b8-4d59-4d84-a7e0-a056fbe2d241",
+    "state": "CREATED_READONLY_PLAN_ONLY",
+    "original_service_account_uid": "7100a777-b770-4f77-9509-631c8b39f1ec",
+    "template_sha256": "55c5d073eb45a4d909df30f0acda43dd9ea7ef5cefbbb80a0560ce196f1cd74b",
+    "resource_limits_and_requests": "absent per latest user instruction"
+  },
+  "node_private_root": "/home/kubercloud/tenantenv-20261101/originalabe-20261101",
+  "node_binary": "/home/kubercloud/tenantenv-20261101/originalabe-20261101/originalabe",
+  "node_private_files": [
+    "originalabe",
+    "preflight.py",
+    "prepare_private.py",
+    "__pycache__ (private source import only)",
+    "config-<originalabe UTC>.json",
+    "identity-<originalabe UTC>.json",
+    "kubernetes-<originalabe UTC>.token",
+    "kubernetes-ca-<originalabe UTC>.crt",
+    "plan-<originalabe UTC>.json",
+    "observe-<originalabe UTC>.json"
+  ],
+  "dsn_original_reference": "/home/kubercloud/tenantenv-20261101/legacy-cleanup-1464b131/private/modeldev-readonly.dsn",
+  "cleanup_conditions": [
+    "after exact owner result recorded or abandonment",
+    "verify process absent and exact original Pod UID",
+    "delete only original maintenance Pod with UID precondition",
+    "remove this private root ordinary files; do not delete original shared DSN or parent CM",
+    "record Pod absence and private-root absence"
+  ],
+  "cluster_mutation_authorized_now": true,
+  "observe_mutation_authorized_now": false,
+  "fedora_task_codegen_tools": [
+    {
+      "path": "/home/chabking/tenantenv-20261101/modeldev-api/.tools/bin/buf",
+      "version": "1.60.0",
+      "module": "github.com/bufbuild/buf@v1.60.0",
+      "status": "TASK_PRIVATE_GOAL_TOOL_RETAINED_WHILE_REQUIRED",
+      "evidence": "evidence/modeldev-final-generation.log; evidence/modeldev-final-make-verify.log lines2-3; evidence/09/final-switch/full-f22-make-verify.log lines2-3",
+      "installation_fact": "Goal task-private tool; task records show executable use and pinned build identity. Original installer command/creation timestamp were not retained in these receipts; it must not be described as task-before preexisting.",
+      "cleanup_condition": "after all final verify/codegen consumers complete; parent verifies exact task-private regular binary ownership/SHA/process and removes this path; no shared Go cache removal"
+    },
+    {
+      "path": "/home/chabking/tenantenv-20261101/modeldev-api/.tools/bin/sqlc",
+      "version": "v1.31.1",
+      "module": "github.com/sqlc-dev/sqlc@v1.31.1",
+      "status": "TASK_PRIVATE_GOAL_TOOL_RETAINED_WHILE_REQUIRED",
+      "evidence": "evidence/modeldev-final-generation.log lines7-9; evidence/modeldev-final-make-verify.log lines4-5; evidence/09/final-switch/full-f22-make-verify.log lines4-5",
+      "installation_fact": "Goal task-private tool; executable use and pinned build identity are recorded. Original installer command/creation timestamp not retained; do not label task-before preexisting.",
+      "cleanup_condition": "after final codegen/verify consumers complete; remove exact task-private binary only after SHA/process/ownership check"
+    }
+  ],
+  "codegen_plugins": {
+    "mechanism": "pinned go run in buf.gen.yaml and buf.api.gen.yaml",
+    "standalone_task_binary_installation": "NO_EVIDENCE_OF_SEPARATE_INSTALL; do not invent protoc-gen-* task files",
+    "shared_go_module_and_build_caches": "PRESERVE; do not broad-scan or delete",
+    "evidence": [
+      "buf.gen.yaml",
+      "buf.api.gen.yaml",
+      "evidence/config-generation.log",
+      "evidence/api-generation.log"
+    ]
+  },
+  "fedora_originalabe_root": "/home/chabking/tenantenv-20261101/originalabe-20261101",
+  "local_transit": {
+    "path": "/home/chabking/workspace/.evidence/modeldev-originalabe-transit-20261101/originalabe",
+    "sha256": "2ad663d1dd3d66a1ed665b1f94f0c79647a2f3e74a3a7b76847b0cf031c2522d",
+    "size": 32866569,
+    "purpose": "ordinary fixed single-binary transport only, no local execution",
+    "cleanup_condition": "after node complete SHA match; remove original task transit regular file and empty private directory",
+    "cleanup_status": "REMOVED_AFTER_NODE_FULL_SHA_MATCH",
+    "removed_at": "2026-11-01T03:35:03.687731+00:00",
+    "final_path_absent": true,
+    "evidence": "evidence/09/originalabe/node-originalabe-pvc-corrected-chunk-transfer.json"
+  },
+  "node_binary_sha256": "2ad663d1dd3d66a1ed665b1f94f0c79647a2f3e74a3a7b76847b0cf031c2522d",
+  "node_binary_bytes": 32866569,
+  "cleanup_scope": "exact owned private root only; original shared DSN and parent ControlMaster preserved"
+}

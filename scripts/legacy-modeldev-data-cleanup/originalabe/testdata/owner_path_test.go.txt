@@ -1,0 +1,258 @@
+package runtimeproof_test
+
+import (
+	"context"
+	"encoding/json"
+	"encoding/pem"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/biz"
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/execution"
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/lifecycle"
+	"github.com/zhangzhe-ctrl/ani-modeldev-service/internal/data/trainer"
+	abe "github.com/zhangzhe-ctrl/ani-modeldev-service/scripts/legacy-modeldev-data-cleanup/originalabe"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
+)
+
+func originalABEPending(t *testing.T, accessMode ...string) (*computeCleanupFixture, biz.OperationRecord, dynamic.Interface, *int) {
+	t.Helper()
+	ctx := context.Background()
+	f := newComputeCleanupClosingFixture(t, false, "USER_STOP")
+	observer := &configuredCleanupObserver{TrainingRuntime: trainer.New(f.kube), err: biz.ErrRuntimeNotReady}
+	f.step.proof.WithTrainingRuntime(observer)
+	result, e := f.worker(t).ReconcileOnce(ctx)
+	if e != nil || result.Unresolved != 1 {
+		t.Fatal("real initial owner close/StepExit", e)
+	}
+	pool := f.step.open()
+	repo := lifecycle.New(pool)
+	state, e := repo.GetRuntime(ctx, f.step.f.execution.TenantID, f.step.f.execution.ExecutionID)
+	if e != nil || state.StepExitCleanup.CompletedAt == nil {
+		t.Fatal("real completed step exit", e)
+	}
+	observer.err = nil
+	logs, e := f.step.proof.CaptureComputeCleanupLogs(ctx, f.step.f.execution, f.step.f.authority(), state)
+	if e != nil {
+		t.Fatal("original durable training log qualification", e)
+	}
+	state, e = repo.RecordComputeCleanupLogs(ctx, f.step.f.authority(), state.CloseGeneration, logs)
+	if e != nil {
+		t.Fatal(e)
+	}
+	state, e = repo.RecordComputeCleanupResult(ctx, f.step.f.authority(), state.CloseGeneration, 1, nil, "BLOCKED")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for i := uint32(2); i <= 3; i++ {
+		state, e = repo.StartComputeCleanupAttempt(ctx, f.step.f.authority(), state.CloseGeneration)
+		if e != nil {
+			t.Fatal(e)
+		}
+		state, e = repo.RecordComputeCleanupResult(ctx, f.step.f.authority(), state.CloseGeneration, i, nil, "BLOCKED")
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
+	record, e := execution.New(pool).GetOperationRecord(ctx, f.step.f.execution.TenantID, f.step.f.execution.ExecutionID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = abe.Qualify(record); e != nil {
+		t.Fatal("actual exhausted+captured original receipt", e)
+	}
+	f.workflowDeleted = true
+	// The external peer provides API resourceVersion, unlike the earlier minimal
+	// fixture list/PVC responses. No domain or persistence behavior is replaced.
+	calls := new(int)
+	peer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		*calls++
+		if r.Method != "GET" || strings.HasSuffix(r.URL.Path, "/log") {
+			t.Error("maintenance attempted a mutation/log read", r.Method, r.URL.Path)
+			w.WriteHeader(405)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/workflows") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"apiVersion":"argoproj.io/v1alpha1","kind":"WorkflowList","metadata":{"resourceVersion":"fixture-rv-1"},"items":[]}`))
+			return
+		}
+		rr := httptest.NewRecorder()
+		f.step.serve(t, rr, r)
+		res := rr.Result()
+		raw, _ := io.ReadAll(res.Body)
+		_ = res.Body.Close()
+		if res.StatusCode == 200 {
+			var obj map[string]any
+			if json.Unmarshal(raw, &obj) == nil {
+				meta, _ := obj["metadata"].(map[string]any)
+				if meta == nil {
+					meta = map[string]any{}
+					obj["metadata"] = meta
+				}
+				if obj["kind"] == "PersistentVolumeClaim" {
+					obj["spec"] = map[string]any{"storageClassName": record.Execution.Snapshot.Workspace.StorageClass, "accessModes": []string{func() string {
+						if len(accessMode) > 0 {
+							return accessMode[0]
+						}
+						return "ReadWriteOnce"
+					}()}, "resources": map[string]any{"requests": map[string]any{"storage": fmt.Sprint(record.Execution.Snapshot.Workspace.CapacityBytes)}}}
+				}
+				if meta["resourceVersion"] == nil {
+					meta["resourceVersion"] = "fixture-rv-1"
+				}
+				raw, _ = json.Marshal(obj)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(res.StatusCode)
+		_, _ = w.Write(raw)
+	}))
+	t.Cleanup(peer.Close)
+	cfg := &rest.Config{Host: peer.URL, TLSClientConfig: rest.TLSClientConfig{CAData: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: peer.Certificate().Raw})}, QPS: 500, Burst: 500}
+	kube, e := dynamic.NewForConfig(cfg)
+	if e != nil {
+		t.Fatal(e)
+	}
+	return f, record, kube, calls
+}
+func TestOriginalABEMaintenanceRealCloserKeepsThreeAttempts(t *testing.T) {
+	f, record, kube, calls := originalABEPending(t, "ReadWriteMany")
+	ctx := context.Background()
+	beforeReads := f.logReads
+	plan, e := abe.Inspect(ctx, kube, record)
+	if e != nil {
+		t.Fatal("read-only original delete plan", e)
+	}
+	present := 0
+	for _, v := range plan.Targets {
+		if v.Present {
+			present++
+			if v.DeleteOptions == nil || v.DeleteOptions.Preconditions == nil || v.DeleteOptions.Preconditions.UID == nil || v.DeleteOptions.Preconditions.ResourceVersion == nil {
+				t.Fatal("unconditional operator delete")
+			}
+		}
+	}
+	if present != 6 || !plan.NoCurrentWriters || plan.Workspace.UID != f.step.workspace.PVCUID {
+		t.Fatal("original six targets/PVC", present)
+	}
+	pool := f.step.open()
+	if _, e = abe.Observe(ctx, pool, kube, plan); e == nil {
+		t.Fatal("present original target accepted")
+	}
+	unchanged, e := execution.New(pool).GetOperationRecord(ctx, record.Execution.TenantID, record.Execution.ExecutionID)
+	if e != nil || abe.SourceSHA(unchanged) != abe.SourceSHA(record) {
+		t.Fatal("blocked observation mutated source", e)
+	}
+	f.mu.Lock()
+	f.objects = nil
+	f.runtimeDeleted = true
+	f.mu.Unlock()
+	f.step.mu.Lock()
+	f.step.pods = map[string]*unstructured.Unstructured{}
+	f.step.mu.Unlock()
+	changedPVC := plan
+	changedPVC.Workspace.SpecSHA256 = strings.Repeat("0", 64)
+	if _, e = abe.Observe(ctx, pool, kube, changedPVC); e == nil {
+		t.Fatal("changed reviewed PVC spec accepted")
+	}
+	after, e := abe.Observe(ctx, pool, kube, plan)
+	if e != nil {
+		t.Fatal("real Closer absence CAS", e)
+	}
+	if after.ComputeCleanup.Phase != "APPLIED" || after.ComputeCleanup.Attempts != 3 || after.ComputeCleanup.OperatorRetry != nil || len(after.ComputeCleanup.ConfirmedAbsent) != 7 || !reflect.DeepEqual(record.Runtime.ComputeCleanup.Logs, after.ComputeCleanup.Logs) || !reflect.DeepEqual(record.Runtime.CloseEvidence, after.CloseEvidence) || f.logReads != beforeReads || len(f.deleted) != 0 || *calls == 0 {
+		t.Fatal("original attempt/exits/logs changed or boundary mutated")
+	}
+}
+func TestOriginalABEMaintenanceRejectsChangedEvidence(t *testing.T) {
+	f, record, kube, _ := originalABEPending(t)
+	ctx := context.Background()
+	plan, e := abe.Inspect(ctx, kube, record)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, mode := range []string{"missing log", "fourth attempt", "changed generation", "changed UID", "changed source"} {
+		t.Run(mode, func(t *testing.T) {
+			raw, _ := json.Marshal(record)
+			var changed biz.OperationRecord
+			_ = json.Unmarshal(raw, &changed)
+			switch mode {
+			case "missing log":
+				changed.Runtime.ComputeCleanup.Logs = nil
+			case "fourth attempt":
+				changed.Runtime.ComputeCleanup.Attempts = 4
+			case "changed generation":
+				changed.Runtime.CloseGeneration++
+			case "changed UID":
+				changed.Runtime.ComputeCleanup.Targets[0].UID = "replacement"
+			case "changed source":
+				plan.SourceSHA256 = strings.Repeat("0", 64)
+			}
+			if mode == "changed source" {
+				if _, e := abe.Observe(ctx, f.step.open(), kube, plan); e == nil {
+					t.Fatal("changed reviewed source accepted")
+				}
+			} else if abe.Qualify(changed) == nil {
+				t.Fatal("changed original qualification accepted")
+			}
+		})
+	}
+	after, e := execution.New(f.step.open()).GetOperationRecord(ctx, record.Execution.TenantID, record.Execution.ExecutionID)
+	if e != nil || abe.SourceSHA(after) != abe.SourceSHA(record) || len(f.deleted) != 0 {
+		t.Fatal("negative proof mutated original receipt", e)
+	}
+}
+
+func TestOriginalABEMaintenanceRejectsLiveBoundaryDrift(t *testing.T) {
+	f, record, kube, _ := originalABEPending(t)
+	ctx := context.Background()
+	var trainPath string
+	for path, o := range f.objects {
+		if o.GetKind() == "TrainJob" {
+			trainPath = path
+		}
+	}
+	originalTrain := f.objects[trainPath].DeepCopy()
+	for _, mode := range []string{"replacement target UID", "resumed original controller", "PVC in GC closure", "unrelated current PVC writer", "unknown target read"} {
+		t.Run(mode, func(t *testing.T) {
+			oldServe := f.step.serveExtra
+			switch mode {
+			case "replacement target UID":
+				f.objects[trainPath].SetUID("replacement-train")
+			case "resumed original controller":
+				_ = unstructured.SetNestedField(f.objects[trainPath].Object, false, "spec", "suspend")
+			case "PVC in GC closure":
+				f.pvcOwnerUID = "train-original"
+			case "unrelated current PVC writer":
+				f.step.pods["foreign-current-writer"] = &unstructured.Unstructured{Object: map[string]any{"apiVersion": "v1", "kind": "Pod", "metadata": map[string]any{"name": "foreign-current-writer", "namespace": record.Authority.NamespaceName, "uid": "foreign-writer-uid", "resourceVersion": "1"}, "spec": map[string]any{"volumes": []any{map[string]any{"name": "workspace", "persistentVolumeClaim": map[string]any{"claimName": f.step.workspace.PVCName}}}, "containers": []any{map[string]any{"name": "foreign"}}}}}
+			case "unknown target read":
+				f.step.serveExtra = func(t *testing.T, w http.ResponseWriter, r *http.Request) bool {
+					if r.URL.Path == trainPath {
+						w.WriteHeader(503)
+						_, _ = w.Write([]byte(`{"kind":"Status","apiVersion":"v1","reason":"ServiceUnavailable","code":503}`))
+						return true
+					}
+					return oldServe(t, w, r)
+				}
+			}
+			if _, e := abe.Inspect(ctx, kube, record); e == nil {
+				t.Fatal("live identity/writer uncertainty accepted", mode)
+			}
+			f.objects[trainPath] = originalTrain.DeepCopy()
+			f.pvcOwnerUID = ""
+			delete(f.step.pods, "foreign-current-writer")
+			f.step.serveExtra = oldServe
+			after, e := execution.New(f.step.open()).GetOperationRecord(ctx, record.Execution.TenantID, record.Execution.ExecutionID)
+			if e != nil || abe.SourceSHA(after) != abe.SourceSHA(record) || len(f.deleted) != 0 {
+				t.Fatal("negative boundary probe mutated original source", e)
+			}
+		})
+	}
+}

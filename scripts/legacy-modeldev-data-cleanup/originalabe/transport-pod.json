@@ -1,0 +1,48 @@
+{
+  "apiVersion": "v1",
+  "kind": "Pod",
+  "metadata": {
+    "name": "modeldev-original-abe-observer-20261101",
+    "namespace": "ani-system",
+    "labels": {
+      "ani.io/task": "modeldev-tenantenv-20261101",
+      "ani.io/purpose": "original-abe-absence-observer"
+    }
+  },
+  "spec": {
+    "nodeName": "node1",
+    "serviceAccountName": "modeldev-control",
+    "automountServiceAccountToken": true,
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 1800,
+    "securityContext": {
+      "runAsNonRoot": true,
+      "runAsUser": 10001,
+      "runAsGroup": 10001,
+      "fsGroup": 10001,
+      "seccompProfile": {
+        "type": "RuntimeDefault"
+      }
+    },
+    "containers": [
+      {
+        "name": "transport",
+        "image": "10.10.1.66:5001/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+        "command": [
+          "/bin/sh",
+          "-c",
+          "exec sleep 1800"
+        ],
+        "securityContext": {
+          "allowPrivilegeEscalation": false,
+          "readOnlyRootFilesystem": true,
+          "capabilities": {
+            "drop": [
+              "ALL"
+            ]
+          }
+        }
+      }
+    ]
+  }
+}
