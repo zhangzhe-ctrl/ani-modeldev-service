@@ -95,6 +95,12 @@ func (c *CleanupCommand) qualifyMD(ctx context.Context, tx pgx.Tx, v databaseVie
 			blockers = append(blockers, "MD_ORIGINAL_IDENTITY_DIFFERS:"+wanted.ExecutionID)
 			continue
 		}
+		if _, historical := originalC99Identities[wanted.ExecutionID]; historical {
+			if reason := c.qualifyOriginalC99(wanted, v); reason != "" {
+				blockers = append(blockers, reason+":"+wanted.ExecutionID)
+			}
+			continue
+		}
 		execution, err := admitted(er)
 		if err != nil {
 			blockers = append(blockers, "MD_ORIGINAL_CANONICAL_INVALID:"+wanted.ExecutionID)

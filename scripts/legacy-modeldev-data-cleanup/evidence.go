@@ -46,6 +46,11 @@ func (c *CleanupCommand) rootBlockers(md, gov DatabaseIdentity) []string {
 		cache[p.Path] = bytesSHA(raw)
 		return cache[p.Path] == p.SHA256
 	}
+	for _, proof := range []*SourceProof{r.OriginalC99Qualification, r.OriginalC99Build} {
+		if proof != nil && !verifyProof(*proof) {
+			out = append(out, "ROOT_ORIGINAL_C99_SOURCE_PROOF_INVALID")
+		}
+	}
 	if r.Schema != "ani.modeldev.legacy-cleanup-root-evidence.v1" || r.ObservedAt.IsZero() || r.ObservedAt.After(now) || !now.Before(r.ExpiresAt) || r.ExpiresAt.After(r.ObservedAt.Add(5*time.Minute)) {
 		out = append(out, "ROOT_EVIDENCE_NOT_FRESH")
 	}

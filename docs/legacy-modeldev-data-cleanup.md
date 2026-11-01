@@ -145,6 +145,96 @@ and matching ALREADY_APPLIED evidence after compute cleanup. Its aggregate
 GPURelease and both SQL release anchors must remain NULL. CPU retirement records
 must not contain a prior-GPU journal. No ordinary reader is relaxed.
 
+### Seven original c99 aggregates
+
+The fixed original inventory contains seven CPU executions whose original
+`ani.modeldev.execution-spec.v3` snapshot bytes predate `training_image`.
+Official c99 accepts their full original admission envelopes; official21bf
+rejects the same bytes first at `snapshot training image`. This affects both
+normal historical queries and the current cleanup admission/compute predicates.
+Specification13.1/13.2/13.3.8/13.4 require retiring those original aggregates,
+while13.5 and the v4 contract prohibit a runtime v3 compatibility reader. The
+small correction is an independent, read-only native c99 qualification tool,
+consumed only by this finite database deletion command. Neither service runtime,
+`Snapshot.Validate`, canonical bytes, close facts nor quota records change.
+
+`scripts/legacy-modeldev-data-cleanup/originalc99` is a separate Go module pinned
+to the official commit `c99c9f1081c754f7e38ceccd056db9a032ca3c27`, without a
+replace or copied reader. Its scope is exactly:
+
+```text
+111952ee-9d72-46d9-9981-c2a1ead73289
+4534a7de-480c-4a8f-ae76-e647cf7c158c
+5953c2e1-107e-4d46-af6d-4c718c7fb10c
+5f0b866e-31d1-4b44-8a7c-5cc900767e00
+c0fa3739-d279-4bb3-85be-0f74b8d4773a
+e94344af-a825-4ba2-9fa1-838638cc4d5f
+ec57bafc-56bd-4f7e-8f65-45527aa4d0e3
+```
+
+It has no write flag. On Fedora, build from that nested module with the pinned
+Go1.26.10 toolchain. Retain the actual build receipt, source-file hash manifest
+and binary SHA. After the approved sole-entry full-identity verification, run:
+
+```sh
+original-c99-qualifier -dsn-file /private/md-owner-dsn \
+  > /private/original-c99-qualification.json
+```
+
+The command begins a PostgreSQL READ ONLY, repeatable-read transaction. Each
+original PK/operation, canonical intent/snapshot byte SHA and actor/accepted-at
+SHA is fixed in source. Native c99 `Admission.CanonicalPayloads` and
+`lifecycle.ReadInTransaction` must pass; original CLOSED, close evidence, owner
+authority and actual step/compute cleanup are required as applicable. GPU
+outbox/ACK checks remain in the native qualifier as well as the existing main
+cleanup tool. All seven fixed originals are CPU; this creates no GPU exception.
+Foreign/new runtime JSON fields, including retirement markers, are refused.
+Output contains finite guard names, original IDs and SHA values, never raw
+canonical/runtime payloads. A blocked record has no qualification predicate;
+process exit0 alone is not qualification.
+
+The successful native predicate is
+`ORIGINAL_C99_NATIVE_CLOSED_CLEANUP_ACK`. The output binds the actual executing
+binary SHA, database/schema/role/server/OID, database observation time and a
+five-minute expiry, and sorted full-row SHA lists for all eight aggregate
+tables, including empty child sets. The original input-version metadata still
+passes the main command's unchanged inventory/reference checks.
+
+The root executor must inspect that output and the actual build receipt, then
+include their exact file byte hashes in the independently approved root receipt:
+
+```json
+{
+  "OriginalC99Qualification": {
+    "Kind": "ORIGINAL_C99_NATIVE_QUALIFICATION",
+    "Path": "/private/original-c99-qualification.json",
+    "SHA256": "<actual-reviewed-file-byte-SHA256>"
+  },
+  "OriginalC99Build": {
+    "Kind": "ORIGINAL_C99_BUILD_RECEIPT",
+    "Path": "/private/original-c99-build-receipt.json",
+    "SHA256": "<actual-reviewed-file-byte-SHA256>"
+  }
+}
+```
+
+The build receipt schema is
+`ani.modeldev.original-c99-qualifier-build.v1`; fields `CodecCommit`,
+`BinarySHA256`, `SourceSHA256`, `GoVersion:"go1.26.10"`, `ExitCode:0` must
+describe the actual successful build, not a hand-written completion boolean.
+These external source proofs use the same explicit root trust boundary as the
+other qualified evidence files. Root receipt expiry must be no later than the
+native proof expiry, so the existing final commit-time expiry check covers both.
+
+Absent proofs keep the read-only deletion plan BLOCKED. Wrong identity, codec,
+binary/build hash, database, source bytes, scope, expiry or any aggregate row
+change refuses qualification. Apply recomputes the exact eight-table row SHAs
+after its existing writer-draining locks. The seven cannot use the original3
+retirement marker path, and all other executions still use their original
+normal/approved-retirement reader. Global FK/trigger/reference checks, original
+Gov ACK/charge/account checks, external cleanup proofs, exact DELETE counts and
+the two-phase PARTIAL/resume boundary remain mandatory.
+
 Execution `f2168fbf-d7c9-4e96-8cc6-784bb1546083` remains explicitly BLOCKED:
 its ordinary reader has not been established as valid and it has no original
 outbox/ACK. The tool does not add a legacy marker, scope/outbox, log exemption or
@@ -218,6 +308,36 @@ The positive fixture uses real CPU admission and undispatched close, followed
 by both actual DB commits, plus a historical authenticated GPU-owner release
 record. It proves exact deletion and account/other-owner/other-tenant retention;
 it does not claim a fully materialized training cleanup/live retirement pass.
+
+### Original c99 qualification component receipt
+
+The18-file cleanup-tool source manifest is
+`1f103568fc0b1546962a73b1eb32adaa759161fc5a587158badb7d3b196fccbb`;
+all18 local/Fedora file hashes match. Fedora Go1.26.10 validation completed with
+exit0 for native exact-seven real-PG qualification, current consumer real-PG/race
+qualification and row-lock drift, the existing no-ACK/unreleased/unclosed
+refusals, both tools' vet/build and both modules' `go mod verify`. The native
+test also changes each original canonical/actor/accepted-at identity field and
+removes original CloseEvidence in its isolated fixture; all are refused. The
+first native test attempt was infrastructure **NOT_RUN** because the unmodified
+c99 test helper found this nested module rather than its migrations. The test
+now explicitly uses the outer checkout baseline after checking its byte SHA
+equals the official c99 baseline; no business reader was changed.
+
+The native qualifier binary SHA is
+`a1891a0e388e8fe4a6280e4803c9b2d068a8317908739dabeb2e0036689eb78d`.
+The updated deletion binary SHA is
+`ac69b711dac92e168988d65959aa87fa93204b004e21abbce2aae014aef0503c`;
+it links the original651f5ea retirement code, including TrainingExitKind and
+OriginalStopFence, plus this finite qualifier consumer. Original raw fixtures
+were mode0600, remained only on Fedora and were deleted after the necessary
+tests; only IDs, hashes, finite guards and original gate receipts are retained.
+Evidence is in `modeldev-original-c99-qualification/` (`native-pg-final.log`,
+`consumer-pg.log`, `qualification-component-receipt.json`,
+`build-final-receipt.json`, `native-build-receipt.json`, source manifests and
+`private-fixture-deletion-receipt.json`). This is component validation; fresh
+live native qualification, approved external proof and database apply remain
+**NOT_RUN**. The known old-base full-service gate was not rerun or relabeled.
 Negative fixtures prove missing root qualification, an unreleased charge,
 unclosed execution, original GPU outbox without ACK, UNKNOWN retry-blocked
 without owner closure, new FK, missing receipt row, concurrent owner revision,

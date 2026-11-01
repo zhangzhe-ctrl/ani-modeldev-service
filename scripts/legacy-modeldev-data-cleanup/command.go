@@ -44,6 +44,7 @@ type RootEvidence struct {
 	StopRecords                                       []StoppedSource
 	Probe                                             HTTPProbe
 	Databases                                         map[string]DatabaseIdentity
+	OriginalC99Qualification, OriginalC99Build        *SourceProof
 }
 type StoppedSource struct {
 	Component, SourceUID, SourceRevision, State string
