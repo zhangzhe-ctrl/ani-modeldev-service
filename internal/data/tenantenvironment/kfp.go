@@ -99,12 +99,12 @@ type experiment struct {
 
 func desiredIntent(row *biz.TenantExecutionEnvironment) *biz.EnvironmentExperimentIntent {
 	description, _ := json.Marshal(struct {
-		Schema        string `json:"schema"`
-		Owner         string `json:"owner"`
-		EnvironmentID string `json:"environment_id"`
-		TenantID      string `json:"tenant_id"`
-		ClusterID     string `json:"cluster_id"`
-		NamespaceUID  string `json:"namespace_uid"`
+		Schema        string `json:"s"`
+		Owner         string `json:"o"`
+		EnvironmentID string `json:"e"`
+		TenantID      string `json:"t"`
+		ClusterID     string `json:"c"`
+		NamespaceUID  string `json:"n"`
 	}{"ani.modeldev.tenant-environment.v1", "ani-modeldev-service", row.ID, row.TenantID, row.ClusterID, row.NamespaceUID})
 	i := &biz.EnvironmentExperimentIntent{Namespace: row.NamespaceName, Name: row.ExperimentName, Description: string(description)}
 	body, _ := experimentBody(i)

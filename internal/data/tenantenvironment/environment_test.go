@@ -2,8 +2,11 @@ package tenantenvironment
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -206,6 +209,51 @@ func TestEnvironmentExperimentRecoversUnknownPostAndReadsRotatingToken(t *testin
 		result := experiment{ID: id, Name: intent.Name, Description: intent.Description, Namespace: intent.Namespace, StorageState: "AVAILABLE"}
 		if r.Method == "POST" {
 			posts++
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Error(err)
+				http.Error(w, "invalid body", http.StatusBadRequest)
+				return
+			}
+			var request struct {
+				Name        string `json:"display_name"`
+				Description string `json:"description"`
+				Namespace   string `json:"namespace"`
+			}
+			decoder := json.NewDecoder(strings.NewReader(string(body)))
+			decoder.DisallowUnknownFields()
+			if err := decoder.Decode(&request); err != nil {
+				t.Error(err)
+				http.Error(w, "invalid v2beta1 body", http.StatusBadRequest)
+				return
+			}
+			if len(request.Description) > 255 {
+				t.Errorf("description length %d exceeds original MySQL varchar(255)", len(request.Description))
+				http.Error(w, "description too long", http.StatusBadRequest)
+				return
+			}
+			var description map[string]string
+			if err := json.Unmarshal([]byte(request.Description), &description); err != nil || len(description) != 6 {
+				t.Errorf("description must contain exactly six string fields: %v", err)
+				http.Error(w, "invalid ownership description", http.StatusBadRequest)
+				return
+			}
+			for key, value := range map[string]string{
+				"s": "ani.modeldev.tenant-environment.v1", "o": "ani-modeldev-service",
+				"e": row.ID, "t": row.TenantID, "c": row.ClusterID, "n": row.NamespaceUID,
+			} {
+				if description[key] != value {
+					t.Errorf("description field %q lost its original complete value", key)
+					http.Error(w, "incorrect ownership description", http.StatusBadRequest)
+					return
+				}
+			}
+			digest := sha256.Sum256(body)
+			if request.Name != row.ExperimentName || request.Namespace != row.NamespaceName || row.ExperimentIntent.BodyDigest != hex.EncodeToString(digest[:]) {
+				t.Error("original namespace/name or SHA256 of exact HTTP body changed")
+				http.Error(w, "incorrect original intent", http.StatusBadRequest)
+				return
+			}
 			created = true
 			w.WriteHeader(503)
 			return
