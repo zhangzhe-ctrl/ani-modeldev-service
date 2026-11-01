@@ -196,6 +196,10 @@ func (a *app) readIdentity(ctx context.Context) (identity, error) {
 	if err != nil || uid(ks) != a.config.KubeSystemUID {
 		return identity{}, biz.ErrRuntimeConflict
 	}
+	apiService, err := object("-n", "default", "get", "svc", "kubernetes")
+	if err != nil || !validOriginalAPIService(apiService) {
+		return identity{}, biz.ErrRuntimeConflict
+	}
 	scope, _ := biz.LookupLegacyRetirementScope(ids[0])
 	ns, err := object("get", "ns", scope.NamespaceName)
 	if err != nil || uid(ns) != scope.NamespaceUID {
@@ -229,5 +233,5 @@ func (a *app) readIdentity(ctx context.Context) (identity, error) {
 		return identity{}, biz.ErrRuntimeConflict
 	}
 	hostname, _ := os.Hostname()
-	return identity{Hostname: hostname, SSHUser: "kubercloud", Context: a.config.Context, APIServer: a.config.APIServer, KubeSystemUID: a.config.KubeSystemUID, ClusterID: a.config.ClusterID, NamespaceName: scope.NamespaceName, NamespaceUID: scope.NamespaceUID, ControlPodUID: a.config.ControlPodUID, ConfigMapUID: a.config.ConfigMapUID}, nil
+	return identity{Hostname: hostname, SSHUser: "kubercloud", Context: a.config.Context, APIServer: a.config.APIServer, KubeSystemUID: a.config.KubeSystemUID, ClusterID: a.config.ClusterID, NamespaceName: scope.NamespaceName, NamespaceUID: scope.NamespaceUID, ControlPodUID: a.config.ControlPodUID, ConfigMapUID: a.config.ConfigMapUID, APIServiceUID: originalAPIServiceUID, APIServiceIP: originalAPIServiceIP}, nil
 }

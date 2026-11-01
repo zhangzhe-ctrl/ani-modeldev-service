@@ -75,7 +75,7 @@ type plan struct {
 	Entries                    []item
 	Ready                      bool
 }
-type identity struct{ Hostname, SSHUser, Context, APIServer, KubeSystemUID, ClusterID, NamespaceName, NamespaceUID, ControlPodUID, ConfigMapUID string }
+type identity struct{ Hostname, SSHUser, Context, APIServer, KubeSystemUID, ClusterID, NamespaceName, NamespaceUID, ControlPodUID, ConfigMapUID, APIServiceUID, APIServiceIP string }
 
 type app struct {
 	config                     config
@@ -186,6 +186,16 @@ func newApp(ctx context.Context, c config, readonly bool) (*app, error) {
 		return fail("MAINTENANCE_DATABASE_IDENTITY_MISMATCH")
 	}
 	kc := &rest.Config{Host: c.Kubernetes.Endpoint, BearerTokenFile: c.Kubernetes.TokenFile, TLSClientConfig: rest.TLSClientConfig{CAFile: c.Kubernetes.CAFile}, Timeout: 20 * time.Second, QPS: 20, Burst: 40, UserAgent: "ani-modeldev-legacy-retirement/20261101"}
+	// The node does not have the original Pod's cluster.local DNS search list.
+	// Keep the original URL, TLS name/CA and token, and dial only its verified
+	// original API Service VIP. readIdentity validates that Service before use.
+	kc.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+		target, err := originalAPITarget(address)
+		if err != nil || network != "tcp" {
+			return nil, errors.New("MAINTENANCE_ORIGINAL_API_ROUTE_INVALID")
+		}
+		return (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, network, target)
+	}
 	if err := validExistingToken(c.Kubernetes.TokenFile, c.ControlPodUID, false); err != nil {
 		return fail("MAINTENANCE_API_TOKEN_IDENTITY_INVALID")
 	}
